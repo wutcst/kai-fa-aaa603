@@ -19,7 +19,7 @@ public class CommandFactory {
             case "back" -> new BackCommand(game);
             case "look" -> new LookCommand(game);
             case "quit" -> new QuitCommand(game);
-            case "help" -> new HelpCommand(game);
+            case "help" -> new HelpCommand();
             default -> null;
         };
     }

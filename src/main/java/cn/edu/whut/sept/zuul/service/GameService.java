@@ -1,5 +1,5 @@
 package cn.edu.whut.sept.zuul.service;
-
+import java.util.Arrays;
 import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.command.Command;
 import cn.edu.whut.sept.zuul.command.CommandFactory;

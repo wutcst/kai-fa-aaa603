@@ -1,92 +1,121 @@
-/**
- * 该类是“World-of-Zuul”应用程序的主类。
- * 《World of Zuul》是一款简单的文本冒险游戏。用户可以在一些房间组成的迷宫中探险。
- * 你们可以通过扩展该游戏的功能使它更有趣!.
- *
- * 如果想开始执行这个游戏，用户需要创建Game类的一个实例并调用“play”方法。
- *
- * Game类的实例将创建并初始化所有其他类:它创建所有房间，并将它们连接成迷宫；它创建解析器
- * 接收用户输入，并将用户输入转换成命令后开始运行游戏。
- *
- * @author  Michael Kölling and David J. Barnes
- * @version 1.0
- */
 package cn.edu.whut.sept.zuul;
 
-public class Game
-{
-    private Parser parser;
-    private Room currentRoom;
+import cn.edu.whut.sept.zuul.model.Item;
+import cn.edu.whut.sept.zuul.model.Room;
+import lombok.Getter;
+import lombok.Setter;
+import java.util.*;
 
-    public Game()
-    {
-        createRooms();
-        parser = new Parser();
+/**
+ * 游戏核心类：初始化房间、处理游戏状态、传输房间逻辑
+ */
+@Getter
+@Setter
+public class Game {
+    private Room currentRoom;        // 当前房间
+    private List<Room> roomHistory;  // 房间历史（供back命令）
+    private boolean gameOver;        // 游戏是否结束
+
+    public Game() {
+        roomHistory = new ArrayList<>();
+        gameOver = false;
+        createRooms(); // 初始化房间
     }
 
-    private void createRooms()
-    {
-        Room outside, theater, pub, lab, office;
+    /**
+     * 初始化房间地图（包含物品、传输房间标记）
+     */
+    private void createRooms() {
+        // 创建房间
+        Room outside = new Room("Outside Building", "Outside the main building of the university");
+        Room lobby = new Room("Lobby", "The lobby of the building");
+        Room lab = new Room("Lab", "A science lab with strange equipment");
+        Room office = new Room("Office", "A professor's office with bookshelves");
+        Room library = new Room("Library", "A quiet library with many books");
 
-        // create the rooms
-        outside = new Room("outside the main entrance of the university");
-        theater = new Room("in a lecture theater");
-        pub = new Room("in the campus pub");
-        lab = new Room("in a computing lab");
-        office = new Room("in the computing admin office");
-
-        // initialise room exits
-        outside.setExit("east", theater);
-        outside.setExit("south", lab);
-        outside.setExit("west", pub);
-
-        theater.setExit("west", outside);
-
-        pub.setExit("east", outside);
-
-        lab.setExit("north", outside);
+        // 设置出口
+        outside.setExit("east", lobby);
+        lobby.setExit("west", outside);
+        lobby.setExit("north", lab);
+        lab.setExit("south", lobby);
         lab.setExit("east", office);
-
         office.setExit("west", lab);
+        lobby.setExit("south", library);
+        library.setExit("north", lobby);
 
-        currentRoom = outside;  // start game outside
+        // 标记传输房间（lab）
+        lab.setTeleportRoom(true);
+
+        // 给房间添加物品
+        outside.addItem(new Item("rock", "A heavy rock", 2.5));
+        lab.addItem(new Item("beaker", "A glass beaker", 0.5));
+        office.addItem(new Item("book", "A programming book", 1.0));
+        library.addItem(new Item("pen", "A metal pen", 0.2));
+
+        // 初始房间
+        currentRoom = outside;
     }
 
-    public void play()
-    {
-        printWelcome();
-
-        // Enter the main command loop.  Here we repeatedly read commands and
-        // execute them until the game is over.
-
-        boolean finished = false;
-        while (! finished) {
-            Command command = parser.getCommand();
-            if(command == null) {
-                System.out.println("I don't understand...");
-            } else {
-                finished = command.execute(this);
-            }
+    /**
+     * 触发传输房间逻辑：进入lab时随机传送到其他房间
+     */
+    public void triggerTeleport(Room room) {
+        if (!room.isTeleportRoom()) {
+            return;
         }
 
-        System.out.println("Thank you for playing.  Good bye.");
+        // 获取所有房间（排除当前lab）
+        Set<Room> allRooms = new HashSet<>();
+        Queue<Room> queue = new LinkedList<>();
+        queue.add(currentRoom);
+        while (!queue.isEmpty()) {
+            Room r = queue.poll();
+            if (allRooms.add(r)) {
+                queue.addAll(r.getExits().values());
+            }
+        }
+        allRooms.remove(room); // 排除当前lab
+
+        // 随机选择一个房间传送
+        List<Room> roomList = new ArrayList<>(allRooms);
+        if (!roomList.isEmpty()) {
+            Random random = new Random();
+            this.currentRoom = roomList.get(random.nextInt(roomList.size()));
+        }
     }
 
-    private void printWelcome()
-    {
-        System.out.println();
-        System.out.println("Welcome to the World of Zuul!");
-        System.out.println("World of Zuul is a new, incredibly boring adventure game.");
-        System.out.println("Type 'help' if you need help.");
-        System.out.println();
-        System.out.println(currentRoom.getLongDescription());
+    /**
+     * 添加房间到历史记录
+     */
+    public void addRoomHistory(Room room) {
+        roomHistory.add(room);
     }
 
-    public Room getCurrentRoom() {
-        return currentRoom;
+    /**
+     * 获取上一个房间（back命令）
+     */
+    public Room getPreviousRoom() {
+        if (roomHistory.isEmpty()) {
+            return null;
+        }
+        return roomHistory.get(roomHistory.size() - 1);
     }
 
-    public void setCurrentRoom(Room room){
-        this.currentRoom = room;
+    /**
+     * 移除最后一条房间历史
+     */
+    public void removeLastRoomHistory() {
+        if (!roomHistory.isEmpty()) {
+            roomHistory.remove(roomHistory.size() - 1);
+        }
+    }
+
+    /**
+     * 重置游戏
+     */
+    public void reset() {
+        roomHistory.clear();
+        gameOver = false;
+        createRooms();
     }
 }

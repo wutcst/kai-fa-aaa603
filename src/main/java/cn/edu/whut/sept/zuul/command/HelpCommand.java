@@ -1,5 +1,5 @@
 package cn.edu.whut.sept.zuul.command;
-
+import cn.edu.whut.sept.zuul.command.Command;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 
 /**
@@ -12,11 +12,12 @@ public class HelpCommand implements Command {
         helpMsg.append("You are lost. You are alone. You wander around the labyrinth.\n");
         helpMsg.append("Your command words are:\n");
         helpMsg.append("  go back look quit help\n");
+        helpMsg.append("  take drop items eat\n");
         return GameResponse.success("Help information", helpMsg.toString());
     }
 
     @Override
     public void setParams(String... params) {
-        // help命令无参数
+        // help锻炼护鏃犲弬鏁?
     }
 }

@@ -1,7 +1,16 @@
 # 忽略以下目录中的所有子目录及文件
 /target/*
 /.idea/*
-
 # 忽略以下文件
 *.iml
+.DS_Store
+# --- 后端相关 ---
+backend/target/
+backend/node_modules/
+# --- 前端相关 ---
+frontend/node_modules/
+# --- IDE/系统文件 ---
+.idea/
+*.iml
+*.log
 .DS_Store

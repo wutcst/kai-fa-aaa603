@@ -18,13 +18,13 @@ public class GoCommand implements Command {
     @Override
     public GameResponse execute() {
         if (direction == null) {
-            return GameResponse.error("Go where? Please specify a direction (east, south, west, north)");
+            return GameResponse.error("要去哪儿？请指定方向（east, south, west, north）");
         }
 
         Room currentRoom = game.getCurrentRoom();
         Room nextRoom = currentRoom.getExits().get(direction);
         if (nextRoom == null) {
-            return GameResponse.error("There is no door to the " + direction + "!");
+            return GameResponse.error("该方向没有门：" + direction + "！");
         }
 
         // 触发传输房间逻辑
@@ -33,7 +33,7 @@ public class GoCommand implements Command {
         game.addRoomHistory(currentRoom);
         game.setCurrentRoom(nextRoom);
 
-        return GameResponse.success("You move to the " + nextRoom.getName(), nextRoom.getFullInfo());
+        return GameResponse.success("你移动到了 " + nextRoom.getName(), nextRoom.getFullInfo());
     }
 
     @Override

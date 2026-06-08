@@ -26,11 +26,11 @@ public class Game {
     }
 
     private void createRooms() {
-        Room outside = new Room("Outside Building", "Outside the main building of the university");
-        Room lobby = new Room("Lobby", "The lobby of the building");
-        Room lab = new Room("Lab", "A science lab with strange equipment");
-        Room office = new Room("Office", "A professor's office with bookshelves");
-        Room library = new Room("Library", "A quiet library with many books");
+        Room outside = new Room("教学楼外", "大学主楼外");
+        Room lobby = new Room("大厅", "建筑大厅");
+        Room lab = new Room("实验室", "一个有着奇怪设备的实验室");
+        Room office = new Room("办公室", "教授的办公室，满是书架");
+        Room library = new Room("图书馆", "安静的图书馆，藏书丰富");
 
         outside.setExit("east", lobby);
         lobby.setExit("west", outside);
@@ -43,11 +43,11 @@ public class Game {
 
         lab.setTeleportRoom(true);
 
-        outside.addItem(new Item("rock", "A heavy rock", 2.5));
-        lab.addItem(new Item("beaker", "A glass beaker", 0.5));
-        office.addItem(new Item("book", "A programming book", 1.0));
-        library.addItem(new Item("pen", "A metal pen", 0.2));
-        library.addItem(new Item("cookie", "A shiny magic cookie!", 0.1));
+        outside.addItem(new Item("rock", "一块很重的石头", 2.5));
+        lab.addItem(new Item("beaker", "一个玻璃烧杯", 0.5));
+        office.addItem(new Item("book", "一本编程书", 1.0));
+        library.addItem(new Item("pen", "一支金属笔", 0.2));
+        library.addItem(new Item("cookie", "一块闪亮的魔法饼干", 0.1));
 
         currentRoom = outside;
     }

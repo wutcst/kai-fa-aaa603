@@ -20,7 +20,7 @@ public class TakeCommand implements Command {
     @Override
     public GameResponse execute() {
         if (itemName == null) {
-            return GameResponse.error("Take what? Please specify an item name.");
+            return GameResponse.error("要拿什么？请指定物品名称。");
         }
 
         Player player = game.getPlayer();
@@ -28,15 +28,15 @@ public class TakeCommand implements Command {
         Item item = currentRoom.getItem(itemName);
 
         if (item == null) {
-            return GameResponse.error("There is no '" + itemName + "' here!");
+            return GameResponse.error("这里没有名为 '" + itemName + "' 的物品！");
         }
 
         if (player.addItem(item)) {
             currentRoom.removeItem(item);
-            return GameResponse.success("You take the " + itemName + ".",
-                    "Item '" + itemName + "' added to your inventory.\n" + currentRoom.getFullInfo());
+            return GameResponse.success("你拾取了 " + itemName + "。",
+                    "物品 '" + itemName + "' 已加入你的背包。\n" + currentRoom.getFullInfo());
         } else {
-            return GameResponse.error("You can't carry the '" + itemName + "'! It's too heavy!");
+            return GameResponse.error("你无法携带 '" + itemName + "'！太重了！");
         }
     }
 

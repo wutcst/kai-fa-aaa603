@@ -4,23 +4,22 @@ import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 
 /**
- * 退出命令：quit
+ * 查看命令：look（显示当前房间完整信息）
  */
-public class QuitCommand implements Command {
+public class LookCommand implements Command {
     private Game game;
 
-    public QuitCommand(Game game) {
+    public LookCommand(Game game) {
         this.game = game;
     }
 
     @Override
     public GameResponse execute() {
-        game.setGameOver(true);
-        return GameResponse.success("Thank you for playing! Goodbye.", null);
+        return GameResponse.success("你查看了该房间", game.getCurrentRoom().getFullInfo());
     }
 
     @Override
     public void setParams(String... params) {
-        // quit命令无参数
+        // look命令无参数
     }
 }

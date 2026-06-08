@@ -20,7 +20,7 @@ public class DropCommand implements Command {
     @Override
     public GameResponse execute() {
         if (itemName == null) {
-            return GameResponse.error("Drop what? Please specify an item name.");
+            return GameResponse.error("要丢弃什么？请指定物品名称。");
         }
 
         Player player = game.getPlayer();
@@ -28,13 +28,13 @@ public class DropCommand implements Command {
         Item item = player.getItem(itemName);
 
         if (item == null) {
-            return GameResponse.error("You don't have a '" + itemName + "'!");
+            return GameResponse.error("你没有 '" + itemName + "' ！");
         }
 
         player.removeItem(item);
         currentRoom.addItem(item);
-        return GameResponse.success("You drop the " + itemName + ".",
-                "Item '" + itemName + "' dropped in the room.\n" + currentRoom.getFullInfo());
+        return GameResponse.success("你丢弃了 " + itemName + "。",
+                "物品 '" + itemName + "' 已丢弃到房间。\n" + currentRoom.getFullInfo());
     }
 
     @Override

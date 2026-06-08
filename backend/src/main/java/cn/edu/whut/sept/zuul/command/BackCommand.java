@@ -18,7 +18,7 @@ public class BackCommand implements Command {
     public GameResponse execute() {
         Room previousRoom = game.getPreviousRoom();
         if (previousRoom == null) {
-            return GameResponse.error("You can't go back any further!");
+            return GameResponse.error("你无法再回退了！");
         }
 
         // 交换当前房间和历史房间
@@ -27,7 +27,7 @@ public class BackCommand implements Command {
         game.removeLastRoomHistory(); // 移除最后一条历史（避免重复回退）
         game.addRoomHistory(currentRoom);
 
-        return GameResponse.success("You go back to the " + previousRoom.getName(), previousRoom.getFullInfo());
+        return GameResponse.success("你回到了 " + previousRoom.getName(), previousRoom.getFullInfo());
     }
 
     @Override

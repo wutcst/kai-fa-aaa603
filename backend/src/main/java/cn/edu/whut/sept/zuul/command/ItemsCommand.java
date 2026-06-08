@@ -24,33 +24,33 @@ public class ItemsCommand implements Command {
         StringBuilder sb = new StringBuilder();
 
         // 显示当前房间物品
-        sb.append("Room items:\n");
+        sb.append("房间物品：\n");
         if (currentRoom.getItems().isEmpty()) {
-            sb.append("  (none)\n");
+            sb.append("  （无）\n");
         } else {
             for (Item item : currentRoom.getItems()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append(", weight: ").append(item.getWeight())
+                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }
 
         // 显示玩家背包
-        sb.append("\nInventory (").append(player.getTotalWeight())
-                .append("/").append(player.getMaxWeight()).append(" kg):\n");
+        sb.append("\n背包（").append(player.getTotalWeight())
+                .append("/").append(player.getMaxWeight()).append(" kg）：\n");
         if (player.getInventory().isEmpty()) {
-            sb.append("  (empty)\n");
+            sb.append("  （空）\n");
         } else {
             for (Item item : player.getInventory()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append(", weight: ").append(item.getWeight())
+                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }
 
-        return GameResponse.success("Items and inventory info", sb.toString());
+        return GameResponse.success("物品和背包信息", sb.toString());
     }
 
     @Override

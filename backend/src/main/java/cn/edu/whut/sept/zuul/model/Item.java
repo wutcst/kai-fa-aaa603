@@ -19,6 +19,6 @@ public class Item {
     public Item(String name, double weight) {
         this.name = name;
         this.weight = weight;
-        this.description = "A common " + name;
+        this.description = "普通的" + name;
     }
 }

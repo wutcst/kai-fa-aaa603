@@ -9,11 +9,11 @@ public class HelpCommand implements Command {
     @Override
     public GameResponse execute() {
         StringBuilder helpMsg = new StringBuilder();
-        helpMsg.append("You are lost. You are alone. You wander around the labyrinth.\n");
-        helpMsg.append("Your command words are:\n");
+        helpMsg.append("你迷路了。你孤身一人，在迷宫中徘徊。\n");
+        helpMsg.append("可用命令：\n");
         helpMsg.append("  go back look quit help\n");
         helpMsg.append("  take drop items eat\n");
-        return GameResponse.success("Help information", helpMsg.toString());
+        return GameResponse.success("帮助信息", helpMsg.toString());
     }
 
     @Override

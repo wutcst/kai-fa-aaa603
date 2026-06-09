@@ -8,7 +8,9 @@
     "start": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.3.4"
+    "vue": "^3.3.4",
+    "phaser": "^3.60.0",
+    "pinia": "^2.0.33"
   },
   "devDependencies": {
     "vite": "^5.0.0",

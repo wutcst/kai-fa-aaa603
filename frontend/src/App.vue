@@ -1,31 +1,39 @@
 <template>
-  <div style="padding:20px;font-family:Arial, sans-serif;">
-    <h1>Zuul 简易前端（Vue）</h1>
-
-    <div><strong>status:</strong> {{ gameStatus }}</div>
-    <div><strong>message:</strong> {{ message }}</div>
-
-    <div style="margin-top:12px;">
-      <button @click="sendHelp">帮助 (help)</button>
+  <div style="padding:20px;font-family:Arial, sans-serif;display:flex;gap:20px;">
+    <div>
+      <h1>Zuul 游戏 Demo（起始场景）</h1>
+      <GameCanvas @update="onUpdate" />
     </div>
 
-    <div style="margin-top:20px;">
-      <h3>当前房间 data（调试）</h3>
-      <pre style="background:#f6f6f6;padding:10px;white-space:pre-wrap;">{{ prettyData }}</pre>
-    </div>
+    <aside style="width:320px;">
+      <h3>信息</h3>
+      <div><strong>状态：</strong> {{ gameStatus }}</div>
+      <div style="margin-top:8px;"><strong>消息：</strong> {{ message }}</div>
 
-    <div style="margin-top:12px;color:#666;">说明：此为最小 demo，后续会实现完整交互式 UI。</div>
+      <h3 style="margin-top:16px;">房间物品</h3>
+      <ul>
+        <li v-for="it in roomItems" :key="it.name">{{ it.name }} ({{ it.weight }} kg)</li>
+        <li v-if="roomItems.length===0" style="color:#888">（无）</li>
+      </ul>
+
+      <div style="margin-top:16px;">
+        <button @click="resetGame">重置游戏</button>
+      </div>
+    </aside>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
+import GameCanvas from './components/GameCanvas.vue'
 
 export default {
+  components: { GameCanvas },
   setup() {
     const gameStatus = ref(null)
     const message = ref('')
     const data = ref(null)
+    const roomItems = ref([])
 
     onMounted(async () => {
       try {
@@ -34,25 +42,32 @@ export default {
         gameStatus.value = j.status
         message.value = j.message
         data.value = j.data
+        // extract inventory if present
+        if (j.data && j.data.items) {
+          roomItems.value = j.data.items
+        }
       } catch (e) {
         message.value = '无法连接后端: ' + e.message
       }
     })
 
-    const sendHelp = async () => {
-      const res = await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: 'help' })
-      })
-      const j = await res.json()
-      message.value = j.message
-      data.value = j.data
+    const onUpdate = (payload) => {
+      if (!payload) return
+      message.value = payload.message || ''
+      gameStatus.value = payload.status || ''
+      data.value = payload.data || null
+      if (payload.data && payload.data.items) {
+        roomItems.value = payload.data.items
+      }
     }
 
-    const prettyData = computed(() => JSON.stringify(data.value, null, 2))
+    const resetGame = async () => {
+      const res = await fetch('/api/reset', { method: 'POST' })
+      const j = await res.json()
+      onUpdate(j)
+    }
 
-    return { gameStatus, message, data, sendHelp, prettyData }
+    return { gameStatus, message, data, onUpdate, roomItems, resetGame }
   }
 }
 </script>

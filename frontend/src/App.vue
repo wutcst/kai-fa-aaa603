@@ -46,6 +46,8 @@ export default {
         if (j.data && j.data.items) {
           roomItems.value = j.data.items
         }
+        // notify canvas / other listeners of initial game state
+        try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
       } catch (e) {
         message.value = '无法连接后端: ' + e.message
       }
@@ -65,6 +67,8 @@ export default {
       const res = await fetch('/api/reset', { method: 'POST' })
       const j = await res.json()
       onUpdate(j)
+      // notify canvas / other listeners of reset
+      try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
     }
 
     return { gameStatus, message, data, onUpdate, roomItems, resetGame }

@@ -57,7 +57,6 @@ onMounted(() => {
         scene.roomGraphics = scene.add.container(0, 0)
         scene.itemsGroup = scene.add.group()
         scene.exitButtons = []
-        // graphic for room bounds (rectangle)
         scene.roomBoundsGraphic = scene.add.graphics()
 
         // draw base background using procedurally generated, seamless high-density grass tiles
@@ -333,6 +332,38 @@ onMounted(() => {
             // store in itemsData for proximity-based prompt handling
             scene.itemsData.push({ name: item.name, x, y, circle, label, prompted: false, _removed: false })
             ix++
+          })
+
+          // draw monsters
+          const monsters = roomInfo.monsters || []
+          const mStartX = 160
+          let mi = 0
+          monsters.forEach(mon => {
+            const x = mStartX + (mi % 2) * 60
+            const y = 220 + Math.floor(mi / 2) * 70
+            const circ = scene.add.circle(x, y, 20, 0xaa0000).setStrokeStyle(2, 0x000000)
+            const label = scene.add.text(x - 32, y + 24, mon.name + ' (HP:' + (mon.hp || 0) + ')', { font: '14px Arial', fill: '#fff' })
+            circ.setInteractive({ useHandCursor: true })
+            circ.on('pointerover', () => circ.setScale(1.05))
+            circ.on('pointerout', () => circ.setScale(1))
+            circ.on('pointerdown', async () => {
+              // immediate click-based attack
+              try {
+                const res = await fetch('/api/command', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: 'attack ' + mon.name })
+                })
+                const j = await res.json()
+                emit('update', j)
+                if (j && j.data) scene.renderRoom(j.data)
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+            })
+            scene.monstersGroup.add(circ)
+            scene.monstersGroup.add(label)
+            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp })
+            mi++
           })
 
           // if teleport room, show indicator

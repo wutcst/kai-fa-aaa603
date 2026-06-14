@@ -33,8 +33,9 @@ public class DropCommand implements Command {
 
         player.removeItem(item);
         currentRoom.addItem(item);
+        // 返回房间完整信息作为 data
         return GameResponse.success("你丢弃了 " + itemName + "。",
-                "物品 '" + itemName + "' 已丢弃到房间。\n" + currentRoom.getFullInfo());
+                currentRoom.getFullInfo());
     }
 
     @Override

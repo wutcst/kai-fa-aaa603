@@ -3,6 +3,7 @@ package cn.edu.whut.sept.zuul;
 import cn.edu.whut.sept.zuul.model.Item;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
+import cn.edu.whut.sept.zuul.model.Monster;
 import lombok.Getter;
 import lombok.Setter;
 import java.util.*;
@@ -50,6 +51,13 @@ public class Game {
         library.addItem(new Item("cookie", "一块闪亮的魔法饼干", 0.1));
 
         currentRoom = outside;
+
+        // 添加一些怪物到每个房间（确保所有房间都有怪物）
+        outside.addMonster(new Monster("spider", "一只院外的小蜘蛛", 8, 2));
+        lobby.addMonster(new Monster("rat", "一只在大厅里觅食的老鼠", 6, 2));
+        lab.addMonster(new Monster("goblin", "一只警惕的地精", 20, 5));
+        office.addMonster(new Monster("crab", "看起来凶猛的实验室寄居蟹", 12, 4));
+        library.addMonster(new Monster("ghost", "游荡的幽灵", 18, 6));
     }
 
     public Room getCurrentRoom() {
@@ -75,8 +83,16 @@ public class Game {
         queue.add(currentRoom);
         while (!queue.isEmpty()) {
             Room r = queue.poll();
+            if (r == null) continue; // defensive
             if (allRooms.add(r)) {
-                queue.addAll(r.getExits().values());
+                // add only non-null neighbor rooms
+                try {
+                    for (Room nr : r.getExits().values()) {
+                        if (nr != null) queue.add(nr);
+                    }
+                } catch (Exception e) {
+                    // ignore malformed exits
+                }
             }
         }
         allRooms.remove(room);

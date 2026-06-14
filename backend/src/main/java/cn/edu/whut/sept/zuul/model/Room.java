@@ -3,6 +3,9 @@ package cn.edu.whut.sept.zuul.model;
 import lombok.Data;
 import java.util.*;
 
+// 引入怪物模型
+import cn.edu.whut.sept.zuul.model.Monster;
+
 /**
  * 房间类：包含出口、物品、传输房间标记
  */
@@ -12,6 +15,7 @@ public class Room {
     private String description;         // 房间描述
     private Map<String, Room> exits;    // 出口（方向->房间）
     private List<Item> items;           // 房间物品列表
+    private List<Monster> monsters;     // 房间中的怪物列表
     private boolean isTeleportRoom;     // 是否是传输房间（lab）
 
     public Room(String name, String description) {
@@ -19,6 +23,7 @@ public class Room {
         this.description = description;
         this.exits = new HashMap<>();
         this.items = new ArrayList<>();
+        this.monsters = new ArrayList<>();
         this.isTeleportRoom = false;
     }
 
@@ -56,6 +61,24 @@ public class Room {
         return null;
     }
 
+    // 添加怪物到房间
+    public void addMonster(Monster m) {
+        if (m != null) monsters.add(m);
+    }
+
+    // 从房间移除怪物
+    public boolean removeMonster(Monster m) {
+        return monsters.remove(m);
+    }
+
+    // 根据名称查找房间内的怪物
+    public Monster getMonster(String name) {
+        for (Monster m : monsters) {
+            if (m.getName().equalsIgnoreCase(name)) return m;
+        }
+        return null;
+    }
+
     // 获取房间完整信息（供look命令使用）
     public Map<String, Object> getFullInfo() {
         Map<String, Object> info = new HashMap<>();
@@ -63,6 +86,8 @@ public class Room {
         info.put("description", this.description);
         info.put("exits", this.getExitString());
         info.put("items", this.items);
+        // 将怪物信息也返回给前端（序列化为简单对象列表）
+        info.put("monsters", this.monsters);
         info.put("isTeleportRoom", this.isTeleportRoom);
         return info;
     }

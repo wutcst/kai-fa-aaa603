@@ -16,12 +16,18 @@ public class Player {
     private Room currentRoom;
     private List<Item> inventory;
     private double maxWeight;
+    // 新增生命值和攻击力
+    private int hp;
+    private int attack;
 
     public Player(String name, Room currentRoom) {
         this.name = name;
         this.currentRoom = currentRoom;
         this.inventory = new ArrayList<>();
         this.maxWeight = 10.0;
+        // 默认属性，可根据需求调整或扩展装备系统
+        this.hp = 40;
+        this.attack = 8;
     }
 
     /**
@@ -58,6 +64,17 @@ public class Player {
      */
     public boolean removeItem(Item item) {
         return inventory.remove(item);
+    }
+
+    /**
+     * 受到伤害
+     */
+    public void takeDamage(int dmg) {
+        this.hp = Math.max(0, this.hp - dmg);
+    }
+
+    public boolean isAlive() {
+        return this.hp > 0;
     }
 
     /**

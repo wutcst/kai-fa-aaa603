@@ -3,6 +3,7 @@ package cn.edu.whut.sept.zuul;
 import cn.edu.whut.sept.zuul.model.Item;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
+import cn.edu.whut.sept.zuul.model.Monster;
 import lombok.Getter;
 import lombok.Setter;
 import java.util.*;
@@ -72,8 +73,16 @@ public class Game {
         queue.add(currentRoom);
         while (!queue.isEmpty()) {
             Room r = queue.poll();
+            if (r == null) continue; // defensive
             if (allRooms.add(r)) {
-                queue.addAll(r.getExits().values());
+                // add only non-null neighbor rooms
+                try {
+                    for (Room nr : r.getExits().values()) {
+                        if (nr != null) queue.add(nr);
+                    }
+                } catch (Exception e) {
+                    // ignore malformed exits
+                }
             }
         }
         allRooms.remove(room);

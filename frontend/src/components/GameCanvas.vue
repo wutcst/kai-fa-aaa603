@@ -43,7 +43,12 @@ onMounted(() => {
     backgroundColor: '#333333',
     scene: {
       preload: function () {
-        // no external assets for demo; we'll use simple shapes and text
+        // load a scalable grass tile (SVG) from project assets for higher-quality tiling
+        try {
+          this.load.image('grass_tile', new URL('../assets/grass_tile.svg', import.meta.url).href)
+        } catch (e) {
+          // ignore if import.meta.url not available in some environments; fallback handled in create
+        }
       },
       create: async function () {
         const scene = this
@@ -56,13 +61,108 @@ onMounted(() => {
         // door rects (areas for exits) -- initialize early so renderRoom can safely use it
         scene.doorRects = []
 
-        // draw base background
-        const bg = scene.add.graphics()
-        // store background color for later VFX masking
-        scene.bgColor = 0x2d2d2d
-        bg.fillStyle(scene.bgColor, 1)
-        bg.fillRect(0, 0, 800, 600)
-        scene.roomGraphics.add(bg)
+        // draw base background using procedurally generated, seamless high-density grass tiles
+        // store background color for later VFX masking (use a green-ish tone)
+        scene.bgColor = 0x6bbf3a
+        // parallax settings for layers (far, near)
+        scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
+
+        // helper: seeded RNG (mulberry32)
+        const mulberry32 = (a) => {
+          return function() {
+            a |= 0
+            a = a + 0x6D2B79F5 | 0
+            let t = Math.imul(a ^ a >>> 15, 1 | a)
+            t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t
+            return ((t ^ t >>> 14) >>> 0) / 4294967296
+          }
+        }
+
+        // create a seamless tile canvas with wrapping blades and flecks
+        const createSeamlessGrass = (key, size = 128, seed = 1, density = 180) => {
+          const rng = mulberry32(seed)
+          const canvas = document.createElement('canvas')
+          canvas.width = size
+          canvas.height = size
+          const ctx = canvas.getContext('2d')
+          // base gradient
+          const g = ctx.createLinearGradient(0, 0, 0, size)
+          g.addColorStop(0, '#7fd34a')
+          g.addColorStop(1, '#5fb033')
+          ctx.fillStyle = g
+          ctx.fillRect(0, 0, size, size)
+
+          // draw multiple blades; for seamless tiling, when a blade extends beyond edge,
+          // draw wrapped copies at offsets +/-size.
+          ctx.lineCap = 'round'
+          for (let i = 0; i < density; i++) {
+            const bx = rng() * size
+            const by = size // base at bottom
+            const bladeH = 12 + rng() * (size * 0.6)
+            const ctrlX = bx + (rng() * 12 - 6)
+            const ctrlY = by - bladeH / 2
+            const tipX = bx + (rng() * 18 - 9)
+            const tipY = Math.max(0, by - bladeH)
+            const hueShift = (rng() * 20 - 10)
+            ctx.strokeStyle = `hsl(${100 + hueShift}, 40%, ${30 + rng() * 20}%)`
+            ctx.lineWidth = 1 + rng() * 1.8
+            ctx.beginPath()
+            ctx.moveTo(bx, by)
+            ctx.quadraticCurveTo(ctrlX, ctrlY, tipX, tipY)
+            ctx.stroke()
+            // draw wrapped copies so seams tile cleanly
+            const parts = [ {ox: -size, oy:0}, {ox: size, oy:0}, {ox:0, oy:-size}, {ox:0, oy:size}, {ox:-size, oy:-size}, {ox:size, oy:-size}, {ox:-size, oy:size}, {ox:size, oy:size} ]
+            for (const p of parts) {
+              ctx.beginPath()
+              ctx.moveTo(bx + p.ox, by + p.oy)
+              ctx.quadraticCurveTo(ctrlX + p.ox, ctrlY + p.oy, tipX + p.ox, tipY + p.oy)
+              ctx.stroke()
+            }
+          }
+
+          // tiny flecks and highlights to break tiling seams
+          for (let i = 0; i < Math.round(size * size / 160); i++) {
+            ctx.fillStyle = `rgba(255,255,255,${0.02 + rng() * 0.06})`
+            const x = Math.floor(rng() * size)
+            const y = Math.floor(rng() * size)
+            ctx.fillRect(x, y, 1, 1)
+          }
+
+          // add subtle darker overlay noise for local contrast
+          ctx.globalCompositeOperation = 'multiply'
+          ctx.fillStyle = 'rgba(20,40,20,0.06)'
+          ctx.fillRect(0, 0, size, size)
+          ctx.globalCompositeOperation = 'source-over'
+
+          // add to Phaser textures
+          try {
+            if (scene.textures.exists(key)) scene.textures.remove(key)
+            scene.textures.addCanvas(key, canvas)
+          } catch (e) {
+            try { scene.textures.createCanvas(key, size, size).context.drawImage(canvas,0,0); scene.textures.get(key).refresh() } catch (ee) { /* ignore */ }
+          }
+          return key
+        }
+
+        // generate two high-density variants for layering to avoid visible seams
+        const tileSize = 128
+        const v0 = createSeamlessGrass('grass_v0', tileSize, 12345, 260)
+        const v1 = createSeamlessGrass('grass_v1', tileSize, 54321, 200)
+
+        // create two tileSprite layers for depth and higher apparent density
+        const bgFar = scene.add.tileSprite(0, 0, 800, 600, v0).setOrigin(0, 0)
+        const bgNear = scene.add.tileSprite(0, 0, 800, 600, v1).setOrigin(0, 0)
+        bgNear.setAlpha(0.88)
+        // slightly scale near layer to break repetition
+        bgNear.setScale(1.02)
+        // insert layers behind everything
+        scene.roomGraphics.addAt(bgFar, 0)
+        scene.roomGraphics.addAt(bgNear, 1)
+        scene.bgFar = bgFar
+        scene.bgNear = bgNear
+        // initialize previous player pos for parallax calculations
+        scene._prevPlayerX = 400
+        scene._prevPlayerY = 320
 
         // title and description
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -76,7 +176,10 @@ onMounted(() => {
         scene.add.text(20, 560, '使用方向键 / 点击出口 / 点击物品 与后端交互', { font: '14px Arial', fill: '#cccccc' })
 
         // function to send command to backend and process result
-        scene.sendCommand = async function (cmd) {
+        // accepts optional fromDir (north/south/east/west) indicating which exit was used
+        scene.sendCommand = async function (cmd, fromDir = null) {
+          // remember last movement direction so renderRoom can position player accordingly
+          scene._lastMoveDir = fromDir || null
           try {
             const res = await fetch('/api/command', {
               method: 'POST',
@@ -132,18 +235,58 @@ onMounted(() => {
             if (dir === 'west' || dir === 'east') { w = 40; h = 120 }
             const rect = scene.add.rectangle(pos.x, pos.y, w, h, 0x664422).setStrokeStyle(2, 0x222222)
             const label = scene.add.text(pos.x - 20, pos.y - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
-            // clicking a door only moves the player to its area (does NOT immediately enter)
+            // clicking a door animates player to the door and sends the go command
             rect.setInteractive({ useHandCursor: true })
             rect.on('pointerdown', () => {
-              // move player to door area; when movement completes, send the go command to enter
-              scene.tweens.add({ targets: scene.player, x: pos.x, y: pos.y, duration: 300, onComplete: () => {
-                try { scene.sendCommand('go ' + dir) } catch (e) {}
-              } })
+              // quick visual to move toward the door
+              scene.tweens.add({ targets: scene.player, x: pos.x, y: pos.y, duration: 180 })
+              // send the go command and record fromDir
+              scene.sendCommand('go ' + dir, dir)
             })
             scene.exitButtons.push(rect)
             scene.exitButtons.push(label)
             scene.doorRects.push({ dir, rect, label })
           })
+
+          // If the last action was moving through a door, place the player near the opposite
+          // door in the new room (do not overlap the door). This uses scene._lastMoveDir
+          try {
+            const opposite = { north: 'south', south: 'north', east: 'west', west: 'east' }
+            if (scene._lastMoveDir) {
+              const from = scene._lastMoveDir
+              const to = opposite[from]
+              if (to && exits.includes(to)) {
+                const posTo = exitPositions[to]
+                let targetX = scene.player.x
+                let targetY = scene.player.y
+                // door sizes: vertical doors (west/east) are w=40,h=120; horizontal (north/south) w=120,h=40
+                if (to === 'east') {
+                  const w = 40
+                  targetX = posTo.x - (w / 2) - 16 - 8
+                  targetY = posTo.y
+                } else if (to === 'west') {
+                  const w = 40
+                  targetX = posTo.x + (w / 2) + 16 + 8
+                  targetY = posTo.y
+                } else if (to === 'north') {
+                  const h = 40
+                  targetY = posTo.y + (h / 2) + 16 + 8
+                  targetX = posTo.x
+                } else if (to === 'south') {
+                  const h = 40
+                  targetY = posTo.y - (h / 2) - 16 - 8
+                  targetX = posTo.x
+                }
+                // clamp to play area
+                targetX = Phaser.Math.Clamp(targetX, 16, 800 - 16)
+                targetY = Phaser.Math.Clamp(targetY, 16, 600 - 16)
+                // set position smoothly
+                try { scene.player.setPosition(targetX, targetY) } catch (e) { scene.player.x = targetX; scene.player.y = targetY }
+                try { scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18) } catch (e) {}
+              }
+              scene._lastMoveDir = null
+            }
+          } catch (e) { /* ignore positioning errors */ }
 
           // draw items
           const items = roomInfo.items || []
@@ -295,8 +438,25 @@ onMounted(() => {
                 speed = speed * 2
               }
             } catch (e) { /* ignore if key not present */ }
+            const prevX = scene.player.x
+            const prevY = scene.player.y
             scene.player.x += vx * speed * dt
             scene.player.y += vy * speed * dt
+            // parallax: move background layers opposite to player movement, scaled by layer factor
+            try {
+              const dx = scene.player.x - prevX
+              const dy = scene.player.y - prevY
+              if (scene.bgFar) {
+                const f = scene.parallax && scene.parallax.farFactor ? scene.parallax.farFactor : 0.35
+                scene.bgFar.tilePositionX += dx * f
+                scene.bgFar.tilePositionY += dy * f
+              }
+              if (scene.bgNear) {
+                const f2 = scene.parallax && scene.parallax.nearFactor ? scene.parallax.nearFactor : 0.72
+                scene.bgNear.tilePositionX += dx * f2
+                scene.bgNear.tilePositionY += dy * f2
+              }
+            } catch (e) { /* ignore parallax errors */ }
           }
 
           // handle attack key (J) pressed -> draw a sweeping blade that traces the sector clockwise, then fade out with ghosts
@@ -483,27 +643,24 @@ onMounted(() => {
           // keep player inside bounds
           scene.player.x = Phaser.Math.Clamp(scene.player.x, 16, 800 - 16)
           scene.player.y = Phaser.Math.Clamp(scene.player.y, 16, 600 - 16)
-          scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18)
+           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18)
+           // update previous pos for non-moving frames too (keeps parallax stable)
+           scene._prevPlayerX = scene.player.x
+           scene._prevPlayerY = scene.player.y
 
           // door overlap detection: only when player center is inside door rect bounds
           let insideAnyDoor = false
           for (const dr of scene.doorRects) {
-            try {
-              const b = dr.rect.getBounds()
-              // debug log for door checks (helps identify why north door might not trigger)
-              try { if (scene.debugMode) console.debug('[door-debug] check', dr.dir, 'player', Math.round(scene.player.x), Math.round(scene.player.y), 'bounds', b) } catch (e) {}
-
-              if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
-                insideAnyDoor = true
-                if (scene.lastDoorEntered !== dr.dir) {
-                  scene.lastDoorEntered = dr.dir
-                  // send go command once upon entering the door area
-                  try { if (scene.debugMode) console.debug('[door-debug] entering door, sending go', dr.dir) } catch (e) {}
-                  scene.sendCommand('go ' + dr.dir)
-                }
-                break
-              }
-            } catch (e) { /* ignore missing rect */ }
+            const b = dr.rect.getBounds()
+            if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
+              insideAnyDoor = true
+               if (scene.lastDoorEntered !== dr.dir) {
+                 scene.lastDoorEntered = dr.dir
+                 // send go command once upon entering the door area
+                 scene.sendCommand('go ' + dr.dir, dr.dir)
+               }
+              break
+            }
           }
           if (!insideAnyDoor) scene.lastDoorEntered = null
 
@@ -590,4 +747,5 @@ onBeforeUnmount(() => {
   } catch (e) { /* ignore */ }
 })
 </script>
+
 

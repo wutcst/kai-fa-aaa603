@@ -26,30 +26,27 @@ public class Game {
     }
 
     private void createRooms() {
-        Room outside = new Room("教学楼外", "大学主楼外");
-        Room lobby = new Room("大厅", "建筑大厅");
-        Room lab = new Room("实验室", "一个有着奇怪设备的实验室");
-        Room office = new Room("办公室", "教授的办公室，满是书架");
-        Room library = new Room("图书馆", "安静的图书馆，藏书丰富");
-
-        outside.setExit("east", lobby);
-        lobby.setExit("west", outside);
-        lobby.setExit("north", lab);
-        lab.setExit("south", lobby);
-        lab.setExit("east", office);
-        office.setExit("west", lab);
-        lobby.setExit("south", library);
-        library.setExit("north", lobby);
-
-        lab.setTeleportRoom(true);
-
-        outside.addItem(new Item("rock", "一块很重的石头", 2.5));
-        lab.addItem(new Item("beaker", "一个玻璃烧杯", 0.5));
-        office.addItem(new Item("book", "一本编程书", 1.0));
-        library.addItem(new Item("pen", "一支金属笔", 0.2));
-        library.addItem(new Item("cookie", "一块闪亮的魔法饼干", 0.1));
-
-        currentRoom = outside;
+        // generate a random connected map of rooms on startup
+        GenerateRoom.GeneratedMap gm = GenerateRoom.generate(10, 15);
+        // pick a random teleport room among generated rooms (optional)
+        List<Room> rooms = gm.rooms;
+        if (!rooms.isEmpty()) {
+            Random rnd = new Random();
+            // mark one random room as teleport room
+            Room tele = rooms.get(rnd.nextInt(rooms.size()));
+            tele.setTeleportRoom(true);
+        }
+        currentRoom = gm.startRoom;
+        // debug: print generated map (room name -> exits) to stdout to help debug navigation issues
+        try {
+            System.out.println("[GenerateRoom] Generated map:");
+            for (Room r : rooms) {
+                System.out.println("  " + r.getName() + " -> " + r.getExitString());
+            }
+            System.out.println("[GenerateRoom] Start room: " + currentRoom.getName() + " exits=" + currentRoom.getExitString());
+        } catch (Exception e) {
+            // ignore logging errors
+        }
     }
 
     public Room getCurrentRoom() {

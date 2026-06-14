@@ -18,6 +18,7 @@ public class Game {
     private Player player;
     private List<Room> roomHistory;
     private boolean gameOver;
+    private List<Room> allRooms;
 
     public Game() {
         roomHistory = new ArrayList<>();
@@ -27,9 +28,9 @@ public class Game {
     }
 
     private void createRooms() {
-        // generate a random connected map of rooms on startup
         GenerateRoom.GeneratedMap gm = GenerateRoom.generate(10, 15);
-        // pick a random teleport room among generated rooms (optional)
+        this.allRooms = gm.rooms;
+
         List<Room> rooms = gm.rooms;
         if (!rooms.isEmpty()) {
             Random rnd = new Random();
@@ -119,4 +120,27 @@ public class Game {
         createRooms();
         player = new Player("冒险者", currentRoom);
     }
+    /**
+     * 返回全地图数据，供前端小地图使用
+     * 格式：{ rooms: [{name, exits:{方向:邻居名}}], startRoomName: "..." }
+     */
+    public Map<String, Object> getFullMap() {
+        Map<String, Object> result = new HashMap<>();
+        List<Map<String, Object>> roomList = new ArrayList<>();
+        for (Room room : allRooms) {
+            Map<String, Object> r = new HashMap<>();
+            r.put("name", room.getName());
+            // 将出口 Map<String, Room> 转为 Map<String, String>，避免循环引用
+            Map<String, String> exits = new HashMap<>();
+            for (Map.Entry<String, Room> e : room.getExits().entrySet()) {
+                exits.put(e.getKey(), e.getValue().getName());
+            }
+            r.put("exits", exits);
+            roomList.add(r);
+        }
+        result.put("rooms", roomList);
+        result.put("startRoomName", currentRoom.getName());
+        return result;
+    }
+
 }

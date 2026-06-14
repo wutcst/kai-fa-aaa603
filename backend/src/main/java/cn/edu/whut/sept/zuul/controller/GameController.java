@@ -6,6 +6,7 @@ import lombok.AllArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import org.springframework.http.ResponseEntity;
 
 /**
  * 游戏REST API控制器
@@ -46,5 +47,14 @@ public class GameController {
     @PostMapping("/reset")
     public GameResponse resetGame() {
         return gameService.resetGame();
+    }
+
+    /**
+     * 获取全地图概览数据
+     * GET /api/map
+     */
+    @GetMapping("/map")
+    public ResponseEntity<Map<String, Object>> getMap() {
+        return ResponseEntity.ok(gameService.getFullMap());
     }
 }

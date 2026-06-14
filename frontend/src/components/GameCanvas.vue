@@ -57,6 +57,8 @@ onMounted(() => {
         scene.roomGraphics = scene.add.container(0, 0)
         scene.itemsGroup = scene.add.group()
         scene.exitButtons = []
+        // graphic for room bounds (rectangle)
+        scene.roomBoundsGraphic = scene.add.graphics()
 
         // draw base background using procedurally generated, seamless high-density grass tiles
         // store background color for later VFX masking (use a green-ish tone)
@@ -165,9 +167,12 @@ onMounted(() => {
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
-        // player (simple circle)
-        scene.player = scene.add.circle(400, 320, 16, 0x00aaff).setStrokeStyle(2, 0x000000)
-        scene.playerLabel = scene.add.text(380, 340, 'You', { font: '12px Arial', fill: '#fff' })
+        // player (simple circle) - reduce radius for finer collision and set a property
+        scene.playerRadius = 10
+        scene.player = scene.add.circle(400, 320, scene.playerRadius, 0x00aaff).setStrokeStyle(2, 0x000000)
+        scene.playerLabel = scene.add.text(400 - scene.playerRadius - 20, 320 + scene.playerRadius + 8, 'You', { font: '12px Arial', fill: '#fff' })
+        // initial room bounds (will be updated when room data arrives)
+        scene._roomBounds = { left: scene.playerRadius, top: scene.playerRadius, right: 800 - scene.playerRadius, bottom: 600 - scene.playerRadius }
 
         // hint
         scene.add.text(20, 560, '使用方向键 / 点击出口 / 点击物品 与后端交互', { font: '14px Arial', fill: '#cccccc' })
@@ -211,30 +216,48 @@ onMounted(() => {
           const exitsStr = roomInfo.exits || ''
           const exits = exitsStr.split(/\s+/).filter(s => s)
 
-          // draw exit (door) visuals at edges but DO NOT auto-send command on click
-          const exitPositions = {
-            north: { x: 400, y: 80 },
-            south: { x: 400, y: 520 },
-            west: { x: 120, y: 320 },
-            east: { x: 680, y: 320 }
-          }
+          // draw room bounds rectangle and compute door positions on its edges
+          // increase default room rectangle size for more spacious rooms
+          const roomW = roomInfo.width || 650
+          const roomH = roomInfo.height || 450
+          const rectLeft = Math.round(400 - roomW / 2)
+          const rectTop = Math.round(320 - roomH / 2)
+          const rectCenterX = rectLeft + roomW / 2
+          const rectCenterY = rectTop + roomH / 2
+
+          // draw rectangle (slight translucent fill + stroke)
+          try {
+            scene.roomBoundsGraphic.clear()
+            scene.roomBoundsGraphic.fillStyle(0x000000, 0.06)
+            scene.roomBoundsGraphic.fillRect(rectLeft, rectTop, roomW, roomH)
+            scene.roomBoundsGraphic.lineStyle(2, 0xffffff, 0.9)
+            scene.roomBoundsGraphic.strokeRect(rectLeft, rectTop, roomW, roomH)
+          } catch (e) { /* ignore drawing errors */ }
 
           // clear previous door rects
           scene.doorRects.forEach(d => { try { d.rect.destroy(); d.label.destroy() } catch (e) {} })
           scene.doorRects = []
 
+          // create doors placed on rectangle edges
           exits.forEach(dir => {
-            const pos = exitPositions[dir] || { x: 400, y: 80 }
             // choose door size based on orientation
             let w = 120, h = 40
             if (dir === 'west' || dir === 'east') { w = 40; h = 120 }
-            const rect = scene.add.rectangle(pos.x, pos.y, w, h, 0x664422).setStrokeStyle(2, 0x222222)
-            const label = scene.add.text(pos.x - 20, pos.y - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
-            // clicking a door animates player to the door and sends the go command
+            // compute door position; place door detection slightly outside the rectangle edge
+            let posx = rectCenterX
+            let posy = rectCenterY
+            const outsideOffset = -10
+            if (dir === 'north') { posx = rectCenterX; posy = rectTop - h / 2 - outsideOffset }
+            if (dir === 'south') { posx = rectCenterX; posy = rectTop + roomH + h / 2 + outsideOffset }
+            if (dir === 'west')  { posx = rectLeft - w / 2 - outsideOffset; posy = rectCenterY }
+            if (dir === 'east')  { posx = rectLeft + roomW + w / 2 + outsideOffset; posy = rectCenterY }
+
+            const rect = scene.add.rectangle(posx, posy, w, h, 0x664422).setStrokeStyle(2, 0x222222)
+            const label = scene.add.text(posx - 20, posy - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
             rect.setInteractive({ useHandCursor: true })
             rect.on('pointerdown', () => {
               // quick visual to move toward the door
-              scene.tweens.add({ targets: scene.player, x: pos.x, y: pos.y, duration: 180 })
+              scene.tweens.add({ targets: scene.player, x: posx, y: posy, duration: 180 })
               // send the go command and record fromDir
               scene.sendCommand('go ' + dir, dir)
             })
@@ -242,6 +265,9 @@ onMounted(() => {
             scene.exitButtons.push(label)
             scene.doorRects.push({ dir, rect, label })
           })
+
+          // cache current room bounds for movement clamping
+          scene._roomBounds = { left: rectLeft, top: rectTop, right: rectLeft + roomW, bottom: rectTop + roomH }
 
           // If the last action was moving through a door, place the player near the opposite
           // door in the new room (do not overlap the door). This uses scene._lastMoveDir
@@ -251,31 +277,19 @@ onMounted(() => {
               const from = scene._lastMoveDir
               const to = opposite[from]
               if (to && exits.includes(to)) {
-                const posTo = exitPositions[to]
-                let targetX = scene.player.x
-                let targetY = scene.player.y
-                // door sizes: vertical doors (west/east) are w=40,h=120; horizontal (north/south) w=120,h=40
-                if (to === 'east') {
-                  const w = 40
-                  targetX = posTo.x - (w / 2) - 16 - 8
-                  targetY = posTo.y
-                } else if (to === 'west') {
-                  const w = 40
-                  targetX = posTo.x + (w / 2) + 16 + 8
-                  targetY = posTo.y
-                } else if (to === 'north') {
-                  const h = 40
-                  targetY = posTo.y + (h / 2) + 16 + 8
-                  targetX = posTo.x
-                } else if (to === 'south') {
-                  const h = 40
-                  targetY = posTo.y - (h / 2) - 16 - 8
-                  targetX = posTo.x
-                }
-                // clamp to play area
-                targetX = Phaser.Math.Clamp(targetX, 16, 800 - 16)
-                targetY = Phaser.Math.Clamp(targetY, 16, 600 - 16)
-                // set position smoothly
+                // compute target near the 'to' door using same math as door placement
+                let w = 120, h = 40
+                if (to === 'west' || to === 'east') { w = 40; h = 120 }
+                let targetX = rectCenterX
+                let targetY = rectCenterY
+                if (to === 'north') { targetX = rectCenterX; targetY = rectTop + h / 2 + 8 }
+                if (to === 'south') { targetX = rectCenterX; targetY = rectTop + roomH - h / 2 - 8 }
+                if (to === 'west')  { targetX = rectLeft + w / 2 + 8; targetY = rectCenterY }
+                if (to === 'east')  { targetX = rectLeft + roomW - w / 2 - 8; targetY = rectCenterY }
+                // clamp to room area with small padding (use player radius)
+                const pr = scene.playerRadius || 10
+                targetX = Phaser.Math.Clamp(targetX, rectLeft + pr, rectLeft + roomW - pr)
+                targetY = Phaser.Math.Clamp(targetY, rectTop + pr, rectTop + roomH - pr)
                 try { scene.player.setPosition(targetX, targetY) } catch (e) { scene.player.x = targetX; scene.player.y = targetY }
                 try { scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18) } catch (e) {}
               }
@@ -380,6 +394,7 @@ onMounted(() => {
         // update loop for movement / proximity checks
         this.sys.events.on('update', function (time, delta) {
           const dt = delta / 1000
+          const rb = scene._roomBounds || { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
           // movement by WASD
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
@@ -434,16 +449,17 @@ onMounted(() => {
                 const dx = Math.cos(scene.facingAngle)
                 const dy = Math.sin(scene.facingAngle)
                 const dist = cfg.pierceDistance || 120
-                const targetX = Phaser.Math.Clamp(startX + dx * dist, 16, 800 - 16)
-                const targetY = Phaser.Math.Clamp(startY + dy * dist, 16, 600 - 16)
+                const pr = scene.playerRadius || 10
+                const targetX = Phaser.Math.Clamp(startX + dx * dist, rb.left + pr, rb.right - pr)
+                const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
                 // tween player movement
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
                 // draw pierce effect: diamond (rhombus) spanning from start to target, then fade
                 try {
                   const g2 = scene.add.graphics()
                   const extra = cfg.pierceDistanceExpand || 1.0
-                  const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, 16, 800 - 16)
-                  const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, 16, 600 - 16)
+                   const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, rb.left + pr, rb.right - pr)
+                   const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, rb.top + pr, rb.bottom - pr)
                   // midpoint
                   const mx = (startX + effTargetX) / 2
                   const my = (startY + effTargetY) / 2
@@ -548,10 +564,11 @@ onMounted(() => {
              }
           } catch (e) { /* ignore input issues */ }
 
-          // keep player inside bounds
-          scene.player.x = Phaser.Math.Clamp(scene.player.x, 16, 800 - 16)
-          scene.player.y = Phaser.Math.Clamp(scene.player.y, 16, 600 - 16)
-           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18)
+          // keep player inside current room bounds
+          const pr2 = scene.playerRadius || 10
+          scene.player.x = Phaser.Math.Clamp(scene.player.x, rb.left + pr2, rb.right - pr2)
+          scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
+          scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18)
            // update previous pos for non-moving frames too (keeps parallax stable)
            scene._prevPlayerX = scene.player.x
            scene._prevPlayerY = scene.player.y
@@ -653,5 +670,4 @@ onBeforeUnmount(() => {
   } catch (e) { /* ignore */ }
 })
 </script>
-
 

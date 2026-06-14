@@ -33,8 +33,9 @@ public class TakeCommand implements Command {
 
         if (player.addItem(item)) {
             currentRoom.removeItem(item);
+            // 返回当前房间完整信息作为 data，前端依赖 data 来渲染房间
             return GameResponse.success("你拾取了 " + itemName + "。",
-                    "物品 '" + itemName + "' 已加入你的背包。\n" + currentRoom.getFullInfo());
+                    currentRoom.getFullInfo());
         } else {
             return GameResponse.error("你无法携带 '" + itemName + "'！太重了！");
         }

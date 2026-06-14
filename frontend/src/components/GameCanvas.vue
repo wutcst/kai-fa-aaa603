@@ -51,7 +51,10 @@ onMounted(() => {
         // container groups
         scene.roomGraphics = scene.add.container(0, 0)
         scene.itemsGroup = scene.add.group()
+        scene.monstersGroup = scene.add.group()
         scene.exitButtons = []
+        // door rects (areas for exits) -- initialize early so renderRoom can safely use it
+        scene.doorRects = []
 
         // draw base background
         const bg = scene.add.graphics()
@@ -93,9 +96,11 @@ onMounted(() => {
 
         // render room view given backend room info
         scene.renderRoom = function (roomInfo) {
-          // clear previous item sprites and state
+          // clear previous item & monster sprites and state
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
+          try { scene.monstersGroup.clear(true, true) } catch (e) {}
+          scene.monstersData = []
           // remove exit buttons
           scene.exitButtons.forEach(b => b.destroy && b.destroy())
           scene.exitButtons = []
@@ -130,7 +135,10 @@ onMounted(() => {
             // clicking a door only moves the player to its area (does NOT immediately enter)
             rect.setInteractive({ useHandCursor: true })
             rect.on('pointerdown', () => {
-              scene.tweens.add({ targets: scene.player, x: pos.x, y: pos.y, duration: 300 })
+              // move player to door area; when movement completes, send the go command to enter
+              scene.tweens.add({ targets: scene.player, x: pos.x, y: pos.y, duration: 300, onComplete: () => {
+                try { scene.sendCommand('go ' + dir) } catch (e) {}
+              } })
             })
             scene.exitButtons.push(rect)
             scene.exitButtons.push(label)
@@ -173,6 +181,38 @@ onMounted(() => {
             // store in itemsData for proximity-based prompt handling
             scene.itemsData.push({ name: item.name, x, y, circle, label, prompted: false, _removed: false })
             ix++
+          })
+
+          // draw monsters
+          const monsters = roomInfo.monsters || []
+          const mStartX = 160
+          let mi = 0
+          monsters.forEach(mon => {
+            const x = mStartX + (mi % 2) * 60
+            const y = 220 + Math.floor(mi / 2) * 70
+            const circ = scene.add.circle(x, y, 20, 0xaa0000).setStrokeStyle(2, 0x000000)
+            const label = scene.add.text(x - 32, y + 24, mon.name + ' (HP:' + (mon.hp || 0) + ')', { font: '14px Arial', fill: '#fff' })
+            circ.setInteractive({ useHandCursor: true })
+            circ.on('pointerover', () => circ.setScale(1.05))
+            circ.on('pointerout', () => circ.setScale(1))
+            circ.on('pointerdown', async () => {
+              // immediate click-based attack
+              try {
+                const res = await fetch('/api/command', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: 'attack ' + mon.name })
+                })
+                const j = await res.json()
+                emit('update', j)
+                if (j && j.data) scene.renderRoom(j.data)
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+            })
+            scene.monstersGroup.add(circ)
+            scene.monstersGroup.add(label)
+            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp })
+            mi++
           })
 
           // if teleport room, show indicator
@@ -230,6 +270,7 @@ onMounted(() => {
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
+        scene.monstersData = []
 
         // update loop for movement / proximity checks
         this.sys.events.on('update', function (time, delta) {
@@ -299,7 +340,34 @@ onMounted(() => {
                   // fade and destroy
                   scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
                 } catch (e) { /* ignore drawing issues */ }
-                // done with pierce path
+                    // done with pierce path
+                    // detect monsters along the pierce path and send attack commands
+                    try {
+                      const extra = cfg.pierceDistanceExpand || 1.0
+                      const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, 16, 800 - 16)
+                      const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, 16, 600 - 16)
+                      const sx = startX, sy = startY, tx = effTargetX, ty = effTargetY
+                      const segdx = tx - sx, segdy = ty - sy
+                      const segLen2 = segdx*segdx + segdy*segdy
+                      const maxPerp = (cfg.pierceWidth || 12) * 1.5 + 12
+                      for (const m of scene.monstersData) {
+                        try {
+                          const mx = m.x, my = m.y
+                          let t = 0
+                          if (segLen2 > 0) {
+                            t = ((mx - sx) * segdx + (my - sy) * segdy) / segLen2
+                            t = Math.max(0, Math.min(1, t))
+                          }
+                          const px = sx + segdx * t
+                          const py = sy + segdy * t
+                          const pdx = mx - px, pdy = my - py
+                          const pdist = Math.sqrt(pdx*pdx + pdy*pdy)
+                          if (pdist <= maxPerp) {
+                            try { scene.sendCommand('attack ' + m.name) } catch (e) {}
+                          }
+                        } catch (e) { /* per-monster ignore */ }
+                      }
+                    } catch (e) { /* ignore */ }
               } else {
               const cx = scene.player.x
               const cy = scene.player.y
@@ -380,7 +448,34 @@ onMounted(() => {
                 onComplete: () => {
                   scene.tweens.add({ targets: g, alpha: 0, duration: finalFade, onComplete: () => { try { g.destroy() } catch (e) {} } })
                 }
-               })
+                })
+
+              // perform hit detection once for monsters within the attack sector (non-pierce sweep)
+              try {
+                const hitRadius = radius
+                const halfSpan = spanRad / 2
+                const hits = []
+                for (const m of scene.monstersData) {
+                  try {
+                    const dx = m.x - cx
+                    const dy = m.y - cy
+                    const dist = Math.sqrt(dx*dx + dy*dy)
+                    if (dist > hitRadius) continue
+                    const ang = Math.atan2(dy, dx)
+                    // normalize angle difference
+                    let da = ang - scene.facingAngle
+                    while (da > Math.PI) da -= Math.PI*2
+                    while (da < -Math.PI) da += Math.PI*2
+                    if (Math.abs(da) <= halfSpan) {
+                      hits.push(m)
+                    }
+                  } catch (e) { /* ignore per-monster issues */ }
+                }
+                // send attack command for each hit monster (will re-render room on response)
+                for (const h of hits) {
+                  try { scene.sendCommand('attack ' + h.name) } catch (e) { /* ignore */ }
+                }
+              } catch (e) { /* ignore detection issues */ }
               }
              }
           } catch (e) { /* ignore input issues */ }
@@ -393,16 +488,22 @@ onMounted(() => {
           // door overlap detection: only when player center is inside door rect bounds
           let insideAnyDoor = false
           for (const dr of scene.doorRects) {
-            const b = dr.rect.getBounds()
-            if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
-              insideAnyDoor = true
-              if (scene.lastDoorEntered !== dr.dir) {
-                scene.lastDoorEntered = dr.dir
-                // send go command once upon entering the door area
-                scene.sendCommand('go ' + dr.dir)
+            try {
+              const b = dr.rect.getBounds()
+              // debug log for door checks (helps identify why north door might not trigger)
+              try { if (scene.debugMode) console.debug('[door-debug] check', dr.dir, 'player', Math.round(scene.player.x), Math.round(scene.player.y), 'bounds', b) } catch (e) {}
+
+              if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
+                insideAnyDoor = true
+                if (scene.lastDoorEntered !== dr.dir) {
+                  scene.lastDoorEntered = dr.dir
+                  // send go command once upon entering the door area
+                  try { if (scene.debugMode) console.debug('[door-debug] entering door, sending go', dr.dir) } catch (e) {}
+                  scene.sendCommand('go ' + dr.dir)
+                }
+                break
               }
-              break
-            }
+            } catch (e) { /* ignore missing rect */ }
           }
           if (!insideAnyDoor) scene.lastDoorEntered = null
 
@@ -415,6 +516,8 @@ onMounted(() => {
             if (dist <= pickupRadius) {
               if (!it.prompted) {
                 it.prompted = true
+                // debug log
+                try { if (scene.debugMode) console.debug('[item-debug] within pickup', it.name, 'dist', Math.round(dist)) } catch (e) {}
                 // ask user whether to pick up
                 try {
                   const ok = window.confirm('是否将 ' + it.name + ' 放入背包？')

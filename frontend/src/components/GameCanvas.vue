@@ -393,7 +393,7 @@ onMounted(() => {
             const label = scene.add.text(posx - 20, posy - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
             rect.setInteractive({ useHandCursor: true })
             rect.on('pointerdown', () => {
-              scene.tweens.add({ targets: scene.player, x: posx, y: posy, duration: 180 })
+              scene.tweens.add({ targets: scene.player, x: posx, y: posy, duration: 80 })
               scene.sendCommand('go ' + dir, dir)
             })
             scene.exitButtons.push(rect)
@@ -445,7 +445,7 @@ onMounted(() => {
                 const j = await res.json()
                 emit('update', j)
                 if (j && j.status === 'success') {
-                  scene.tweens.add({ targets: [circle, label], y: '-=100', alpha: 0, scale: 0.5, duration: 500, onComplete: () => { circle.destroy(); label.destroy() } })
+                  scene.tweens.add({ targets: [circle, label], y: '-=100', alpha: 0, scale: 0.5, duration: 200, onComplete: () => { circle.destroy(); label.destroy() } })
                 }
                 if (j && j.data) scene.renderRoom(j.data)
               } catch (e) {
@@ -522,6 +522,223 @@ onMounted(() => {
           pierceFade: 180,
           pierceWidth: 14
         }
+        // ---------- 强化攻击特效辅助函数 ----------
+
+// 弧形刀光（多层叠加增强质感）
+        // 弧形刀光（内圈加速消失）
+        scene.drawArcSlash = (gfx, progress, alpha = 1) => {
+          const baseAngle = scene.attackConfig.angleDeg
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(baseAngle / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(baseAngle) * progress
+          const outerR = scene.attackConfig.radius * 0.9
+          const innerR = scene.attackConfig.radius * 0.3
+          const segs = 48
+
+          // 内圈衰减系数：progress 越大，内圈消失越快
+          const innerFade = Math.pow(1 - progress, 6.5)   // 可调整指数控制速度
+
+          gfx.clear()
+
+          // 最外层扩散光晕（半透明宽刃，不额外衰减）
+          const glowOuter = []
+          for (let i = 0; i <= segs; i++) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            glowOuter.push({ x: scene.player.x + Math.cos(ang) * outerR * 1.1, y: scene.player.y + Math.sin(ang) * outerR * 1.1 })
+          }
+          gfx.lineStyle(8, 0xff8800, alpha * 0.05)
+          gfx.beginPath()
+          gfx.moveTo(glowOuter[0].x, glowOuter[0].y)
+          glowOuter.forEach(p => gfx.lineTo(p.x, p.y))
+          gfx.strokePath()
+
+          // 中层主体月牙（亮橙）—— 不额外衰减
+          const outer = [], inner = []
+          for (let i = 0; i <= segs; i++) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            outer.push({ x: scene.player.x + Math.cos(ang) * outerR, y: scene.player.y + Math.sin(ang) * outerR })
+          }
+          for (let i = segs; i >= 0; i--) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            inner.push({ x: scene.player.x + Math.cos(ang) * innerR, y: scene.player.y + Math.sin(ang) * innerR })
+          }
+          const pts = outer.concat(inner)
+          gfx.fillStyle(0xff5500, alpha * 0.9)
+          gfx.fillPoints(pts, true)
+
+          // 内层炽白高亮 —— 应用内圈衰减
+          const inner2 = []
+          for (let i = segs; i >= 0; i--) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            inner2.push({ x: scene.player.x + Math.cos(ang) * innerR * 0.6, y: scene.player.y + Math.sin(ang) * innerR * 0.6 })
+          }
+          gfx.fillStyle(0xffdd88, alpha * 0.6 * innerFade)   // 内圈高亮受衰减影响
+          gfx.fillPoints(inner2, true)
+
+          // 外刃金色描边 —— 不做额外衰减
+          gfx.lineStyle(2, 0xffcc00, alpha * 0.9)
+          gfx.beginPath()
+          gfx.moveTo(outer[0].x, outer[0].y)
+          outer.forEach(p => gfx.lineTo(p.x, p.y))
+          gfx.strokePath()
+
+          // 中心冲击亮核 —— 同样加速消失
+          gfx.fillStyle(0xffffff, alpha * 0.5 * innerFade)
+          gfx.fillCircle(scene.player.x, scene.player.y, innerR * 0.3)
+        }
+
+        // 火焰扰动层（动态波动更剧烈）
+        scene.drawFireDistortion = (gfx, progress) => {
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
+          const baseR = scene.attackConfig.radius
+
+          gfx.clear()
+          for (let layer = 0; layer < 4; layer++) {
+            const offset = Math.sin(progress * Math.PI * 3 + layer * 2) * 0.12 + (Math.random() - 0.5) * 0.06
+            const r = baseR * (0.5 + layer * 0.15)
+            const pts = []
+            for (let i = 0; i <= 24; i++) {
+              const t = i / 24
+              const ang = startAngle + (endAngle - startAngle) * t + offset
+              pts.push({ x: scene.player.x + Math.cos(ang) * r, y: scene.player.y + Math.sin(ang) * r })
+            }
+            pts.push({ x: scene.player.x, y: scene.player.y })
+            gfx.fillStyle(0xff2200, 0.2 * (1 - layer * 0.18))
+            gfx.fillPoints(pts, true)
+          }
+        }
+
+        // 环形冲击波（从玩家中心扩散）
+        scene.spawnShockwave = () => {
+          const ring = scene.add.circle(scene.player.x, scene.player.y, 10, 0xffffff, 0)
+          ring.setStrokeStyle(3, 0xff6600)
+          ring.setDepth(12)
+          scene.tweens.add({
+            targets: ring,
+            radius: scene.attackConfig.radius * 1.2,
+            alpha: 0,
+            duration: 200,
+            ease: 'Cubic.easeOut',
+            onUpdate: () => {
+              ring.setStrokeStyle(2, 0xff6600, ring.alpha)
+            },
+            onComplete: () => ring.destroy()
+          })
+        }
+
+        // 火星/粒子爆发（数量更多，带轨迹）
+        scene.spawnAttackParticles = (progress, count) => {
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
+          for (let i = 0; i < count; i++) {
+            const ang = endAngle + (Math.random() - 0.5) * Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * 0.8
+            const dist = scene.attackConfig.radius * (0.3 + Math.random() * 0.7)
+            const px = scene.player.x + Math.cos(ang) * dist
+            const py = scene.player.y + Math.sin(ang) * dist
+            // 粒子分两类：炽白火星 + 橙红余烬
+            const isHot = Math.random() < 0.4
+            const color = isHot ? 0xffee88 : 0xff4400
+            const size = isHot ? 2.5 + Math.random() * 2 : 1.5 + Math.random() * 2
+            const dot = scene.add.circle(px, py, size, color).setDepth(11)
+            scene.tweens.add({
+              targets: dot,
+              x: px + Math.cos(ang) * (80 + Math.random() * 40),
+              y: py + Math.sin(ang) * (80 + Math.random() * 40),
+              alpha: 0,
+              scale: 0.1,
+              duration: 180 + Math.random() * 220,
+              ease: 'Cubic.easeOut',
+              onComplete: () => dot.destroy()
+            })
+          }
+        }
+
+        // ---------- 攻击特效：弧形刀光 + 火星粒子 + 火焰扰动 ----------
+        scene.drawArcSlash = (gfx, progress, alpha = 1) => {
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
+          const outerR = scene.attackConfig.radius * 0.9
+          const innerR = scene.attackConfig.radius * 0.4
+          const segs = 40
+
+          gfx.clear()
+
+          // 构建外弧和内弧点（相对于玩家中心）
+          const outer = [], inner = []
+          for (let i = 0; i <= segs; i++) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            outer.push({ x: scene.player.x + Math.cos(ang) * outerR, y: scene.player.y + Math.sin(ang) * outerR })
+          }
+          for (let i = segs; i >= 0; i--) {
+            const t = i / segs
+            const ang = startAngle + (endAngle - startAngle) * t
+            inner.push({ x: scene.player.x + Math.cos(ang) * innerR, y: scene.player.y + Math.sin(ang) * innerR })
+          }
+
+          // 填充月牙主体
+          const pts = outer.concat(inner)
+          gfx.fillStyle(0xff6600, alpha)
+          gfx.fillPoints(pts, true)
+
+          // 外边缘高亮
+          gfx.lineStyle(2, 0xffff00, alpha * 0.8)
+          gfx.beginPath()
+          gfx.moveTo(outer[0].x, outer[0].y)
+          outer.forEach(p => gfx.lineTo(p.x, p.y))
+          gfx.strokePath()
+
+          // 中心光晕
+          gfx.fillStyle(0xffffff, alpha * 0.3)
+          gfx.fillCircle(scene.player.x, scene.player.y, innerR * 0.5)
+        }
+
+        scene.drawFireDistortion = (gfx, progress) => {
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
+          const baseR = scene.attackConfig.radius
+
+          gfx.clear()
+          for (let layer = 0; layer < 3; layer++) {
+            const offset = Math.sin(progress * Math.PI * 2 + layer) * 0.1 + (Math.random() - 0.5) * 0.04
+            const r = baseR * (0.6 + layer * 0.15)
+            const pts = []
+            for (let i = 0; i <= 20; i++) {
+              const t = i / 20
+              const ang = startAngle + (endAngle - startAngle) * t + offset
+              pts.push({ x: scene.player.x + Math.cos(ang) * r, y: scene.player.y + Math.sin(ang) * r })
+            }
+            pts.push({ x: scene.player.x, y: scene.player.y })
+            gfx.fillStyle(0xff2200, 0.25 * (1 - layer * 0.2))
+            gfx.fillPoints(pts, true)
+          }
+        }
+
+        scene.spawnAttackParticles = (progress, count) => {
+          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
+          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
+          for (let i = 0; i < count; i++) {
+            const ang = endAngle + (Math.random() - 0.5) * Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * 0.6
+            const dist = scene.attackConfig.radius * (0.5 + Math.random() * 0.5)
+            const px = scene.player.x + Math.cos(ang) * dist
+            const py = scene.player.y + Math.sin(ang) * dist
+            const dot = scene.add.circle(px, py, 2 + Math.random() * 2, 0xff4400).setDepth(10)
+            scene.tweens.add({
+              targets: dot,
+              x: px + (Math.random() - 0.5) * 60,
+              y: py + (Math.random() - 0.5) * 60,
+              alpha: 0,
+              scale: 0.2,
+              duration: 200 + Math.random() * 200,
+              ease: 'Cubic.easeOut',
+              onComplete: () => dot.destroy()
+            })
+          }
+        }
         scene._ghostCounter = 0
         scene.lastDoorEntered = null
         scene.doorRects = []
@@ -584,68 +801,68 @@ onMounted(() => {
                 scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
               } catch (e) {}
             } else {
-              // 扇形攻击
-              const cx = scene.player.x, cy = scene.player.y
-              const radius = cfg.radius || 110
-              const spanRad = Phaser.Math.DegToRad(cfg.angleDeg || 135)
-              const half = spanRad / 2
-              const startAngle = scene.facingAngle - half
-              const segments = cfg.segments || 30
-              const redraw = (gfx, progress, alpha = cfg.mainAlpha || 0.85, color = 0xff4444) => {
-                gfx.clear()
-                const grow = cfg.radiusGrow || 0.08
-                const adjRadius = radius * (1 + grow * Phaser.Math.Clamp(progress, 0, 1))
-                gfx.fillStyle(color, alpha)
-                const usedSpan = spanRad * Phaser.Math.Clamp(progress, 0, 1)
-                const endAngle = startAngle + usedSpan
-                const points = []
-                points.push({ x: cx, y: cy })
-                for (let i = 0; i <= segments; i++) {
-                  const t = i / segments
-                  const ang = startAngle + (endAngle - startAngle) * t
-                  points.push({ x: cx + Math.cos(ang) * adjRadius, y: cy + Math.sin(ang) * adjRadius })
-                }
-                gfx.fillPoints(points, true)
-                // 中心圆环
-                const ringInner = Math.max(4, adjRadius * 0.12)
-                const ringThickness = Math.max(3, adjRadius * 0.06)
-                const ringOuter = ringInner + ringThickness
-                gfx.fillStyle(0xC0C0C0, alpha * 0.9)
-                gfx.fillCircle(cx, cy, ringOuter)
-                gfx.fillStyle(scene.bgColor || 0x2d2d2d, 1)
-                gfx.fillCircle(cx, cy, ringInner)
+              // 普通攻击：弧形刀光 + 火焰扰动 + 火星粒子
+              const mainGfx = scene.add.graphics()
+              const fireGfx = scene.add.graphics()
+              const progress = { t: 0 }
+              const duration = scene.attackConfig.sweepDuration || 160
+
+// 初始爆发帧
+              scene.drawArcSlash(mainGfx, 0)
+              scene.drawFireDistortion(fireGfx, 0)
+              scene.spawnAttackParticles(0, 20)       // 初始火花密集
+              scene.spawnShockwave()                  // 环形冲击波
+
+// 震屏效果（微幅快速震动）
+              if (scene.cameras && scene.cameras.main) {
+                scene.cameras.main.shake(120, 0.005)
               }
-              const g = scene.add.graphics()
-              redraw(g, 0)
-              let lastGhostT = -1
-              const ghostSpacing = cfg.ghostSpacing || 0.12
-              const ghostFade = cfg.ghostFade || 150
-              const sweepDuration = cfg.sweepDuration || 150
-              const finalFade = cfg.finalFade || 100
-              const prog = { t: 0 }
+
+// 挥砍动画（缓出使收尾更有力）
               scene.tweens.add({
-                targets: prog,
+                targets: progress,
                 t: 1,
-                duration: sweepDuration,
-                ease: 'Linear',
+                duration: duration,
+                ease: 'Cubic.easeOut',
                 onUpdate: () => {
-                  try {
-                    redraw(g, prog.t)
-                    if (prog.t - lastGhostT >= ghostSpacing) {
-                      lastGhostT = prog.t
-                      const ghost = scene.add.graphics()
-                      const gAlpha = cfg.ghostAlpha || 0.92
-                      redraw(ghost, prog.t, gAlpha, 0xC0C0C0)
-                      try { ghost.setDepth(scene._ghostCounter++) } catch (e) {}
-                      const minFade = cfg.ghostMinFade || 40
-                      const fadeDur = Math.max(minFade, ghostFade * (0.15 + prog.t * 0.85))
-                      const scaledFade = Math.max(minFade, fadeDur * 0.7)
-                      scene.tweens.add({ targets: ghost, alpha: 0, duration: scaledFade, onComplete: () => { try { ghost.destroy() } catch (e) {} } })
-                    }
-                  } catch (e) {}
+                  const t = progress.t
+                  scene.drawArcSlash(mainGfx, t, 0.95)
+                  scene.drawFireDistortion(fireGfx, t)
+                  // 刀光拖尾残影（降低透明度但保留之前的图形）
+                  if (t > 0.1 && Math.random() < 0.5) {
+                    const ghost = scene.add.graphics()
+                    scene.drawArcSlash(ghost, t, 0.3)
+                    scene.tweens.add({
+                      targets: ghost,
+                      alpha: 0,
+                      duration: 80,
+                      onComplete: () => ghost.destroy()
+                    })
+                  }
+                  // 持续生成粒子
+                  if (Math.random() < 0.5 && t > 0.15 && t < 0.9) {
+                    scene.spawnAttackParticles(t, 4)
+                  }
                 },
                 onComplete: () => {
-                  scene.tweens.add({ targets: g, alpha: 0, duration: finalFade, onComplete: () => { try { g.destroy() } catch (e) {} } })
+                  // 最后一帧大团粒子
+                  scene.spawnAttackParticles(1, 15)
+                  // 刀光主体渐隐
+                  scene.tweens.add({
+                    targets: mainGfx,
+                    alpha: 0,
+                    duration: 100,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => mainGfx.destroy()
+                  })
+                  // 火焰扰动层渐隐
+                  scene.tweens.add({
+                    targets: fireGfx,
+                    alpha: 0,
+                    duration: 150,
+                    ease: 'Cubic.easeIn',
+                    onComplete: () => fireGfx.destroy()
+                  })
                 }
               })
             }

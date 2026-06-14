@@ -55,7 +55,9 @@ onMounted(() => {
 
         // draw base background
         const bg = scene.add.graphics()
-        bg.fillStyle(0x2d2d2d, 1)
+        // store background color for later VFX masking
+        scene.bgColor = 0x2d2d2d
+        bg.fillStyle(scene.bgColor, 1)
         bg.fillRect(0, 0, 800, 600)
         scene.roomGraphics.add(bg)
 
@@ -188,9 +190,43 @@ onMounted(() => {
         } catch (e) {
           emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
         }
-        // set up keyboard (WASD + E for pickup)
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E')
-        scene.moveSpeed = 160 // pixels per second
+        // set up keyboard (WASD + Shift + E + J for attack)
+        // Note: holding Shift alone should NOT move the player; holding Shift + movement keys doubles speed
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J')
+        // base movement speed (pixels per second)
+        scene.baseMoveSpeed = 160
+        // facing angle in radians; used as attack central axis. Default to facing right (0 rad).
+        scene.facingAngle = 0
+        // attack / VFX configuration (tweak these to change visual tempo)
+        scene.attackConfig = {
+          radius: 110,
+          angleDeg: 135,
+          // increase polygon segments for smoother shape
+          segments: 96,
+          // sweep animation duration (ms)
+          sweepDuration: 140,
+          // base ghost (afterimage) fade duration (ms) - smaller value for faster disappearance
+          ghostFade: 120,
+          // final main fade duration after sweep completes (ms)
+          finalFade: 60,
+          // how often (fraction of progress) to spawn ghosts — smaller = more ghosts (higher density)
+          ghostSpacing: 0.035,
+          // main alpha values
+          mainAlpha: 0.95,
+          // increase ghost alpha to make blocks more visible
+          ghostAlpha: 0.92,
+          // minimum per-ghost fade (ms)
+          ghostMinFade: 40,
+          // pierce (forward dash) config
+          pierceDistance: 120,
+          // expand pierce effective range by this multiplier
+          pierceDistanceExpand: 1.15,
+          pierceDuration: 100,
+          pierceFade: 180,
+          pierceWidth: 14
+        }
+        // counter to assign increasing depth to ghosts so later ghosts appear above earlier ones
+        scene._ghostCounter = 0
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
@@ -209,9 +245,146 @@ onMounted(() => {
             const len = Math.sqrt(vx*vx + vy*vy)
             vx = vx / len
             vy = vy / len
-            scene.player.x += vx * scene.moveSpeed * dt
-            scene.player.y += vy * scene.moveSpeed * dt
+            // update facing direction to last movement direction
+            try { scene.facingAngle = Math.atan2(vy, vx) } catch (e) { /* ignore */ }
+            // determine speed: double when Shift is held together with a movement key
+            let speed = scene.baseMoveSpeed
+            try {
+              if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) {
+                speed = speed * 2
+              }
+            } catch (e) { /* ignore if key not present */ }
+            scene.player.x += vx * speed * dt
+            scene.player.y += vy * speed * dt
           }
+
+          // handle attack key (J) pressed -> draw a sweeping blade that traces the sector clockwise, then fade out with ghosts
+          try {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
+              const cfg = scene.attackConfig || {}
+              // if Shift + movement key(s) are held, perform a forward pierce/dash attack instead of sweep
+              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              if (isShiftMove) {
+                // forward pierce: tween player forward a short distance and draw a thin elongated effect that fades
+                const startX = scene.player.x
+                const startY = scene.player.y
+                const dx = Math.cos(scene.facingAngle)
+                const dy = Math.sin(scene.facingAngle)
+                const dist = cfg.pierceDistance || 120
+                const targetX = Phaser.Math.Clamp(startX + dx * dist, 16, 800 - 16)
+                const targetY = Phaser.Math.Clamp(startY + dy * dist, 16, 600 - 16)
+                // tween player movement
+                scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+                // draw pierce effect: diamond (rhombus) spanning from start to target, then fade
+                try {
+                  const g2 = scene.add.graphics()
+                  const extra = cfg.pierceDistanceExpand || 1.0
+                  const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, 16, 800 - 16)
+                  const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, 16, 600 - 16)
+                  // midpoint
+                  const mx = (startX + effTargetX) / 2
+                  const my = (startY + effTargetY) / 2
+                  const w = cfg.pierceWidth || 12
+                  // perpendicular unit
+                  const px = -dy
+                  const py = dx
+                  const hx = (px * (w/2))
+                  const hy = (py * (w/2))
+                  const front = { x: effTargetX, y: effTargetY }
+                  const right = { x: mx + hx, y: my + hy }
+                  const back = { x: startX, y: startY }
+                  const left = { x: mx - hx, y: my - hy }
+                  g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
+                  g2.fillPoints([front, right, back, left], true)
+                  // fade and destroy
+                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
+                } catch (e) { /* ignore drawing issues */ }
+                // done with pierce path
+              } else {
+              const cx = scene.player.x
+              const cy = scene.player.y
+              const radius = cfg.radius || 110
+              const spanRad = Phaser.Math.DegToRad(cfg.angleDeg || 135)
+              const half = spanRad / 2
+              const startAngle = scene.facingAngle - half
+              const segments = cfg.segments || 30
+
+              const redraw = (gfx, progress, alpha = (cfg.mainAlpha || 0.85), color = 0xff4444) => {
+                gfx.clear()
+                // slightly increase radius during sweep for a dynamic feel
+                const grow = cfg.radiusGrow || 0.08
+                const adjRadius = radius * (1 + grow * Phaser.Math.Clamp(progress, 0, 1))
+                gfx.fillStyle(color, alpha)
+                const usedSpan = spanRad * Phaser.Math.Clamp(progress, 0, 1)
+                const endAngle = startAngle + usedSpan
+                const points = []
+                points.push({ x: cx, y: cy })
+                for (let i = 0; i <= segments; i++) {
+                  const t = i / segments
+                  const ang = startAngle + (endAngle - startAngle) * t
+                  const px = cx + Math.cos(ang) * adjRadius
+                  const py = cy + Math.sin(ang) * adjRadius
+                  points.push({ x: px, y: py })
+                }
+                gfx.fillPoints(points, true)
+                // draw a pale silver ring near center (outer silver, inner masked by background color)
+                try {
+                  const ringInner = Math.max(4, Math.round(adjRadius * (cfg.ringInnerFactor || 0.12)))
+                  const ringThickness = Math.max(3, Math.round(adjRadius * (cfg.ringThicknessFactor || 0.06)))
+                  const ringOuter = ringInner + ringThickness
+                  // outer pale silver
+                  gfx.fillStyle(0xC0C0C0, alpha * (cfg.ringAlphaFactor || 0.9))
+                  gfx.fillCircle(cx, cy, ringOuter)
+                  // mask inner with background color to form a ring hole
+                  gfx.fillStyle(scene.bgColor || 0x2d2d2d, 1)
+                  gfx.fillCircle(cx, cy, ringInner)
+                } catch (e) { /* ignore */ }
+              }
+
+              const g = scene.add.graphics()
+              redraw(g, 0)
+
+              let lastGhostT = -1
+              const ghostSpacing = cfg.ghostSpacing || 0.12
+              const ghostFade = cfg.ghostFade || 150
+              const sweepDuration = cfg.sweepDuration || 150
+              const finalFade = cfg.finalFade || 100
+
+              const prog = { t: 0 }
+              scene.tweens.add({
+                targets: prog,
+                t: 1,
+                duration: sweepDuration,
+                ease: 'Linear',
+                onUpdate: () => {
+                  try {
+                    redraw(g, prog.t)
+                                      if (prog.t - lastGhostT >= ghostSpacing) {
+                        lastGhostT = prog.t
+                        const ghost = scene.add.graphics()
+                        // draw ghost with configured alpha and color
+                                        const gAlpha = cfg.ghostAlpha || 0.92
+                                        // use pale silver for ghost color
+                                        redraw(ghost, prog.t, gAlpha, 0xC0C0C0)
+                        // ensure later ghosts are above earlier ones
+                        try { ghost.setDepth(scene._ghostCounter++) } catch (e) {}
+                        // earlier ghosts should fade sooner than later ghosts: compute duration based on progress (earlier prog.t -> shorter duration)
+                        const minFade = cfg.ghostMinFade || 40
+                                        const fadeDur = Math.max(minFade, Math.round(ghostFade * (0.15 + prog.t * 0.85)))
+                                        // make fades overall faster by scaling down
+                                        const scaledFade = Math.max(minFade, Math.round(fadeDur * 0.7))
+                                        scene.tweens.add({ targets: ghost, alpha: 0, duration: scaledFade, onComplete: () => { try { ghost.destroy() } catch (e) {} } })
+                      }
+                  } catch (e) { /* ignore drawing issues */ }
+                },
+                onComplete: () => {
+                  scene.tweens.add({ targets: g, alpha: 0, duration: finalFade, onComplete: () => { try { g.destroy() } catch (e) {} } })
+                }
+               })
+              }
+             }
+          } catch (e) { /* ignore input issues */ }
+
           // keep player inside bounds
           scene.player.x = Phaser.Math.Clamp(scene.player.x, 16, 800 - 16)
           scene.player.y = Phaser.Math.Clamp(scene.player.y, 16, 600 - 16)

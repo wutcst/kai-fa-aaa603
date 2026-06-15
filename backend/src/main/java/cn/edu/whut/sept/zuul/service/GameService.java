@@ -1,5 +1,7 @@
 package cn.edu.whut.sept.zuul.service;
 import java.util.Arrays;
+import java.util.Map;
+
 import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.command.Command;
 import cn.edu.whut.sept.zuul.command.CommandFactory;
@@ -61,5 +63,12 @@ public class GameService {
     public GameResponse resetGame() {
         game.reset();
         return GameResponse.success("Game reset successfully", game.getCurrentRoom().getFullInfo());
+    }
+
+    /**
+     * 获取全地图数据（供小地图使用）
+     */
+    public Map<String, Object> getFullMap() {
+        return game.getFullMap();
     }
 }

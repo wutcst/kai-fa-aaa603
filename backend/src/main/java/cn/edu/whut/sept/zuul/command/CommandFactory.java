@@ -20,6 +20,7 @@ public class CommandFactory {
             case "quit" -> new QuitCommand(game);
             case "help" -> new HelpCommand();
             case "attack" -> new AttackCommand(game);
+            case "monsterattack" -> new MonsterAttackCommand(game);
             case "take" -> new TakeCommand(game);
             case "drop" -> new DropCommand(game);
             case "items" -> new ItemsCommand(game);

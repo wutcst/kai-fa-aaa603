@@ -436,7 +436,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺 | 空格 互动', { font: '14px Arial', fill: '#cccccc' })
 
         scene.sendCommand = async function (cmd, fromDir = null) {
           scene._lastMoveDir = fromDir
@@ -511,6 +511,13 @@ onMounted(() => {
           // clear previous monster sprites and state (fix: monsters were not being cleared)
           scene.monstersGroup.clear(true, true)
           scene.monstersData = []
+          // clear previous altar sprites and state
+          scene.altarsGroup.clear(true, true)
+          scene.altarsData = []
+          scene.altarIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.altarIndicators = []
+          if (scene.altarGlowGraphics) { scene.altarGlowGraphics.clear() }
+          if (scene.wisdomOverlay) { try { scene.wisdomOverlay.destroy() } catch (e) {}; scene.wisdomOverlay = null }
           // remove exit buttons
           scene.exitButtons.forEach(b => b.destroy && b.destroy())
           scene.exitButtons = []
@@ -617,7 +624,51 @@ onMounted(() => {
             mi++
           })
 
-
+          // ---------- 祭坛渲染（仅篝火房间） ----------
+          const roomType = roomInfo.roomType || ''
+          const altarsFromBackend = roomInfo.altars || []
+          scene.altarUsedInRoom = roomInfo.altarUsed || false
+          if (roomType === 'CAMPFIRE' && altarsFromBackend.length > 0) {
+            // 三个祭坛从左至右排列在房间中央，中间祭坛位于 rectCenterX
+            const altarSize = 36
+            const altarSpacing = 100
+            const altarY = rectCenterY
+            // 顺序：HEAL, TRAIN, WISDOM (left to right)
+            const altarOrder = ['HEAL', 'TRAIN', 'WISDOM']
+            for (let ai = 0; ai < altarOrder.length; ai++) {
+              const typeName = altarOrder[ai]
+              const altarInfo = altarsFromBackend.find(a => a.type === typeName)
+              if (!altarInfo) continue
+              const isActivated = altarInfo.activated || false
+              const isUsed = scene.altarUsedInRoom
+              // x position: middle altar at center, others offset
+              const ax = rectCenterX + (ai - 1) * (altarSize + altarSpacing)
+              const ay = altarY
+              // color: use backend color, gray if roomUsed but not this activated one
+              let color = altarInfo.color || 0x888888
+              if (isUsed && !isActivated) {
+                color = 0x666666 // gray for unused altars
+              }
+              const rect = scene.add.rectangle(ax, ay, altarSize, altarSize, color).setStrokeStyle(2, isActivated ? 0xffffff : 0x444444)
+              const typeLabel = scene.add.text(ax, ay + altarSize / 2 + 8, altarInfo.displayName || typeName, {
+                font: '11px Arial', fill: '#ffffff'
+              }).setOrigin(0.5, 0)
+              if (!scene.altarsGroup) scene.altarsGroup = scene.add.group()
+              scene.altarsGroup.add(rect)
+              scene.altarsGroup.add(typeLabel)
+              if (!scene.altarsData) scene.altarsData = []
+              scene.altarsData.push({
+                type: typeName,
+                displayName: altarInfo.displayName,
+                x: ax, y: ay,
+                size: altarSize,
+                rect, label: typeLabel,
+                activated: isActivated,
+                color: color,
+                originalColor: altarInfo.color || 0x888888
+              })
+            }
+          }
 
           // ---------- 小地图更新通知 ----------
           try {
@@ -626,8 +677,69 @@ onMounted(() => {
           } catch (e) {}
         }
 
+        // ---------- 祭坛光芒特效和博学选项浮层 ----------
+        scene.spawnAltarGlow = function (cx, cy, size, color, duration) {
+          const glowGfx = scene.add.graphics()
+          glowGfx.setDepth(5)
+          const startTime = Date.now()
+          const drawGlow = () => {
+            const elapsed = Date.now() - startTime
+            const progress = Math.min(1, elapsed / duration)
+            const alpha = 1 - progress
+            glowGfx.clear()
+            for (let r = 0; r < 4; r++) {
+              const radius = (size / 2 + 10) + r * 10 + Math.sin(elapsed * 0.005 + r) * 5
+              const ringAlpha = alpha * (0.3 - r * 0.05)
+              glowGfx.lineStyle(3 - r * 0.5, color, Math.max(0, ringAlpha))
+              glowGfx.strokeCircle(cx, cy, radius)
+            }
+            glowGfx.fillStyle(color, alpha * 0.15)
+            glowGfx.fillCircle(cx, cy, size / 2 + 20)
+            if (progress < 1) {
+              requestAnimationFrame(drawGlow)
+            } else {
+              glowGfx.destroy()
+            }
+          }
+          drawGlow()
+        }
+
+        scene.showWisdomOverlay = function () {
+          if (scene.wisdomOverlay) { try { scene.wisdomOverlay.destroy() } catch (e) {} }
+          const overlay = scene.add.container(0, 0).setDepth(200)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.5)
+          bg.setInteractive()
+          const title = scene.add.text(400, 200, '博学祭坛 — 请选择一项增益', {
+            font: 'bold 22px Arial', fill: '#4488ff'
+          }).setOrigin(0.5)
+          const options = [
+            { label: '选项一（暂未实现）', y: 260 },
+            { label: '选项二（暂未实现）', y: 310 },
+            { label: '选项三（暂未实现）', y: 360 }
+          ]
+          const optionTexts = []
+          options.forEach(opt => {
+            const txt = scene.add.text(400, opt.y, opt.label, {
+              font: '18px Arial', fill: '#aaaaaa', backgroundColor: '#222222',
+              padding: { x: 20, y: 8 }
+            }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+            txt.on('pointerover', () => txt.setStyle({ fill: '#ffffff', backgroundColor: '#444444' }))
+            txt.on('pointerout', () => txt.setStyle({ fill: '#aaaaaa', backgroundColor: '#222222' }))
+            txt.on('pointerdown', () => {
+              try { scene.wisdomOverlay.destroy() } catch (e) {}
+              scene.wisdomOverlay = null
+            })
+            optionTexts.push(txt)
+          })
+          const hint = scene.add.text(400, 440, '点击选项后浮层关闭（增益系统待实现）', {
+            font: '13px Arial', fill: '#888888'
+          }).setOrigin(0.5)
+          overlay.add([bg, title, ...optionTexts, hint])
+          scene.wisdomOverlay = overlay
+        }
+
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -663,7 +775,7 @@ onMounted(() => {
           // 最外层扩散光晕
           const glowOuter = []
           for (let i = 0; i <= segs; i++) {
-            const t = i / segs
+            const t = i / segss
             const ang = startAngle + (endAngle - startAngle) * t
             glowOuter.push({ x: scene.player.x + Math.cos(ang) * outerR * 1.1, y: scene.player.y + Math.sin(ang) * outerR * 1.1 })
           }
@@ -765,6 +877,13 @@ onMounted(() => {
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
+        // altar state
+        scene.altarsData = []
+        scene.altarsGroup = scene.add.group()
+        scene.altarGlowGraphics = scene.add.graphics()
+        scene.altarIndicators = []       // white triangle indicators
+        scene.wisdomOverlay = null       // 博学祭坛选项浮层
+        scene.altarUsedInRoom = false    // 当前房间祭坛是否已被使用
         // monster AI state: cooldown tracking (ms timestamp per monster name)
         scene.monsterAttackCooldowns = {}  // { monName: lastAttackTime }
         scene.monsterAIPendingAttack = false  // prevent concurrent attack requests
@@ -1019,6 +1138,28 @@ onMounted(() => {
           scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
+          // 祭坛碰撞回避：玩家圆点不与祭坛方块重叠
+          if (scene.altarsData && scene.altarsData.length > 0) {
+            const pr3 = (scene.playerRadius || 10) + 2
+            for (const altar of scene.altarsData) {
+              const halfSize = altar.size / 2
+              const closestX = Phaser.Math.Clamp(scene.player.x, altar.x - halfSize, altar.x + halfSize)
+              const closestY = Phaser.Math.Clamp(scene.player.y, altar.y - halfSize, altar.y + halfSize)
+              const dx = scene.player.x - closestX
+              const dy = scene.player.y - closestY
+              const dist = Math.sqrt(dx * dx + dy * dy)
+              if (dist < pr3) {
+                if (dist > 0.001) {
+                  const overlap = pr3 - dist
+                  scene.player.x += (dx / dist) * overlap
+                  scene.player.y += (dy / dist) * overlap
+                } else {
+                  scene.player.y -= pr3
+                }
+              }
+            }
+          }
+
           // 门检测
           let insideAnyDoor = false
           if (scene.doorRects) {
@@ -1035,6 +1176,77 @@ onMounted(() => {
             }
           }
           if (!insideAnyDoor) scene.lastDoorEntered = null
+
+          // ---------- 祭坛交互检测 ----------
+          const ALTAR_INTERACT_RANGE = 50
+          let closestAltar = null
+          let closestDist = Infinity
+
+          if (scene.altarsData && scene.altarsData.length > 0 && !scene.altarUsedInRoom) {
+            for (const altar of scene.altarsData) {
+              if (altar.activated) continue
+              const dx = scene.player.x - altar.x
+              const dy = scene.player.y - altar.y
+              const dist = Math.sqrt(dx * dx + dy * dy)
+              if (dist < ALTAR_INTERACT_RANGE && dist < closestDist) {
+                closestDist = dist
+                closestAltar = altar
+              }
+            }
+          }
+
+          // 更新白色倒三角指示器
+          scene.altarIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.altarIndicators = []
+          if (closestAltar && !scene.altarUsedInRoom) {
+            const triSize = 14
+            const triY = closestAltar.y - closestAltar.size / 2 - triSize - 4
+            const triX = closestAltar.x
+            const triangle = scene.add.triangle(triX, triY, 0, triSize, triSize, 0, triSize * 2, triSize, 0xffffff, 0.9)
+            triangle.setOrigin(0.5, 0.5)
+            triangle.setScale(1, -1)
+            scene.tweens.add({
+              targets: triangle,
+              alpha: 0.4,
+              duration: 500,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+            })
+            scene.altarIndicators.push(triangle)
+          }
+
+          // SPACE 键交互
+          try {
+            if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE)) {
+              if (closestAltar && !scene.altarUsedInRoom && !closestAltar.activated) {
+                const altarType = closestAltar.type.toLowerCase()
+                ;(async () => {
+                  try {
+                    const res = await fetch('/api/command', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ command: 'interact ' + altarType })
+                    })
+                    const j = await res.json()
+                    emit('update', j)
+                    if (j && j.data) {
+                      scene.renderRoom(j.data)
+                      if (altarType === 'heal') {
+                        scene.spawnAltarGlow(closestAltar.x, closestAltar.y, closestAltar.size, 0x44cc44, 5000)
+                      } else if (altarType === 'train') {
+                        scene.spawnAltarGlow(closestAltar.x, closestAltar.y, closestAltar.size, 0xff8800, 5000)
+                      } else if (altarType === 'wisdom') {
+                        scene.spawnAltarGlow(closestAltar.x, closestAltar.y, closestAltar.size, 0x4488ff, 5000)
+                        scene.showWisdomOverlay()
+                      }
+                    }
+                  } catch (e) {
+                    emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                  }
+                })()
+              }
+            }
+          } catch (e) { /* ignore */ }
 
         })
 

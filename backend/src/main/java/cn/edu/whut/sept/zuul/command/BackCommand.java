@@ -27,6 +27,15 @@ public class BackCommand implements Command {
         game.removeLastRoomHistory(); // 移除最后一条历史（避免重复回退）
         game.addRoomHistory(currentRoom);
 
+        // 进入篝火房间时初始化祭坛
+        try {
+            if (previousRoom.getRoomType() == cn.edu.whut.sept.zuul.model.RoomType.CAMPFIRE) {
+                previousRoom.initAltars();
+            }
+        } catch (Exception e) {
+            // 忽略祭坛初始化异常
+        }
+
         return GameResponse.success("你回到了 " + previousRoom.getName(), previousRoom.getFullInfo());
     }
 

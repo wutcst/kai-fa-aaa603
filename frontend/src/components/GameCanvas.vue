@@ -340,7 +340,7 @@ onMounted(() => {
         scene.playerRadius = 10
         scene.player = scene.add.circle(400, 320, scene.playerRadius, 0x00aaff).setStrokeStyle(2, 0x000000)
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
-        scene._roomBounds = { left: scene.playerRadius, top: scene.playerRadius, right: 800 - scene.playerRadius, bottom: 600 - scene.playerRadius }
+        scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
         scene.add.text(20, 560, '使用方向键 / 点击出口 / 点击物品 与后端交互', { font: '14px Arial', fill: '#cccccc' })
 
@@ -362,7 +362,6 @@ onMounted(() => {
             if (j && j.status === 'error' && j.message && j.message.includes('Game is over')) {
               scene.showGameOver()
             }
-            if (j && j.data) scene.renderRoom(j.data)
           } catch (e) {
             emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
           }
@@ -401,6 +400,13 @@ onMounted(() => {
         scene.renderRoom = function (roomInfo) {
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
+          // save current AI-driven monster positions before clearing
+          const prevMonsterPositions = {}
+          for (const mon of scene.monstersData) {
+            if (mon && mon.name) {
+              prevMonsterPositions[mon.name] = { x: mon.x, y: mon.y }
+            }
+          }
           // clear previous monster sprites and state (fix: monsters were not being cleared)
           scene.monstersGroup.clear(true, true)
           scene.monstersData = []
@@ -517,8 +523,14 @@ onMounted(() => {
           const mSpacingY = 120
           let mi = 0
           monsters.forEach(mon => {
-            const x = mCenterX
-            const y = mStartY + mi * mSpacingY
+            // restore AI-driven position if available, otherwise use default layout
+            let x = mCenterX
+            let y = mStartY + mi * mSpacingY
+            const saved = prevMonsterPositions[mon.name]
+            if (saved) {
+              x = saved.x
+              y = saved.y
+            }
             const circ = scene.add.circle(x, y, 20, 0xaa0000).setStrokeStyle(2, 0x000000)
             const label = scene.add.text(x - 32, y + 24, mon.name + ' (HP:' + (mon.hp || 0) + ')', { font: '14px Arial', fill: '#fff' })
             circ.setInteractive({ useHandCursor: true })
@@ -545,9 +557,7 @@ onMounted(() => {
             mi++
           })
 
-          if (roomInfo.isTeleportRoom) {
-            scene.add.text(600, 20, '传送房间', { font: '14px Arial', fill: '#ffcc00' })
-          }
+
 
           // ---------- 小地图更新通知 ----------
           try {
@@ -578,9 +588,7 @@ onMounted(() => {
           pierceWidth: 14
         }
         // ---------- 强化攻击特效辅助函数 ----------
-
-// 弧形刀光（多层叠加增强质感）
-        // 弧形刀光（内圈加速消失）
+        // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
           const baseAngle = scene.attackConfig.angleDeg
           const startAngle = scene.facingAngle - Phaser.Math.DegToRad(baseAngle / 2)
@@ -588,13 +596,11 @@ onMounted(() => {
           const outerR = scene.attackConfig.radius * 0.9
           const innerR = scene.attackConfig.radius * 0.3
           const segs = 48
-
-          // 内圈衰减系数：progress 越大，内圈消失越快
-          const innerFade = Math.pow(1 - progress, 6.5)   // 可调整指数控制速度
+          const innerFade = Math.pow(1 - progress, 6.5)
 
           gfx.clear()
 
-          // 最外层扩散光晕（半透明宽刃，不额外衰减）
+          // 最外层扩散光晕
           const glowOuter = []
           for (let i = 0; i <= segs; i++) {
             const t = i / segs
@@ -602,12 +608,10 @@ onMounted(() => {
             glowOuter.push({ x: scene.player.x + Math.cos(ang) * outerR * 1.1, y: scene.player.y + Math.sin(ang) * outerR * 1.1 })
           }
           gfx.lineStyle(8, 0xff8800, alpha * 0.05)
-          gfx.beginPath()
-          gfx.moveTo(glowOuter[0].x, glowOuter[0].y)
-          glowOuter.forEach(p => gfx.lineTo(p.x, p.y))
-          gfx.strokePath()
+          gfx.beginPath(); gfx.moveTo(glowOuter[0].x, glowOuter[0].y)
+          glowOuter.forEach(p => gfx.lineTo(p.x, p.y)); gfx.strokePath()
 
-          // 中层主体月牙（亮橙）—— 不额外衰减
+          // 中层主体月牙
           const outer = [], inner = []
           for (let i = 0; i <= segs; i++) {
             const t = i / segs
@@ -619,38 +623,34 @@ onMounted(() => {
             const ang = startAngle + (endAngle - startAngle) * t
             inner.push({ x: scene.player.x + Math.cos(ang) * innerR, y: scene.player.y + Math.sin(ang) * innerR })
           }
-          const pts = outer.concat(inner)
           gfx.fillStyle(0xff5500, alpha * 0.9)
-          gfx.fillPoints(pts, true)
+          gfx.fillPoints(outer.concat(inner), true)
 
-          // 内层炽白高亮 —— 应用内圈衰减
+          // 内层炽白高亮 —— 加速消失
           const inner2 = []
           for (let i = segs; i >= 0; i--) {
             const t = i / segs
             const ang = startAngle + (endAngle - startAngle) * t
             inner2.push({ x: scene.player.x + Math.cos(ang) * innerR * 0.6, y: scene.player.y + Math.sin(ang) * innerR * 0.6 })
           }
-          gfx.fillStyle(0xffdd88, alpha * 0.6 * innerFade)   // 内圈高亮受衰减影响
+          gfx.fillStyle(0xffdd88, alpha * 0.6 * innerFade)
           gfx.fillPoints(inner2, true)
 
-          // 外刃金色描边 —— 不做额外衰减
+          // 外刃金色描边
           gfx.lineStyle(2, 0xffcc00, alpha * 0.9)
-          gfx.beginPath()
-          gfx.moveTo(outer[0].x, outer[0].y)
-          outer.forEach(p => gfx.lineTo(p.x, p.y))
-          gfx.strokePath()
+          gfx.beginPath(); gfx.moveTo(outer[0].x, outer[0].y)
+          outer.forEach(p => gfx.lineTo(p.x, p.y)); gfx.strokePath()
 
-          // 中心冲击亮核 —— 同样加速消失
+          // 中心冲击亮核
           gfx.fillStyle(0xffffff, alpha * 0.5 * innerFade)
           gfx.fillCircle(scene.player.x, scene.player.y, innerR * 0.3)
         }
 
-        // 火焰扰动层（动态波动更剧烈）
+        // 火焰扰动层
         scene.drawFireDistortion = (gfx, progress) => {
           const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
           const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
           const baseR = scene.attackConfig.radius
-
           gfx.clear()
           for (let layer = 0; layer < 4; layer++) {
             const offset = Math.sin(progress * Math.PI * 3 + layer * 2) * 0.12 + (Math.random() - 0.5) * 0.06
@@ -667,25 +667,18 @@ onMounted(() => {
           }
         }
 
-        // 环形冲击波（从玩家中心扩散）
+        // 环形冲击波
         scene.spawnShockwave = () => {
           const ring = scene.add.circle(scene.player.x, scene.player.y, 10, 0xffffff, 0)
-          ring.setStrokeStyle(3, 0xff6600)
-          ring.setDepth(12)
+          ring.setStrokeStyle(3, 0xff6600).setDepth(12)
           scene.tweens.add({
-            targets: ring,
-            radius: scene.attackConfig.radius * 1.2,
-            alpha: 0,
-            duration: 200,
-            ease: 'Cubic.easeOut',
-            onUpdate: () => {
-              ring.setStrokeStyle(2, 0xff6600, ring.alpha)
-            },
+            targets: ring, radius: scene.attackConfig.radius * 1.2, alpha: 0, duration: 200, ease: 'Cubic.easeOut',
+            onUpdate: () => { ring.setStrokeStyle(2, 0xff6600, ring.alpha) },
             onComplete: () => ring.destroy()
           })
         }
 
-        // 火星/粒子爆发（数量更多，带轨迹）
+        // 火星/粒子爆发
         scene.spawnAttackParticles = (progress, count) => {
           const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
           const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
@@ -694,7 +687,6 @@ onMounted(() => {
             const dist = scene.attackConfig.radius * (0.3 + Math.random() * 0.7)
             const px = scene.player.x + Math.cos(ang) * dist
             const py = scene.player.y + Math.sin(ang) * dist
-            // 粒子分两类：炽白火星 + 橙红余烬
             const isHot = Math.random() < 0.4
             const color = isHot ? 0xffee88 : 0xff4400
             const size = isHot ? 2.5 + Math.random() * 2 : 1.5 + Math.random() * 2
@@ -703,93 +695,8 @@ onMounted(() => {
               targets: dot,
               x: px + Math.cos(ang) * (80 + Math.random() * 40),
               y: py + Math.sin(ang) * (80 + Math.random() * 40),
-              alpha: 0,
-              scale: 0.1,
-              duration: 180 + Math.random() * 220,
-              ease: 'Cubic.easeOut',
-              onComplete: () => dot.destroy()
-            })
-          }
-        }
-
-        // ---------- 攻击特效：弧形刀光 + 火星粒子 + 火焰扰动 ----------
-        scene.drawArcSlash = (gfx, progress, alpha = 1) => {
-          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
-          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
-          const outerR = scene.attackConfig.radius * 0.9
-          const innerR = scene.attackConfig.radius * 0.4
-          const segs = 40
-
-          gfx.clear()
-
-          // 构建外弧和内弧点（相对于玩家中心）
-          const outer = [], inner = []
-          for (let i = 0; i <= segs; i++) {
-            const t = i / segs
-            const ang = startAngle + (endAngle - startAngle) * t
-            outer.push({ x: scene.player.x + Math.cos(ang) * outerR, y: scene.player.y + Math.sin(ang) * outerR })
-          }
-          for (let i = segs; i >= 0; i--) {
-            const t = i / segs
-            const ang = startAngle + (endAngle - startAngle) * t
-            inner.push({ x: scene.player.x + Math.cos(ang) * innerR, y: scene.player.y + Math.sin(ang) * innerR })
-          }
-
-          // 填充月牙主体
-          const pts = outer.concat(inner)
-          gfx.fillStyle(0xff6600, alpha)
-          gfx.fillPoints(pts, true)
-
-          // 外边缘高亮
-          gfx.lineStyle(2, 0xffff00, alpha * 0.8)
-          gfx.beginPath()
-          gfx.moveTo(outer[0].x, outer[0].y)
-          outer.forEach(p => gfx.lineTo(p.x, p.y))
-          gfx.strokePath()
-
-          // 中心光晕
-          gfx.fillStyle(0xffffff, alpha * 0.3)
-          gfx.fillCircle(scene.player.x, scene.player.y, innerR * 0.5)
-        }
-
-        scene.drawFireDistortion = (gfx, progress) => {
-          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
-          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
-          const baseR = scene.attackConfig.radius
-
-          gfx.clear()
-          for (let layer = 0; layer < 3; layer++) {
-            const offset = Math.sin(progress * Math.PI * 2 + layer) * 0.1 + (Math.random() - 0.5) * 0.04
-            const r = baseR * (0.6 + layer * 0.15)
-            const pts = []
-            for (let i = 0; i <= 20; i++) {
-              const t = i / 20
-              const ang = startAngle + (endAngle - startAngle) * t + offset
-              pts.push({ x: scene.player.x + Math.cos(ang) * r, y: scene.player.y + Math.sin(ang) * r })
-            }
-            pts.push({ x: scene.player.x, y: scene.player.y })
-            gfx.fillStyle(0xff2200, 0.25 * (1 - layer * 0.2))
-            gfx.fillPoints(pts, true)
-          }
-        }
-
-        scene.spawnAttackParticles = (progress, count) => {
-          const startAngle = scene.facingAngle - Phaser.Math.DegToRad(scene.attackConfig.angleDeg / 2)
-          const endAngle = startAngle + Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * progress
-          for (let i = 0; i < count; i++) {
-            const ang = endAngle + (Math.random() - 0.5) * Phaser.Math.DegToRad(scene.attackConfig.angleDeg) * 0.6
-            const dist = scene.attackConfig.radius * (0.5 + Math.random() * 0.5)
-            const px = scene.player.x + Math.cos(ang) * dist
-            const py = scene.player.y + Math.sin(ang) * dist
-            const dot = scene.add.circle(px, py, 2 + Math.random() * 2, 0xff4400).setDepth(10)
-            scene.tweens.add({
-              targets: dot,
-              x: px + (Math.random() - 0.5) * 60,
-              y: py + (Math.random() - 0.5) * 60,
-              alpha: 0,
-              scale: 0.2,
-              duration: 200 + Math.random() * 200,
-              ease: 'Cubic.easeOut',
+              alpha: 0, scale: 0.1,
+              duration: 180 + Math.random() * 220, ease: 'Cubic.easeOut',
               onComplete: () => dot.destroy()
             })
           }
@@ -798,6 +705,9 @@ onMounted(() => {
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
+        // monster AI state: cooldown tracking (ms timestamp per monster name)
+        scene.monsterAttackCooldowns = {}  // { monName: lastAttackTime }
+        scene.monsterAIPendingAttack = false  // prevent concurrent attack requests
 
         // update 循环
         this.sys.events.on('update', function (time, delta) {
@@ -832,8 +742,66 @@ onMounted(() => {
             } catch (e) {}
           }
 
-          // handle attack key (J) pressed -> draw a sweeping blade that traces the sector clockwise, then fade out with ghosts
-          // Also check which monsters are in attack range and send damage commands to backend
+          // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------
+          const MONSTER_DETECT_RANGE = 280   // 发现玩家的距离
+          const MONSTER_ATTACK_RANGE = 45    // 攻击距离
+          const MONSTER_ATTACK_COOLDOWN = 1500 // 攻击间隔 (ms)
+          const MONSTER_SPEED = 80           // 怪物移动速度 (pixel/s)
+          const pr = scene.playerRadius || 10
+
+          let attackingThisFrame = false
+          const now = Date.now()
+
+          for (const mon of scene.monstersData) {
+            if (!mon || !mon.circ) continue
+            const dx = scene.player.x - mon.x
+            const dy = scene.player.y - mon.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+
+            if (dist <= MONSTER_ATTACK_RANGE) {
+              // 在攻击范围内 → 攻击玩家
+              if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= MONSTER_ATTACK_COOLDOWN) {
+                scene.monsterAttackCooldowns[mon.name] = now
+                if (!scene.monsterAIPendingAttack) {
+                  scene.monsterAIPendingAttack = true
+                  attackingThisFrame = true
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'attack ' + mon.name })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data) scene.renderRoom(j.data)
+                      if (j && j.message && j.message.includes('游戏结束')) {
+                        scene.showGameOver()
+                      }
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                    scene.monsterAIPendingAttack = false
+                  })()
+                }
+              }
+            } else if (dist <= MONSTER_DETECT_RANGE) {
+              // 在索敌范围内 → 向玩家移动
+              const norm = Math.max(1, dist)
+              const mvx = (dx / norm) * MONSTER_SPEED * dt
+              const mvy = (dy / norm) * MONSTER_SPEED * dt
+              mon.x += mvx
+              mon.y += mvy
+              // 限制在房间边界内
+              mon.x = Phaser.Math.Clamp(mon.x, rb.left + pr, rb.right - pr)
+              mon.y = Phaser.Math.Clamp(mon.y, rb.top + pr, rb.bottom - pr)
+              // 更新怪物精灵位置
+              try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+              try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+            }
+          }
+
+          // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
+          // Also detect monsters in range and send damage commands to backend
           try {
             if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
               const cfg = scene.attackConfig || {}
@@ -850,7 +818,6 @@ onMounted(() => {
                   if (j && j.data) {
                     scene.renderRoom(j.data)
                   }
-                  // detect game over from monster counterattack
                   if (j && j.message && j.message.includes('游戏结束')) {
                     scene.showGameOver()
                   }
@@ -867,30 +834,49 @@ onMounted(() => {
                 if (dist > (cfg.radius || 110)) return false
                 const angleToMon = Math.atan2(monDy, monDx)
                 let angleDiff = angleToMon - scene.facingAngle
-                // normalize to [-PI, PI]
                 while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
                 while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
                 const halfSpan = Phaser.Math.DegToRad((cfg.angleDeg || 135) / 2)
                 return Math.abs(angleDiff) <= halfSpan
               }
 
-              // helper: check if a monster is along the pierce line (rectangle in front of player)
+              // helper: check if a monster is along the pierce line
               const isMonsterInPierce = (monster, startX, startY, dirX, dirY, dist) => {
                 const monDx = monster.x - startX
                 const monDy = monster.y - startY
-                // distance along the facing direction (projected onto direction vector)
                 const along = monDx * dirX + monDy * dirY
                 if (along < 0 || along > dist) return false
-                // perpendicular distance from the pierce center line
                 const perpDist = Math.abs(monDx * (-dirY) + monDy * dirX)
-                const halfW = (cfg.pierceWidth || 12) / 2 + 15 // add margin for monster radius
+                const halfW = (cfg.pierceWidth || 12) / 2 + 15
                 return perpDist <= halfW
               }
 
-              // if Shift + movement key(s) are held, perform a forward pierce/dash attack instead of sweep
+              // determine attack type
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+
+              // detect hit monsters before any visual effect
+              const hitMonsters = []
               if (isShiftMove) {
-                // forward pierce: tween player forward a short distance and draw a thin elongated effect that fades
+                const startX = scene.player.x
+                const startY = scene.player.y
+                const dx = Math.cos(scene.facingAngle)
+                const dy = Math.sin(scene.facingAngle)
+                const dist = cfg.pierceDistance || 120
+                for (const mon of scene.monstersData) {
+                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
+                    hitMonsters.push(mon.name)
+                  }
+                }
+              } else {
+                for (const mon of scene.monstersData) {
+                  if (isMonsterInSweep(mon)) {
+                    hitMonsters.push(mon.name)
+                  }
+                }
+              }
+
+              if (isShiftMove) {
+                // === PIERCE ATTACK ===
                 const startX = scene.player.x
                 const startY = scene.player.y
                 const dx = Math.cos(scene.facingAngle)
@@ -900,214 +886,78 @@ onMounted(() => {
                 const targetX = Phaser.Math.Clamp(startX + dx * dist, rb.left + pr, rb.right - pr)
                 const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
 
-                // detect monsters in pierce range BEFORE moving
-                const hitMonsters = []
-                for (const mon of scene.monstersData) {
-                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
-                    hitMonsters.push(mon.name)
-                  }
-                }
-
-                // tween player movement
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
-                // draw pierce effect: diamond (rhombus) spanning from start to target, then fade
                 try {
                   const g2 = scene.add.graphics()
                   const extra = cfg.pierceDistanceExpand || 1.0
-                   const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, rb.left + pr, rb.right - pr)
-                   const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, rb.top + pr, rb.bottom - pr)
-                  // midpoint
-                  const mx = (startX + effTargetX) / 2
-                  const my = (startY + effTargetY) / 2
+                  const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, rb.left + pr, rb.right - pr)
+                  const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, rb.top + pr, rb.bottom - pr)
+                  const mx = (startX + effTargetX) / 2, my = (startY + effTargetY) / 2
                   const w = cfg.pierceWidth || 12
-                  // perpendicular unit
-                  const px = -dy
-                  const py = dx
-                  const hx = (px * (w/2))
-                  const hy = (py * (w/2))
-                  const front = { x: effTargetX, y: effTargetY }
-                  const right = { x: mx + hx, y: my + hy }
-                  const back = { x: startX, y: startY }
-                  const left = { x: mx - hx, y: my - hy }
+                  const px = -dy, py = dx
+                  const hx = px * (w/2), hy = py * (w/2)
                   g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
-                  g2.fillPoints([front, right, back, left], true)
-                  // fade and destroy
+                  g2.fillPoints([
+                    { x: effTargetX, y: effTargetY },
+                    { x: mx + hx, y: my + hy },
+                    { x: startX, y: startY },
+                    { x: mx - hx, y: my - hy }
+                  ], true)
                   scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
-                } catch (e) { /* ignore drawing issues */ }
-
-                // send attack commands for all monsters hit by pierce
-                for (const monName of hitMonsters) {
-                  attackMonster(monName)
-                }
+                } catch (e) {}
               } else {
-              const cx = scene.player.x
-              const cy = scene.player.y
-              const radius = cfg.radius || 110
-              const spanRad = Phaser.Math.DegToRad(cfg.angleDeg || 135)
-              const half = spanRad / 2
-              const startAngle = scene.facingAngle - half
-              const segments = cfg.segments || 30
+                // === SWEEP ATTACK (enhanced visuals) ===
+                const mainGfx = scene.add.graphics()
+                const fireGfx = scene.add.graphics()
+                const progress = { t: 0 }
+                const duration = scene.attackConfig.sweepDuration || 160
 
-              const redraw = (gfx, progress, alpha = (cfg.mainAlpha || 0.85), color = 0xff4444) => {
-                gfx.clear()
-                // slightly increase radius during sweep for a dynamic feel
-                const grow = cfg.radiusGrow || 0.08
-                const adjRadius = radius * (1 + grow * Phaser.Math.Clamp(progress, 0, 1))
-                gfx.fillStyle(color, alpha)
-                const usedSpan = spanRad * Phaser.Math.Clamp(progress, 0, 1)
-                const endAngle = startAngle + usedSpan
-                const points = []
-                points.push({ x: cx, y: cy })
-                for (let i = 0; i <= segments; i++) {
-                  const t = i / segments
-                  const ang = startAngle + (endAngle - startAngle) * t
-                  const px = cx + Math.cos(ang) * adjRadius
-                  const py = cy + Math.sin(ang) * adjRadius
-                  points.push({ x: px, y: py })
+                scene.drawArcSlash(mainGfx, 0)
+                scene.drawFireDistortion(fireGfx, 0)
+                scene.spawnAttackParticles(0, 20)
+                scene.spawnShockwave()
+                if (scene.cameras && scene.cameras.main) {
+                  scene.cameras.main.shake(120, 0.005)
                 }
-                gfx.fillPoints(points, true)
-                // draw a pale silver ring near center (outer silver, inner masked by background color)
-                try {
-                  const ringInner = Math.max(4, Math.round(adjRadius * (cfg.ringInnerFactor || 0.12)))
-                  const ringThickness = Math.max(3, Math.round(adjRadius * (cfg.ringThicknessFactor || 0.06)))
-                  const ringOuter = ringInner + ringThickness
-                  // outer pale silver
-                  gfx.fillStyle(0xC0C0C0, alpha * (cfg.ringAlphaFactor || 0.9))
-                  gfx.fillCircle(cx, cy, ringOuter)
-                  // mask inner with background color to form a ring hole
-                  gfx.fillStyle(scene.bgColor || 0x2d2d2d, 1)
-                  gfx.fillCircle(cx, cy, ringInner)
-                } catch (e) { /* ignore */ }
-              }
 
-              const g = scene.add.graphics()
-              redraw(g, 0)
-
-              let lastGhostT = -1
-              const ghostSpacing = cfg.ghostSpacing || 0.12
-              const ghostFade = cfg.ghostFade || 150
-              const sweepDuration = cfg.sweepDuration || 150
-              const finalFade = cfg.finalFade || 100
-
-              // detect which monsters are in sweep range
-              const hitMonsters = []
-              for (const mon of scene.monstersData) {
-                if (isMonsterInSweep(mon)) {
-                  hitMonsters.push(mon.name)
-                }
-              }
-
-              const prog = { t: 0 }
-          // 攻击逻辑 (保留 J 键攻击和 Shift+移动穿刺)
-          if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
-            const cfg = scene.attackConfig || {}
-            const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
-            if (isShiftMove) {
-              // 穿刺攻击
-              const startX = scene.player.x, startY = scene.player.y
-              const dx = Math.cos(scene.facingAngle), dy = Math.sin(scene.facingAngle)
-              const pr = scene.playerRadius || 10
-              const targetX = Phaser.Math.Clamp(startX + dx * cfg.pierceDistance, rb.left + pr, rb.right - pr)
-              const targetY = Phaser.Math.Clamp(startY + dy * cfg.pierceDistance, rb.top + pr, rb.bottom - pr)
-              scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
-              try {
-                const g2 = scene.add.graphics()
-                const extra = cfg.pierceDistanceExpand || 1.0
-                const effTargetX = Phaser.Math.Clamp(startX + dx * cfg.pierceDistance * extra, rb.left + pr, rb.right - pr)
-                const effTargetY = Phaser.Math.Clamp(startY + dy * cfg.pierceDistance * extra, rb.top + pr, rb.bottom - pr)
-                const mx = (startX + effTargetX) / 2, my = (startY + effTargetY) / 2
-                const px = -dy, py = dx
-                const hx = px * (cfg.pierceWidth/2), hy = py * (cfg.pierceWidth/2)
-                const front = { x: effTargetX, y: effTargetY }
-                const right = { x: mx + hx, y: my + hy }
-                const back = { x: startX, y: startY }
-                const left = { x: mx - hx, y: my - hy }
-                g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
-                g2.fillPoints([front, right, back, left], true)
-                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
-              } catch (e) {}
-            } else {
-              // 普通攻击：弧形刀光 + 火焰扰动 + 火星粒子
-              const mainGfx = scene.add.graphics()
-              const fireGfx = scene.add.graphics()
-              const progress = { t: 0 }
-              const duration = scene.attackConfig.sweepDuration || 160
-
-// 初始爆发帧
-              scene.drawArcSlash(mainGfx, 0)
-              scene.drawFireDistortion(fireGfx, 0)
-              scene.spawnAttackParticles(0, 20)       // 初始火花密集
-              scene.spawnShockwave()                  // 环形冲击波
-
-// 震屏效果（微幅快速震动）
-              if (scene.cameras && scene.cameras.main) {
-                scene.cameras.main.shake(120, 0.005)
-              }
-
-// 挥砍动画（缓出使收尾更有力）
-              scene.tweens.add({
-                targets: progress,
-                t: 1,
-                duration: duration,
-                ease: 'Cubic.easeOut',
-                onUpdate: () => {
-                  const t = progress.t
-                  scene.drawArcSlash(mainGfx, t, 0.95)
-                  scene.drawFireDistortion(fireGfx, t)
-                  // 刀光拖尾残影（降低透明度但保留之前的图形）
-                  if (t > 0.1 && Math.random() < 0.5) {
-                    const ghost = scene.add.graphics()
-                    scene.drawArcSlash(ghost, t, 0.3)
-                    scene.tweens.add({
-                      targets: ghost,
-                      alpha: 0,
-                      duration: 80,
-                      onComplete: () => ghost.destroy()
-                    })
+                scene.tweens.add({
+                  targets: progress,
+                  t: 1,
+                  duration: duration,
+                  ease: 'Cubic.easeOut',
+                  onUpdate: () => {
+                    const t = progress.t
+                    scene.drawArcSlash(mainGfx, t, 0.95)
+                    scene.drawFireDistortion(fireGfx, t)
+                    if (t > 0.1 && Math.random() < 0.5) {
+                      const ghost = scene.add.graphics()
+                      scene.drawArcSlash(ghost, t, 0.3)
+                      scene.tweens.add({ targets: ghost, alpha: 0, duration: 80, onComplete: () => ghost.destroy() })
+                    }
+                    if (Math.random() < 0.5 && t > 0.15 && t < 0.9) {
+                      scene.spawnAttackParticles(t, 4)
+                    }
+                  },
+                  onComplete: () => {
+                    scene.spawnAttackParticles(1, 15)
+                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => fireGfx.destroy() })
                   }
-                  // 持续生成粒子
-                  if (Math.random() < 0.5 && t > 0.15 && t < 0.9) {
-                    scene.spawnAttackParticles(t, 4)
-                  }
-                },
-                onComplete: () => {
-                  // 最后一帧大团粒子
-                  scene.spawnAttackParticles(1, 15)
-                  // 刀光主体渐隐
-                  scene.tweens.add({
-                    targets: mainGfx,
-                    alpha: 0,
-                    duration: 100,
-                    ease: 'Cubic.easeIn',
-                    onComplete: () => mainGfx.destroy()
-                  })
-                  // 火焰扰动层渐隐
-                  scene.tweens.add({
-                    targets: fireGfx,
-                    alpha: 0,
-                    duration: 150,
-                    ease: 'Cubic.easeIn',
-                    onComplete: () => fireGfx.destroy()
-                  })
-                }
-               })
+                })
+              }
 
-              // send attack commands for all monsters hit by sweep
+              // send attack commands for all monsters hit
               for (const monName of hitMonsters) {
                 attackMonster(monName)
               }
-              }
-             }
-          } catch (e) { /* ignore input issues */ }
-              })
             }
-          }
+          } catch (e) { /* ignore input issues */ }
 
           // 玩家边界限制
-          const pr2 = scene.playerRadius || 10
+          const pr2 = scene.playerRadius || 14
           scene.player.x = Phaser.Math.Clamp(scene.player.x, rb.left + pr2, rb.right - pr2)
           scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
-          scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18)
+          scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
           // 门检测
           let insideAnyDoor = false

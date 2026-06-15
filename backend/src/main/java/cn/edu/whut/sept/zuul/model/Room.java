@@ -5,7 +5,7 @@ import lombok.Setter;
 import java.util.*;
 
 /**
- * 房间类：包含出口、物品、怪物、传输房间标记
+ * 房间类：包含出口、物品、怪物、传输房间标记、房间类型
  */
 @Getter
 @Setter
@@ -16,6 +16,7 @@ public class Room {
     private List<Item> items;
     private List<Monster> monsters;
     private boolean isTeleportRoom;
+    private RoomType roomType;
 
     public Room(String name, String description) {
         this.name = name;
@@ -24,6 +25,7 @@ public class Room {
         this.items = new ArrayList<>();
         this.monsters = new ArrayList<>();
         this.isTeleportRoom = false;
+        this.roomType = RoomType.NORMAL_MONSTER; // 默认普通怪物房
     }
 
     public void setExit(String direction, Room neighbor) {
@@ -36,6 +38,13 @@ public class Room {
             sb.append(direction).append(" ");
         }
         return sb.toString().trim();
+    }
+
+    /**
+     * 获取出口数量（用于判断是否为尽头房间等）
+     */
+    public int getExitCount() {
+        return exits.size();
     }
 
     public void addItem(Item item) {
@@ -78,6 +87,7 @@ public class Room {
         info.put("items", this.items);
         info.put("monsters", this.monsters);
         info.put("isTeleportRoom", this.isTeleportRoom);
+        info.put("roomType", this.roomType != null ? this.roomType.name() : RoomType.NORMAL_MONSTER.name());
         return info;
     }
 
@@ -102,6 +112,7 @@ public class Room {
                 "name='" + name + '\'' +
                 ", description='" + description + '\'' +
                 ", isTeleportRoom=" + isTeleportRoom +
+                ", roomType=" + (roomType != null ? roomType.getDisplayName() : "NORMAL_MONSTER") +
                 '}';
     }
 }

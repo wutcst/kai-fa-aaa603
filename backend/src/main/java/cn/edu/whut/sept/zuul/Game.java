@@ -122,7 +122,7 @@ public class Game {
     }
     /**
      * 返回全地图数据，供前端小地图使用
-     * 格式：{ rooms: [{name, exits:{方向:邻居名}}], startRoomName: "..." }
+     * 格式：{ rooms: [{name, exits:{方向:邻居名}, roomType}], startRoomName: "..." }
      */
     public Map<String, Object> getFullMap() {
         Map<String, Object> result = new HashMap<>();
@@ -136,6 +136,7 @@ public class Game {
                 exits.put(e.getKey(), e.getValue().getName());
             }
             r.put("exits", exits);
+            r.put("roomType", room.getRoomType() != null ? room.getRoomType().name() : "NORMAL_MONSTER");
             roomList.add(r);
         }
         result.put("rooms", roomList);

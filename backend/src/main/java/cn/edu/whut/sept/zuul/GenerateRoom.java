@@ -1,6 +1,7 @@
 package cn.edu.whut.sept.zuul;
 
 import cn.edu.whut.sept.zuul.model.Room;
+import cn.edu.whut.sept.zuul.model.RoomType;
 import java.util.*;
 
 public class GenerateRoom {
@@ -114,7 +115,104 @@ public class GenerateRoom {
             }
         }
 
-        return new GeneratedMap(new ArrayList<>(grid.values()), start);
+        List<Room> allRooms = new ArrayList<>(grid.values());
+
+        // ========== 房间分类 ==========
+        classifyRooms(allRooms, start, rnd);
+
+        return new GeneratedMap(allRooms, start);
+    }
+
+    /**
+     * 对生成的所有房间进行分类标注。
+     *
+     * 分类规则：
+     * - 开始大厅（1个）：startRoom，玩家初始生成房间
+     * - 商店房间（1个）
+     * - 奇遇房间（2个，若总房间数 > 12 则为 3 个）
+     * - 篝火（休息）房间（2个）
+     * - Boss（领袖）房间（1个）：从仅有一个出口的尽头房间中选取
+     * - 精英怪物房间（2个）
+     * - 其余均为普通怪物房间
+     */
+    private static void classifyRooms(List<Room> allRooms, Room startRoom, Random rnd) {
+        int totalRooms = allRooms.size();
+
+        // 1. 开始大厅
+        startRoom.setRoomType(RoomType.START_HALL);
+
+        // 构建候选池（排除开始大厅）
+        List<Room> candidatePool = new ArrayList<>();
+        for (Room r : allRooms) {
+            if (r != startRoom) {
+                candidatePool.add(r);
+            }
+        }
+
+        // 2. Boss房间：从仅有一个出口（尽头房间）的候选房间中选取
+        List<Room> deadEnds = new ArrayList<>();
+        for (Room r : candidatePool) {
+            int exitCount = r.getExitCount();
+            if (exitCount == 1) {
+                deadEnds.add(r);
+            }
+        }
+
+        Room bossRoom = null;
+        if (!deadEnds.isEmpty()) {
+            bossRoom = deadEnds.get(rnd.nextInt(deadEnds.size()));
+            bossRoom.setRoomType(RoomType.BOSS);
+            candidatePool.remove(bossRoom);
+        }
+
+        // 如果没有任何尽头房间（极端情况），则选一个出口最少的房间
+        if (bossRoom == null && !candidatePool.isEmpty()) {
+            candidatePool.sort(Comparator.comparingInt(Room::getExitCount));
+            bossRoom = candidatePool.get(0);
+            bossRoom.setRoomType(RoomType.BOSS);
+            candidatePool.remove(bossRoom);
+        }
+
+        // 3. 精英怪物房间（2个）
+        int eliteCount = 2;
+        for (int i = 0; i < eliteCount && !candidatePool.isEmpty(); i++) {
+            int idx = rnd.nextInt(candidatePool.size());
+            Room eliteRoom = candidatePool.remove(idx);
+            eliteRoom.setRoomType(RoomType.ELITE_MONSTER);
+        }
+
+        // 4. 商店房间（1个）
+        if (!candidatePool.isEmpty()) {
+            int idx = rnd.nextInt(candidatePool.size());
+            Room shop = candidatePool.remove(idx);
+            shop.setRoomType(RoomType.SHOP);
+        }
+
+        // 5. 奇遇房间（2个，若房间数 > 12 则为 3 个）
+        int encounterCount = (totalRooms > 12) ? 3 : 2;
+        for (int i = 0; i < encounterCount && !candidatePool.isEmpty(); i++) {
+            int idx = rnd.nextInt(candidatePool.size());
+            Room enc = candidatePool.remove(idx);
+            enc.setRoomType(RoomType.ENCOUNTER);
+        }
+
+        // 6. 篝火休息房间（2个）
+        int campfireCount = 2;
+        for (int i = 0; i < campfireCount && !candidatePool.isEmpty(); i++) {
+            int idx = rnd.nextInt(candidatePool.size());
+            Room camp = candidatePool.remove(idx);
+            camp.setRoomType(RoomType.CAMPFIRE);
+        }
+
+        // 7. 剩余候选房间均为普通怪物房间（默认已为 NORMAL_MONSTER，无需额外操作）
+        // candidatePool 中剩余的房间保持默认的 RoomType.NORMAL_MONSTER
+        
+        // 打印分类结果（调试用）
+        System.out.println("[GenerateRoom] Room classification (" + totalRooms + " rooms total):");
+        for (Room r : allRooms) {
+            System.out.println("  " + r.getName() + " -> " + r.getRoomType().getDisplayName()
+                    + " (exits: " + r.getExitCount() + ")");
+        }
     }
 
     private static String opposite(String dir) {

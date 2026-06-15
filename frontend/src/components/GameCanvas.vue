@@ -183,15 +183,32 @@ function drawMinimap(highlightRoomName) {
     }
   }
 
-  // 2. 绘制房间矩形
+  // 2. 绘制房间矩形（按房间类型不同颜色）
+  const roomTypeColors = {
+    START_HALL:      { fill: 'rgba(255, 215, 0, 0.85)', stroke: '#FFD700' },
+    SHOP:            { fill: 'rgba(0, 191, 255, 0.75)', stroke: '#00BFFF' },
+    ENCOUNTER:       { fill: 'rgba(186, 85, 211, 0.75)', stroke: '#BA55D3' },
+    CAMPFIRE:        { fill: 'rgba(255, 140, 0, 0.75)', stroke: '#FF8C00' },
+    BOSS:            { fill: 'rgba(220, 20, 60, 0.80)', stroke: '#DC143C' },
+    ELITE_MONSTER:   { fill: 'rgba(255, 99, 71, 0.75)', stroke: '#FF6347' },
+    NORMAL_MONSTER:  { fill: 'rgba(100, 149, 237, 0.7)', stroke: 'rgba(255,255,255,0.8)' }
+  }
   for (const room of rooms) {
     const rect = getRoomRect(room.name)
     if (!rect) continue
     const isCurrent = room.name === highlightRoomName
-    ctx.fillStyle = isCurrent ? 'rgba(255, 215, 0, 0.9)' : 'rgba(100, 149, 237, 0.7)'
+    const roomType = room.roomType || 'NORMAL_MONSTER'
+    const typeColor = roomTypeColors[roomType] || roomTypeColors.NORMAL_MONSTER
+    if (isCurrent) {
+      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)'
+      ctx.strokeStyle = '#FFD700'
+      ctx.lineWidth = 2
+    } else {
+      ctx.fillStyle = typeColor.fill
+      ctx.strokeStyle = typeColor.stroke
+      ctx.lineWidth = 1
+    }
     ctx.fillRect(rect.x, rect.y, rect.w, rect.h)
-    ctx.strokeStyle = isCurrent ? '#FFD700' : 'rgba(255,255,255,0.8)'
-    ctx.lineWidth = isCurrent ? 2 : 1
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
     // 房间编号（提取完整数字后缀，支持多位数）
     ctx.fillStyle = '#fff'
@@ -208,6 +225,7 @@ async function initMinimap() {
   try {
     const res = await fetch('/api/map')
     const data = await res.json()
+    console.log('[Minimap] API response rooms:', data.rooms ? data.rooms.map(r => ({ name: r.name, roomType: r.roomType })) : 'none')
     mapLayout = buildMapLayout(data)
     drawMinimap(currentRoomName)
   } catch (e) {

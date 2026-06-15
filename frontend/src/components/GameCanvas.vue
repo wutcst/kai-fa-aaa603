@@ -354,6 +354,80 @@ onMounted(() => {
         scene._prevPlayerX = 400
         scene._prevPlayerY = 320
 
+        // ---------- HP / MP 状态条（右上角） ----------
+        scene.playerStats = { hp: 100, maxHp: 100, mp: 100, maxMp: 100 }
+
+        const barX = 570, barW = 210, barH = 18
+        const hpY = 15, mpY = 39
+        const barDepth = 100
+
+        // HP label
+        scene.hpLabel = scene.add.text(barX - 30, hpY + 1, 'HP', { font: 'bold 14px Arial', fill: '#ff6666' }).setDepth(barDepth)
+        // HP background
+        scene.hpBarBg = scene.add.rectangle(barX + barW / 2, hpY + barH / 2, barW, barH, 0x333333).setDepth(barDepth).setStrokeStyle(1, 0x666666)
+        scene.hpBarBg.setOrigin(0.5, 0.5)
+        // HP fill
+        scene.hpBarFill = scene.add.rectangle(barX, hpY, barW, barH, 0xcc2222).setDepth(barDepth + 1).setOrigin(0, 0)
+        // HP text
+        scene.hpText = scene.add.text(barX + barW / 2, hpY + barH / 2, '100/100', {
+          font: 'bold 12px Arial', fill: '#ffffff'
+        }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
+
+        // MP label
+        scene.mpLabel = scene.add.text(barX - 30, mpY + 1, 'MP', { font: 'bold 14px Arial', fill: '#6699ff' }).setDepth(barDepth)
+        // MP background
+        scene.mpBarBg = scene.add.rectangle(barX + barW / 2, mpY + barH / 2, barW, barH, 0x333333).setDepth(barDepth).setStrokeStyle(1, 0x666666)
+        scene.mpBarBg.setOrigin(0.5, 0.5)
+        // MP fill
+        scene.mpBarFill = scene.add.rectangle(barX, mpY, barW, barH, 0x2244cc).setDepth(barDepth + 1).setOrigin(0, 0)
+        // MP text
+        scene.mpText = scene.add.text(barX + barW / 2, mpY + barH / 2, '100/100', {
+          font: 'bold 12px Arial', fill: '#ffffff'
+        }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
+
+        /**
+         * 更新 HP/MP 状态条，带平滑动画
+         */
+        scene.updatePlayerBars = function (hp, maxHp, mp, maxMp) {
+          const prev = scene.playerStats
+          const barW = 210
+
+          // HP 动画
+          const hpRatio = Math.max(0, Math.min(1, hp / Math.max(1, maxHp)))
+          const targetHpW = barW * hpRatio
+          scene.tweens.add({
+            targets: scene.hpBarFill,
+            displayWidth: targetHpW,
+            duration: 300,
+            ease: 'Cubic.easeOut'
+          })
+          // HP 颜色随血量变化
+          let hpColor = 0xcc2222
+          if (hpRatio > 0.5) hpColor = 0x22aa22
+          else if (hpRatio > 0.25) hpColor = 0xccaa22
+          scene.tweens.add({
+            targets: {},
+            duration: 300,
+            onUpdate: () => {
+              scene.hpBarFill.setFillStyle(hpColor)
+            }
+          })
+          scene.hpText.setText(hp + '/' + maxHp)
+
+          // MP 动画
+          const mpRatio = Math.max(0, Math.min(1, mp / Math.max(1, maxMp)))
+          const targetMpW = barW * mpRatio
+          scene.tweens.add({
+            targets: scene.mpBarFill,
+            displayWidth: targetMpW,
+            duration: 300,
+            ease: 'Cubic.easeOut'
+          })
+          scene.mpText.setText(mp + '/' + maxMp)
+
+          scene.playerStats = { hp, maxHp, mp, maxMp }
+        }
+
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
@@ -418,6 +492,13 @@ onMounted(() => {
         // render room view given backend room info
         // renderRoom 核心函数
         scene.renderRoom = function (roomInfo) {
+          // 更新 HP/MP 状态条
+          const hp = roomInfo.playerHp !== undefined ? roomInfo.playerHp : scene.playerStats.hp
+          const maxHp = roomInfo.playerMaxHp !== undefined ? roomInfo.playerMaxHp : scene.playerStats.maxHp
+          const mp = roomInfo.playerMp !== undefined ? roomInfo.playerMp : scene.playerStats.mp
+          const maxMp = roomInfo.playerMaxMp !== undefined ? roomInfo.playerMaxMp : scene.playerStats.maxMp
+          try { scene.updatePlayerBars(hp, maxHp, mp, maxMp) } catch (e) {}
+
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
           // save current AI-driven monster positions before clearing

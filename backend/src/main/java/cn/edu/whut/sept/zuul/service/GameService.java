@@ -1,11 +1,13 @@
 package cn.edu.whut.sept.zuul.service;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Map;
 
 import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.command.Command;
 import cn.edu.whut.sept.zuul.command.CommandFactory;
 import cn.edu.whut.sept.zuul.model.GameResponse;
+import cn.edu.whut.sept.zuul.model.Player;
 import org.springframework.stereotype.Service;
 
 /**
@@ -20,6 +22,31 @@ public class GameService {
     public GameService() {
         this.game = new Game();
         this.commandFactory = new CommandFactory(game);
+    }
+
+    /**
+     * 将玩家状态注入到响应数据 Map 中
+     */
+    private void injectPlayerStatus(Map<String, Object> data) {
+        Player player = game.getPlayer();
+        if (player != null) {
+            data.put("playerHp", player.getHp());
+            data.put("playerMaxHp", player.getMaxHp());
+            data.put("playerMp", player.getMp());
+            data.put("playerMaxMp", player.getMaxMp());
+        }
+    }
+
+    /**
+     * 包装 GameResponse，在其 data 中注入玩家状态
+     */
+    private GameResponse wrapWithPlayerStatus(GameResponse response) {
+        if (response != null && response.getData() instanceof Map) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> data = (Map<String, Object>) response.getData();
+            injectPlayerStatus(data);
+        }
+        return response;
     }
 
     /**
@@ -44,7 +71,7 @@ public class GameService {
         }
 
         command.setParams(params);
-        return command.execute();
+        return wrapWithPlayerStatus(command.execute());
     }
 
     /**
@@ -54,7 +81,9 @@ public class GameService {
         if (game.isGameOver()) {
             return GameResponse.error("Game is over! Please reset the game.");
         }
-        return GameResponse.success("Current game status", game.getCurrentRoom().getFullInfo());
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("Current game status", data);
     }
 
     /**
@@ -62,7 +91,9 @@ public class GameService {
      */
     public GameResponse resetGame() {
         game.reset();
-        return GameResponse.success("Game reset successfully", game.getCurrentRoom().getFullInfo());
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("Game reset successfully", data);
     }
 
     /**

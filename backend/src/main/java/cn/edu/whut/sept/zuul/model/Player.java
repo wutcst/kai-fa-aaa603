@@ -20,6 +20,8 @@ public class Player {
     // ---- 战斗属性 ----
     private int hp;           // 当前生命值
     private int mp;           // 当前魔力值
+    private int maxHp;        // 最大生命值
+    private int maxMp;        // 最大魔力值
     private int attack;       // 物理攻击力
     private int magicAttack;  // 魔法攻击力
     private int defense;      // 物理防御力
@@ -36,6 +38,8 @@ public class Player {
         // 初始属性
         this.hp = 100;
         this.mp = 100;
+        this.maxHp = 100;
+        this.maxMp = 100;
         this.attack = 20;
         this.magicAttack = 15;
         this.defense = 10;
@@ -123,7 +127,14 @@ public class Player {
      * 恢复魔力
      */
     public void restoreMp(int amount) {
-        this.mp = Math.min(this.mp + amount, 100);
+        this.mp = Math.min(this.mp + amount, this.maxMp);
+    }
+
+    /**
+     * 恢复生命值
+     */
+    public void restoreHp(int amount) {
+        this.hp = Math.min(this.hp + amount, this.maxHp);
     }
 
     public boolean isAlive() {

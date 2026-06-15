@@ -5,7 +5,6 @@ import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
-import cn.edu.whut.sept.zuul.model.RoomType;
 
 /**
  * 攻击命令：attack <monsterName>
@@ -44,14 +43,8 @@ public class AttackCommand implements Command {
             return GameResponse.success(sb.toString(), current.getFullInfo());
         }
 
-        // 怪物反击 — 根据房间类型决定反击伤害：普通怪物1点，精英和领袖(Boss)2点
-        int retaliate;
-        RoomType type = current.getRoomType();
-        if (type == RoomType.ELITE_MONSTER || type == RoomType.BOSS) {
-            retaliate = 2;
-        } else {
-            retaliate = 1;
-        }
+        // 怪物反击 — 使用怪物的实际攻击力
+        int retaliate = m.getAttack();
         player.takeDamage(retaliate);
         sb.append(m.getName()).append(" 反击造成 ").append(retaliate).append(" 点伤害。\n");
         sb.append("你当前生命：").append(player.getHp()).append("。\n");

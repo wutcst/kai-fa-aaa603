@@ -436,7 +436,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, '使用方向键 / 点击出口 / 点击物品 与后端交互', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺', { font: '14px Arial', fill: '#cccccc' })
 
         scene.sendCommand = async function (cmd, fromDir = null) {
           scene._lastMoveDir = fromDir
@@ -550,11 +550,6 @@ onMounted(() => {
 
             const rect = scene.add.rectangle(posx, posy, w, h, 0x664422).setStrokeStyle(2, 0x222222)
             const label = scene.add.text(posx - 20, posy - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
-            rect.setInteractive({ useHandCursor: true })
-            rect.on('pointerdown', () => {
-              scene.tweens.add({ targets: scene.player, x: posx, y: posy, duration: 80 })
-              scene.sendCommand('go ' + dir, dir)
-            })
             scene.exitButtons.push(rect)
             scene.exitButtons.push(label)
             scene.doorRects.push({ dir, rect, label })
@@ -591,26 +586,6 @@ onMounted(() => {
             const y = 360 + Math.floor(ix / 2) * 60
             const circle = scene.add.circle(x, y, 20, 0x8b5a2b).setStrokeStyle(2, 0x000000)
             const label = scene.add.text(x - 24, y + 24, item.name, { font: '14px Arial', fill: '#fff' })
-            circle.setInteractive({ useHandCursor: true })
-            circle.on('pointerover', () => circle.setScale(1.05))
-            circle.on('pointerout', () => circle.setScale(1))
-            circle.on('pointerdown', async () => {
-              try {
-                const res = await fetch('/api/command', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ command: 'take ' + item.name })
-                })
-                const j = await res.json()
-                emit('update', j)
-                if (j && j.status === 'success') {
-                  scene.tweens.add({ targets: [circle, label], y: '-=100', alpha: 0, scale: 0.5, duration: 200, onComplete: () => { circle.destroy(); label.destroy() } })
-                }
-                if (j && j.data) scene.renderRoom(j.data)
-              } catch (e) {
-                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-              }
-            })
             scene.itemsGroup.add(circle)
             scene.itemsGroup.add(label)
             scene.itemsData.push({ name: item.name, x, y, circle, label, prompted: false, _removed: false })
@@ -634,22 +609,6 @@ onMounted(() => {
             }
             const circ = scene.add.circle(x, y, 20, 0xaa0000).setStrokeStyle(2, 0x000000)
             const label = scene.add.text(x - 32, y + 24, mon.name + ' (HP:' + (mon.hp || 0) + ')', { font: '14px Arial', fill: '#fff' })
-            circ.setInteractive({ useHandCursor: true })
-            circ.on('pointerover', () => circ.setScale(1.05))
-            circ.on('pointerout', () => circ.setScale(1))
-            circ.on('pointerdown', async () => {
-              try {
-                const res = await fetch('/api/command', {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ command: 'attack ' + mon.name })
-                })
-                const j = await res.json()
-                emit('update', j)
-                if (j && j.data) scene.renderRoom(j.data)
-              } catch (e) {
-                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-              }
-            })
             if (!scene.monstersGroup) scene.monstersGroup = scene.add.group()
             if (!scene.monstersData) scene.monstersData = []
             scene.monstersGroup.add(circ)
@@ -1077,47 +1036,6 @@ onMounted(() => {
           }
           if (!insideAnyDoor) scene.lastDoorEntered = null
 
-          // 物品拾取提示
-          if (scene.itemsData) {
-            const pickupRadius = 40
-            for (let i = scene.itemsData.length - 1; i >= 0; i--) {
-              const it = scene.itemsData[i]
-              if (!it || it._removed) continue
-              const dist = Phaser.Math.Distance.Between(scene.player.x, scene.player.y, it.x, it.y)
-              if (dist <= pickupRadius) {
-                if (!it.prompted) {
-                  it.prompted = true
-                  try {
-                    const ok = window.confirm('是否将 ' + it.name + ' 放入背包？')
-                    if (ok) {
-                      (async () => {
-                        try {
-                          const res = await fetch('/api/command', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ command: 'take ' + it.name })
-                          })
-                          const j = await res.json()
-                          emit('update', j)
-                          if (j && j.status === 'success') {
-                            it.circle.destroy()
-                            it.label.destroy()
-                            it._removed = true
-                            scene.itemsData.splice(i, 1)
-                          }
-                          if (j && j.data) scene.renderRoom(j.data)
-                        } catch (e) {
-                          emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                        }
-                      })()
-                    }
-                  } catch (e) {}
-                }
-              } else {
-                if (it.prompted) it.prompted = false
-              }
-            }
-          }
         })
 
         // 获取初始游戏状态

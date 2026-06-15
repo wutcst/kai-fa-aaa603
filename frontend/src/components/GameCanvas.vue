@@ -427,7 +427,7 @@ onMounted(() => {
         scene._prevPlayerY = 320
 
         // ---------- HP / MP 状态条（右上角） ----------
-        scene.playerStats = { hp: 100, maxHp: 100, mp: 100, maxMp: 100 }
+        scene.playerStats = { hp: 100, maxHp: 100, mp: 100, maxMp: 100, money: 50 }
 
         const barX = 570, barW = 210, barH = 18
         const hpY = 15, mpY = 39
@@ -457,10 +457,14 @@ onMounted(() => {
           font: 'bold 12px Arial', fill: '#ffffff'
         }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
 
+        // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
+        scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
+        scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
+
         /**
-         * 更新 HP/MP 状态条，带平滑动画
+         * 更新 HP/MP 状态条与货币显示，带平滑动画
          */
-        scene.updatePlayerBars = function (hp, maxHp, mp, maxMp) {
+        scene.updatePlayerBars = function (hp, maxHp, mp, maxMp, money) {
           const prev = scene.playerStats
           const barW = 210
 
@@ -497,7 +501,13 @@ onMounted(() => {
           })
           scene.mpText.setText(mp + '/' + maxMp)
 
-          scene.playerStats = { hp, maxHp, mp, maxMp }
+          // 更新货币
+          if (money !== undefined) {
+            scene.moneyText.setText(String(money))
+            scene.playerStats = { hp, maxHp, mp, maxMp, money }
+          } else {
+            scene.playerStats = { hp, maxHp, mp, maxMp }
+          }
         }
 
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -569,7 +579,8 @@ onMounted(() => {
           const maxHp = roomInfo.playerMaxHp !== undefined ? roomInfo.playerMaxHp : scene.playerStats.maxHp
           const mp = roomInfo.playerMp !== undefined ? roomInfo.playerMp : scene.playerStats.mp
           const maxMp = roomInfo.playerMaxMp !== undefined ? roomInfo.playerMaxMp : scene.playerStats.maxMp
-          try { scene.updatePlayerBars(hp, maxHp, mp, maxMp) } catch (e) {}
+          const money = roomInfo.playerMoney !== undefined ? roomInfo.playerMoney : scene.playerStats.money
+          try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
 
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
@@ -590,6 +601,14 @@ onMounted(() => {
           scene.altarIndicators = []
           if (scene.altarGlowGraphics) { scene.altarGlowGraphics.clear() }
           if (scene.wisdomOverlay) { try { scene.wisdomOverlay.destroy() } catch (e) {}; scene.wisdomOverlay = null }
+          // 清理商店覆盖层和NPC状态
+          if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {}; scene.shopMenuOverlay = null }
+          if (scene.shopBuyOverlay) { try { scene.shopBuyOverlay.destroy() } catch (e) {}; scene.shopBuyOverlay = null }
+          if (scene.shopNpcCircle) { try { scene.shopNpcCircle.destroy() } catch (e) {}; scene.shopNpcCircle = null }
+          if (scene.shopNpcLabel) { try { scene.shopNpcLabel.destroy() } catch (e) {}; scene.shopNpcLabel = null }
+          scene.shopNpcData = null
+          scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.shopIndicators = []
           // remove exit buttons
           scene.exitButtons.forEach(b => b.destroy && b.destroy())
           scene.exitButtons = []
@@ -765,6 +784,28 @@ onMounted(() => {
             }
           }
 
+          // ---------- NPC 商人渲染（仅商店房间） ----------
+          const isShop = roomInfo.isShop || roomType === 'SHOP'
+          scene.shopNpcCircle = null
+          scene.shopNpcData = null
+          if (isShop) {
+            const npcRadius = 15  // 比玩家(10)略大
+            const shopItems = roomInfo.shopItems || []
+            scene.shopNpcData = {
+              x: rectCenterX,
+              y: rectCenterY,
+              radius: npcRadius,
+              shopInitialized: roomInfo.shopInitialized || false,
+              shopItems: shopItems
+            }
+            const npc = scene.add.circle(rectCenterX, rectCenterY, npcRadius, 0xFFD700).setStrokeStyle(2, 0x000000)
+            const npcLabel = scene.add.text(rectCenterX - 24, rectCenterY + npcRadius + 6, '商人', {
+              font: '12px Arial', fill: '#FFD700'
+            })
+            scene.shopNpcCircle = npc
+            scene.shopNpcLabel = npcLabel
+          }
+
           // ---------- 小地图更新通知 ----------
           try {
             currentRoomName = roomInfo.name || ''
@@ -831,6 +872,187 @@ onMounted(() => {
           }).setOrigin(0.5)
           overlay.add([bg, title, ...optionTexts, hint])
           scene.wisdomOverlay = overlay
+        }
+
+        // ---------- 商店菜单浮层（购物/售卖选项） ----------
+        scene.showShopMenu = function () {
+          if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {} }
+          if (scene.shopBuyOverlay) { try { scene.shopBuyOverlay.destroy() } catch (e) {}; scene.shopBuyOverlay = null }
+          const overlay = scene.add.container(0, 0).setDepth(200)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.5)
+          bg.setInteractive()
+          const title = scene.add.text(400, 200, '商人', {
+            font: 'bold 24px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+          const hint = scene.add.text(400, 245, '你想要做什么？', {
+            font: '16px Arial', fill: '#cccccc'
+          }).setOrigin(0.5)
+
+          // 购物选项（左侧）
+          const buyBtn = scene.add.text(310, 320, '🛒 购物', {
+            font: 'bold 22px Arial', fill: '#44cc44', backgroundColor: '#222222',
+            padding: { x: 30, y: 10 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          buyBtn.on('pointerover', () => buyBtn.setStyle({ fill: '#ffffff', backgroundColor: '#445544' }))
+          buyBtn.on('pointerout', () => buyBtn.setStyle({ fill: '#44cc44', backgroundColor: '#222222' }))
+          buyBtn.on('pointerdown', () => {
+            try { scene.shopMenuOverlay.destroy() } catch (e) {}
+            scene.shopMenuOverlay = null
+            scene.showShopBuy()
+          })
+
+          // 售卖选项（右侧，与购物同一水平线）
+          const sellBtn = scene.add.text(490, 320, '💰 售卖', {
+            font: 'bold 22px Arial', fill: '#FFD700', backgroundColor: '#222222',
+            padding: { x: 30, y: 10 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          sellBtn.on('pointerover', () => sellBtn.setStyle({ fill: '#ffffff', backgroundColor: '#445544' }))
+          sellBtn.on('pointerout', () => sellBtn.setStyle({ fill: '#FFD700', backgroundColor: '#222222' }))
+          sellBtn.on('pointerdown', () => {
+            try { scene.shopMenuOverlay.destroy() } catch (e) {}
+            scene.shopMenuOverlay = null
+            // 售卖功能仅显示，不做任何操作
+          })
+
+          // 关闭按钮
+          const closeBtn = scene.add.text(400, 400, '关闭', {
+            font: '18px Arial', fill: '#ff6666', backgroundColor: '#222222',
+            padding: { x: 20, y: 6 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          closeBtn.on('pointerover', () => closeBtn.setStyle({ fill: '#ffffff', backgroundColor: '#664444' }))
+          closeBtn.on('pointerout', () => closeBtn.setStyle({ fill: '#ff6666', backgroundColor: '#222222' }))
+          closeBtn.on('pointerdown', () => {
+            try { scene.shopMenuOverlay.destroy() } catch (e) {}
+            scene.shopMenuOverlay = null
+          })
+
+          overlay.add([bg, title, hint, buyBtn, sellBtn, closeBtn])
+          scene.shopMenuOverlay = overlay
+        }
+
+        // ---------- 商店购买界面浮层 ----------
+        scene.showShopBuy = function () {
+          if (scene.shopBuyOverlay) { try { scene.shopBuyOverlay.destroy() } catch (e) {} }
+          const overlay = scene.add.container(0, 0).setDepth(200)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.6)
+          bg.setInteractive()
+          const title = scene.add.text(400, 130, '购物 — 点击商品购买', {
+            font: 'bold 22px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+
+          // 获取商店数据
+          const shopItems = scene.shopNpcData ? (scene.shopNpcData.shopItems || []) : []
+
+          // 每个商品的布局：横向2行3列
+          const gridCols = 3
+          const gridRows = 2
+          const itemW = 130   // 每个商品占用宽度
+          const itemH = 120   // 每个商品占用高度
+          const gridStartX = 400 - (gridCols - 1) * itemW / 2
+          const gridStartY = 220
+          const iconSize = 48  // 灰色方框大小
+
+          const itemElements = [] // 用于后续刷新
+
+          for (let i = 0; i < shopItems.length; i++) {
+            const item = shopItems[i]
+            const col = i % gridCols
+            const row = Math.floor(i / gridCols)
+            const cx = gridStartX + col * itemW
+            const cy = gridStartY + row * itemH
+
+            if (item.sold) {
+              // 已售出：不显示任何内容（空出位置）
+              continue
+            }
+
+            // 灰色方框图标
+            const icon = scene.add.rectangle(cx, cy, iconSize, iconSize, 0x888888).setStrokeStyle(2, 0xaaaaaa)
+            // 商品名称
+            const nameText = scene.add.text(cx, cy + iconSize / 2 + 8, item.name, {
+              font: '13px Arial', fill: '#ffffff'
+            }).setOrigin(0.5, 0)
+            // 价格
+            const priceText = scene.add.text(cx, cy + iconSize / 2 + 28, '$' + item.price, {
+              font: 'bold 14px Arial', fill: '#FFD700'
+            }).setOrigin(0.5, 0)
+
+            // 整个商品区域可点击
+            const hitArea = scene.add.rectangle(cx, cy, itemW - 10, itemH - 10, 0x000000, 0).setInteractive({ useHandCursor: true })
+            hitArea.on('pointerover', () => {
+              icon.setStrokeStyle(3, 0xffffff)
+            })
+            hitArea.on('pointerout', () => {
+              icon.setStrokeStyle(2, 0xaaaaaa)
+            })
+            hitArea.on('pointerdown', async () => {
+              // 购买商品
+              try {
+                const res = await fetch('/api/command', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: 'shop buy ' + item.name })
+                })
+                const j = await res.json()
+                emit('update', j)
+
+                if (j && j.status === 'success') {
+                  // 购买成功：销毁旧浮层，更新数据，重新渲染
+                  try { scene.shopBuyOverlay.destroy() } catch (e) {}
+                  scene.shopBuyOverlay = null
+
+                  // 更新本地商店数据
+                  if (j.data && j.data.shopItems) {
+                    scene.shopNpcData.shopItems = j.data.shopItems
+                    scene.shopNpcData.shopInitialized = j.data.shopInitialized
+                  }
+                  // 更新玩家货币显示
+                  if (j.data) {
+                    const hp = j.data.playerHp !== undefined ? j.data.playerHp : scene.playerStats.hp
+                    const maxHp = j.data.playerMaxHp !== undefined ? j.data.playerMaxHp : scene.playerStats.maxHp
+                    const mp = j.data.playerMp !== undefined ? j.data.playerMp : scene.playerStats.mp
+                    const maxMp = j.data.playerMaxMp !== undefined ? j.data.playerMaxMp : scene.playerStats.maxMp
+                    const money = j.data.playerMoney !== undefined ? j.data.playerMoney : scene.playerStats.money
+                    try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
+                  }
+
+                  // 重新显示购物界面
+                  scene.showShopBuy()
+                } else if (j && j.status === 'error') {
+                  // 显示错误提示
+                  const errText = scene.add.text(400, 500, j.message || '购买失败', {
+                    font: '16px Arial', fill: '#ff4444', backgroundColor: '#330000',
+                    padding: { x: 10, y: 4 }
+                  }).setOrigin(0.5).setDepth(201)
+                  scene.tweens.add({
+                    targets: errText, alpha: 0, duration: 2000, delay: 1500,
+                    onComplete: () => { try { errText.destroy() } catch (e) {} }
+                  })
+                }
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+            })
+
+            // 存储引用以便清理
+            itemElements.push(icon, nameText, priceText, hitArea)
+          }
+
+          // "结束购物"按钮
+          const endBtn = scene.add.text(400, 510, '结束购物', {
+            font: 'bold 20px Arial', fill: '#ff6666', backgroundColor: '#222222',
+            padding: { x: 24, y: 8 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          endBtn.on('pointerover', () => endBtn.setStyle({ fill: '#ffffff', backgroundColor: '#664444' }))
+          endBtn.on('pointerout', () => endBtn.setStyle({ fill: '#ff6666', backgroundColor: '#222222' }))
+          endBtn.on('pointerdown', () => {
+            try { scene.shopBuyOverlay.destroy() } catch (e) {}
+            scene.shopBuyOverlay = null
+          })
+
+          overlay.add([
+            bg, title, ...itemElements, endBtn
+          ])
+          scene.shopBuyOverlay = overlay
         }
 
         // 键盘控制
@@ -979,6 +1201,13 @@ onMounted(() => {
         scene.altarIndicators = []       // white triangle indicators
         scene.wisdomOverlay = null       // 博学祭坛选项浮层
         scene.altarUsedInRoom = false    // 当前房间祭坛是否已被使用
+        // shop state
+        scene.shopNpcCircle = null       // NPC 商人圆点
+        scene.shopNpcLabel = null        // NPC 商人标签
+        scene.shopNpcData = null         // { x, y, radius, shopInitialized, shopItems }
+        scene.shopIndicators = []        // 商店白色倒三角指示器
+        scene.shopMenuOverlay = null     // 购物/售卖选项浮层
+        scene.shopBuyOverlay = null      // 购买界面浮层
         // monster AI state: cooldown tracking (ms timestamp per monster name)
         scene.monsterAttackCooldowns = {}  // { monName: lastAttackTime }
         scene.monsterAIPendingAttack = false  // prevent concurrent attack requests
@@ -1251,6 +1480,19 @@ onMounted(() => {
             }
           }
 
+          // NPC 商人碰撞回避：玩家圆点不与NPC重叠
+          if (scene.shopNpcData) {
+            const npcPr = (scene.playerRadius || 10) + scene.shopNpcData.radius + 4
+            const dx = scene.player.x - scene.shopNpcData.x
+            const dy = scene.player.y - scene.shopNpcData.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist < npcPr && dist > 0.001) {
+              const overlap = npcPr - dist
+              scene.player.x += (dx / dist) * overlap
+              scene.player.y += (dy / dist) * overlap
+            }
+          }
+
           // 门检测
           let insideAnyDoor = false
           if (scene.doorRects) {
@@ -1286,7 +1528,7 @@ onMounted(() => {
             }
           }
 
-          // 更新白色倒三角指示器
+          // 更新白色倒三角指示器（祭坛）
           scene.altarIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.altarIndicators = []
           if (closestAltar && !scene.altarUsedInRoom) {
@@ -1307,10 +1549,46 @@ onMounted(() => {
             scene.altarIndicators.push(triangle)
           }
 
-          // SPACE 键交互
+          // ---------- 商店NPC交互检测 ----------
+          const SHOP_INTERACT_RANGE = 50
+          let nearShopNpc = false
+          if (scene.shopNpcData && !scene.shopMenuOverlay && !scene.shopBuyOverlay) {
+            const dx = scene.player.x - scene.shopNpcData.x
+            const dy = scene.player.y - scene.shopNpcData.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist < SHOP_INTERACT_RANGE) {
+              nearShopNpc = true
+            }
+          }
+
+          // 更新商店NPC白色倒三角指示器
+          scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.shopIndicators = []
+          if (nearShopNpc) {
+            const triSize = 14
+            const triY = scene.shopNpcData.y - scene.shopNpcData.radius - triSize - 4
+            const triX = scene.shopNpcData.x
+            const triangle = scene.add.triangle(triX, triY, 0, triSize, triSize, 0, triSize * 2, triSize, 0xffffff, 0.9)
+            triangle.setOrigin(0.5, 0.5)
+            triangle.setScale(1, -1)
+            scene.tweens.add({
+              targets: triangle,
+              alpha: 0.4,
+              duration: 500,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+            })
+            scene.shopIndicators.push(triangle)
+          }
+
+          // SPACE 键交互（商店优先于祭坛）
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE)) {
-              if (closestAltar && !scene.altarUsedInRoom && !closestAltar.activated) {
+              if (nearShopNpc) {
+                // 与商人交互：弹出购物/售卖选项菜单
+                scene.showShopMenu()
+              } else if (closestAltar && !scene.altarUsedInRoom && !closestAltar.activated) {
                 const altarType = closestAltar.type.toLowerCase()
                 ;(async () => {
                   try {

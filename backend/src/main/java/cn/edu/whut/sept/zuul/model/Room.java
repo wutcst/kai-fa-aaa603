@@ -5,7 +5,7 @@ import lombok.Setter;
 import java.util.*;
 
 /**
- * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛
+ * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛、商店
  */
 @Getter
 @Setter
@@ -21,6 +21,10 @@ public class Room {
     private List<Altar> altars;
     // 该房间是否有祭坛已被选择（持久标记，再次进入不刷新）
     private boolean altarUsed;
+    // 商店系统（仅商店房间使用）
+    private List<ShopItem> shopItems;
+    // 商店是否已初始化
+    private boolean shopInitialized;
 
     public Room(String name, String description) {
         this.name = name;
@@ -32,6 +36,8 @@ public class Room {
         this.roomType = RoomType.NORMAL_MONSTER; // 默认普通怪物房
         this.altars = new ArrayList<>();
         this.altarUsed = false;
+        this.shopItems = new ArrayList<>();
+        this.shopInitialized = false;
     }
 
     public void setExit(String direction, Room neighbor) {
@@ -86,6 +92,10 @@ public class Room {
     }
 
     public Map<String, Object> getFullInfo() {
+        // 如果是商店房间，确保商品已初始化
+        if (this.roomType == RoomType.SHOP) {
+            initShopItems();
+        }
         Map<String, Object> info = new HashMap<>();
         info.put("name", this.name);
         info.put("description", this.description);
@@ -103,6 +113,16 @@ public class Room {
             }
         }
         info.put("altars", altarList);
+        // 商店数据（仅商店房间有意义）
+        info.put("shopInitialized", this.shopInitialized);
+        info.put("isShop", this.roomType == RoomType.SHOP);
+        List<Map<String, Object>> shopItemList = new ArrayList<>();
+        if (this.shopItems != null) {
+            for (ShopItem si : this.shopItems) {
+                shopItemList.add(si.toMap());
+            }
+        }
+        info.put("shopItems", shopItemList);
         return info;
     }
 
@@ -164,6 +184,49 @@ public class Room {
     @Override
     public int hashCode() {
         return Objects.hash(name);
+    }
+
+    /**
+     * 初始化商店商品（仅商店房间调用，幂等操作）
+     * 从 50 个随机数中选取 6 个作为商品，价格在 10-200 随机
+     */
+    public void initShopItems() {
+        if (this.shopInitialized) return;
+        if (this.shopItems == null) this.shopItems = new ArrayList<>();
+        Random rnd = new Random();
+        // 先用房间 name 的 hashCode 作为种子保证同一房间每次生成相同结果
+        long seed = this.name.hashCode();
+        rnd.setSeed(seed);
+        for (int i = 0; i < 6; i++) {
+            int itemNum = rnd.nextInt(50) + 1;
+            int price = rnd.nextInt(191) + 10; // 10-200
+            ShopItem si = new ShopItem("商品" + itemNum, price, false);
+            this.shopItems.add(si);
+        }
+        this.shopInitialized = true;
+    }
+
+    /**
+     * 获取指定名称的商店商品
+     */
+    public ShopItem getShopItem(String name) {
+        if (this.shopItems == null) return null;
+        for (ShopItem si : this.shopItems) {
+            if (si.getName().equals(name)) return si;
+        }
+        return null;
+    }
+
+    /**
+     * 获取未售出的商店商品列表
+     */
+    public List<ShopItem> getAvailableShopItems() {
+        List<ShopItem> available = new ArrayList<>();
+        if (this.shopItems == null) return available;
+        for (ShopItem si : this.shopItems) {
+            if (!si.isSold()) available.add(si);
+        }
+        return available;
     }
 
     // 安全的 toString（不包含 exits 等循环引用字段）

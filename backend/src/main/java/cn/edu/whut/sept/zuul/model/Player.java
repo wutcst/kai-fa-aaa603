@@ -16,6 +16,7 @@ public class Player {
     private Room currentRoom;
     private List<Item> inventory;
     private double maxWeight;
+    private Money money;
 
     // ---- 战斗属性 ----
     private int hp;           // 当前生命值
@@ -34,6 +35,7 @@ public class Player {
         this.currentRoom = currentRoom;
         this.inventory = new ArrayList<>();
         this.maxWeight = 10.0;
+        this.money = new Money();
 
         // 初始属性
         this.hp = 100;

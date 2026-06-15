@@ -5,6 +5,7 @@ import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
+import cn.edu.whut.sept.zuul.model.RoomType;
 
 /**
  * 攻击命令：attack <monsterName>
@@ -40,6 +41,22 @@ public class AttackCommand implements Command {
         if (!m.isAlive()) {
             current.removeMonster(m);
             sb.append("你击败了 ").append(m.getName()).append("！");
+
+            // 根据房间类型给予货币奖励
+            RoomType roomType = current.getRoomType();
+            int reward = 0;
+            if (roomType == RoomType.NORMAL_MONSTER) {
+                reward = 15;
+            } else if (roomType == RoomType.ELITE_MONSTER) {
+                reward = 35;
+            } else if (roomType == RoomType.BOSS) {
+                reward = 100;
+            }
+            if (reward > 0 && player.getMoney() != null) {
+                player.getMoney().add(reward);
+                sb.append("\n获得了 $").append(reward).append(" 货币！(余额: $").append(player.getMoney().getAmount()).append(")");
+            }
+
             return GameResponse.success(sb.toString(), current.getFullInfo());
         }
 

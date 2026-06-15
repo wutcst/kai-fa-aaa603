@@ -193,12 +193,14 @@ function drawMinimap(highlightRoomName) {
     ctx.strokeStyle = isCurrent ? '#FFD700' : 'rgba(255,255,255,0.8)'
     ctx.lineWidth = isCurrent ? 2 : 1
     ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
-    // 房间编号
+    // 房间编号（提取完整数字后缀，支持多位数）
     ctx.fillStyle = '#fff'
-    ctx.font = `${Math.max(8, rect.w * 0.4)}px Arial`
+    const label = (room.name.match(/\d+$/) || [room.name.charAt(room.name.length - 1) || '?'])[0]
+    const fontSize = Math.max(7, rect.w * (label.length > 1 ? 0.28 : 0.4))
+    ctx.font = `${fontSize}px Arial`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(room.name.charAt(room.name.length - 1) || '?', rect.x + rect.w / 2, rect.y + rect.h / 2)
+    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2)
   }
 }
 

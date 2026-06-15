@@ -1,7 +1,7 @@
 <template>
   <div style="position: relative; width: 800px; height: 600px;">
     <!-- Phaser 游戏主容器 -->
-    <div ref="gameContainer" style="width:800px;height:600px;border:1px solid #ccc;background:#000"></div>
+    <div ref="gameContainer" style="width:800px;height:600px;background:#000;"></div>
 
     <!-- 小地图 Canvas（固定在右下角） -->
     <canvas
@@ -246,14 +246,26 @@ onMounted(() => {
     height: 600,
     parent: gameContainer.value,
     backgroundColor: '#333333',
-    scene: {
-      preload: function () {
-        try {
-          this.load.image('grass_tile', new URL('../assets/grass_tile.svg', import.meta.url).href)
-        } catch (e) {}
-      },
-      create: async function () {
-        const scene = this
+      scene: {
+        preload: function () {
+          // load small decorative tile (if present)
+          try {
+            this.load.image('grass_tile', new URL('../assets/grass_tile.svg', import.meta.url).href)
+          } catch (e) {}
+
+          // try loading up to 4 background images named bg0.png..bg3.png placed in src/assets/
+          // If you want to use the images you showed, put them in frontend/src/assets as bg0.png, bg1.png, bg2.png, bg3.png
+          for (let i = 0; i < 4; i++) {
+            try {
+              const path = new URL(`../assets/bg${i}.png`, import.meta.url).href
+              this.load.image(`bg${i}`, path)
+            } catch (e) {
+              // file may not exist during dev; ignore
+            }
+          }
+        },
+        create: async function () {
+          const scene = this
 
         // game over state
         scene.gameOver = false
@@ -340,17 +352,77 @@ onMounted(() => {
           return key
         }
 
-        const tileSize = 128
-        const v0 = createSeamlessGrass('grass_v0', tileSize, 12345, 260)
-        const v1 = createSeamlessGrass('grass_v1', tileSize, 54321, 200)
+          const tileSize = 128
+          const v0 = createSeamlessGrass('grass_v0', tileSize, 12345, 260)
+          const v1 = createSeamlessGrass('grass_v1', tileSize, 54321, 200)
 
-        const bgFar = scene.add.tileSprite(0, 0, 800, 600, v0).setOrigin(0, 0)
-        const bgNear = scene.add.tileSprite(0, 0, 800, 600, v1).setOrigin(0, 0)
-        bgNear.setAlpha(0.88).setScale(1.02)
-        scene.roomGraphics.addAt(bgFar, 0)
-        scene.roomGraphics.addAt(bgNear, 1)
-        scene.bgFar = bgFar
-        scene.bgNear = bgNear
+          // Create background — use Image (单张不重复) for user-provided bg images; fallback to tileSprite for procedural grass
+          const availableBgKeys = []
+          for (let i = 0; i < 4; i++) { if (scene.textures.exists(`bg${i}`)) availableBgKeys.push(`bg${i}`) }
+
+          let bgFar, bgNear
+          if (availableBgKeys.length > 0) {
+            // 使用单张 Image，不再平铺
+            bgFar = scene.add.image(0, 0, availableBgKeys[0]).setOrigin(0, 0)
+            bgFar._isSingleImage = true
+            // near layer is invisible since we use user-provided background images
+            bgNear = scene.add.tileSprite(0, 0, 800, 600, v1).setOrigin(0, 0)
+            bgNear.setAlpha(0).setScale(1.02)
+          } else {
+            // fallback: fully procedural grass (seamless, tiling is fine)
+            bgFar = scene.add.tileSprite(0, 0, 800, 600, v0).setOrigin(0, 0)
+            bgNear = scene.add.tileSprite(0, 0, 800, 600, v1).setOrigin(0, 0)
+            bgNear.setAlpha(0.88).setScale(1.02)
+          }
+
+          scene.roomGraphics.addAt(bgFar, 0)
+          scene.roomGraphics.addAt(bgNear, 1)
+          scene.bgFar = bgFar
+          scene.bgNear = bgNear
+
+          // ---------- 房间边界框遮罩（将背景裁剪到传送门围成的矩形内） ----------
+          scene.roomMaskShape = scene.add.graphics()
+          scene.roomMaskShape.setPosition(0, 0)
+          scene.roomMaskShape.setVisible(false)  // 仅用作遮罩形状，不可见
+          scene.roomMask = null  // 在第一次 renderRoom 时创建遮罩并应用
+
+          // 将背景图片缩放适配到房间矩形内
+          scene.fitBgToRoom = function (rectLeft, rectTop, roomW, roomH) {
+            if (!scene.bgFar || !scene.bgFar._isSingleImage) return
+            try {
+              // 图片原点设为 (0,0)，位置设在矩形左上角，尺寸缩放为房间矩形大小
+              scene.bgFar.setPosition(rectLeft, rectTop)
+              scene.bgFar.setDisplaySize(roomW, roomH)
+              scene.bgFar.setOrigin(0, 0)
+            } catch (e) {}
+          }
+
+          // Helper to choose and apply a background image for a given room
+          scene.setBgForRoom = function (roomInfo) {
+            try {
+              const roomType = (roomInfo && roomInfo.roomType) ? roomInfo.roomType : null
+              const mapping = {
+                START_HALL: 'bg0',
+                SHOP: 'bg1',
+                ENCOUNTER: 'bg2',
+                BOSS: 'bg3'
+              }
+              const avail = []
+              for (let i = 0; i < 4; i++) if (scene.textures.exists(`bg${i}`)) avail.push(`bg${i}`)
+              if (avail.length === 0) {
+                // no image backgrounds available -> keep procedural textures
+                return
+              }
+              // prefer mapping, otherwise random available
+              let chosen = null
+              if (roomType && mapping[roomType] && scene.textures.exists(mapping[roomType])) chosen = mapping[roomType]
+              if (!chosen) chosen = avail[Math.floor(Math.random() * avail.length)]
+              // apply chosen key to far layer
+              try { scene.bgFar.setTexture(chosen) } catch (e) {}
+              // ensure near layer stays invisible
+              try { scene.bgNear.setAlpha(0); scene.bgFar.setAlpha(1.0); scene.bgNear.setScale(1.02) } catch (e) {}
+            } catch (e) {}
+          }
         scene._prevPlayerX = 400
         scene._prevPlayerY = 320
 
@@ -524,6 +596,11 @@ onMounted(() => {
 
           scene.titleText.setText(roomInfo.name || '未知房间')
           scene.descText.setText(roomInfo.description || '')
+          // 只在房间真正切换时才更换背景，避免攻击等操作导致背景闪变
+          if (roomInfo.name && roomInfo.name !== scene._currentRoomName) {
+            try { scene.setBgForRoom && scene.setBgForRoom(roomInfo) } catch (e) {}
+            scene._currentRoomName = roomInfo.name
+          }
 
           const exitsStr = roomInfo.exits || ''
           const exits = exitsStr.split(/\s+/).filter(s => s)
@@ -540,6 +617,24 @@ onMounted(() => {
           scene.roomBoundsGraphic.fillRect(rectLeft, rectTop, roomW, roomH)
           scene.roomBoundsGraphic.lineStyle(2, 0xffffff, 0.9)
           scene.roomBoundsGraphic.strokeRect(rectLeft, rectTop, roomW, roomH)
+
+          // ---------- 将背景缩放到房间矩形内并裁剪 ----------
+          try { scene.fitBgToRoom && scene.fitBgToRoom(rectLeft, rectTop, roomW, roomH) } catch (e) {}
+          scene.roomMaskShape.clear()
+          scene.roomMaskShape.fillStyle(0xffffff)
+          scene.roomMaskShape.fillRect(rectLeft, rectTop, roomW, roomH)
+          if (!scene.roomMask) {
+            // 首次创建遮罩并应用到两个背景层
+            scene.roomMask = new Phaser.Display.Masks.GeometryMask(scene, scene.roomMaskShape)
+            scene.bgFar.setMask(scene.roomMask)
+            scene.bgNear.setMask(scene.roomMask)
+          }
+          // 遮罩 geometryMask 引用的是 scene.roomMaskShape 对象，更新其几何后遮罩自动生效
+
+          // 房间矩形外填充深色背景
+          if (!scene._darkBg) {
+            scene._darkBg = scene.add.rectangle(400, 300, 800, 600, 0x111111).setDepth(-1).setOrigin(0.5)
+          }
 
           if (!scene.doorRects) scene.doorRects = []
           scene.doorRects.forEach(d => { try { d.rect.destroy(); d.label.destroy() } catch (e) {} })
@@ -914,11 +1009,7 @@ onMounted(() => {
             const prevX = scene.player.x, prevY = scene.player.y
             scene.player.x += vx * speed * dt
             scene.player.y += vy * speed * dt
-            try {
-              const dx = scene.player.x - prevX, dy = scene.player.y - prevY
-              if (scene.bgFar) { scene.bgFar.tilePositionX += dx * (scene.parallax?.farFactor ?? 0.35); scene.bgFar.tilePositionY += dy * (scene.parallax?.farFactor ?? 0.35) }
-              if (scene.bgNear) { scene.bgNear.tilePositionX += dx * (scene.parallax?.nearFactor ?? 0.72); scene.bgNear.tilePositionY += dy * (scene.parallax?.nearFactor ?? 0.72) }
-            } catch (e) {}
+            // 移除视差滚动：背景在同一房间内不应移动，避免出现拼接缝隙
           }
 
           // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------

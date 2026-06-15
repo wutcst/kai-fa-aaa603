@@ -518,7 +518,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺 | 空格 互动', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
         scene.sendCommand = async function (cmd, fromDir = null) {
           scene._lastMoveDir = fromDir
@@ -1056,7 +1056,7 @@ onMounted(() => {
         }
 
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -1191,6 +1191,87 @@ onMounted(() => {
           }
         }
         scene._ghostCounter = 0
+        // 月光波蓄力状态
+        scene._waveCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false, directionGfx: null }
+        scene._waveProjectiles = []
+        scene._wavePendingSend = false  // prevent duplicate sends
+
+        // ---------- 月光波发射与特效 ----------
+        scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
+          const speed = 420  // pixels per second
+          const maxBounces = 2
+          const proj = {
+            x: startX, y: startY,
+            angle: angle,
+            speed: speed,
+            bounces: 0,
+            maxBounces: maxBounces,
+            alive: true,
+            radius: 27,
+            rotation: 0,      // visual spin
+            trailPositions: [] // for trail effect
+          }
+          scene._waveProjectiles.push(proj)
+          return proj
+        }
+
+        scene.drawWaveProjectile = function () {
+          // draw all active projectiles
+          const gfx = scene.add.graphics()
+          gfx.setDepth(200)
+          for (const proj of scene._waveProjectiles) {
+            if (!proj.alive) continue
+            // draw trail
+            if (proj.trailPositions.length > 1) {
+              for (let i = 1; i < proj.trailPositions.length; i++) {
+                const t = proj.trailPositions[i]
+                const alpha = (i / proj.trailPositions.length) * 0.3
+                gfx.fillStyle(0xFFD700, alpha)
+                gfx.fillCircle(t.x, t.y, proj.radius * 0.6)
+              }
+            }
+            // draw main crescent shape
+            gfx.fillStyle(0xFFD700, 1)
+            // outer glow
+            gfx.fillStyle(0xFFEE88, 0.25)
+            gfx.fillCircle(proj.x, proj.y, proj.radius * 1.5)
+            // core
+            gfx.fillStyle(0xFFD700, 0.9)
+            gfx.fillCircle(proj.x, proj.y, proj.radius)
+            // bright center
+            gfx.fillStyle(0xFFFFCC, 0.7)
+            gfx.fillCircle(proj.x, proj.y, proj.radius * 0.55)
+            // crescent arc lines
+            gfx.lineStyle(3, 0xFFAA00, 0.8)
+            const cr = proj.radius * 0.9
+            const startA = proj.rotation - 1.2
+            const endA = proj.rotation + 1.2
+            gfx.beginPath()
+            for (let a = startA; a <= endA; a += 0.15) {
+              const px = proj.x + Math.cos(a) * cr
+              const py = proj.y + Math.sin(a) * cr
+              if (a === startA) gfx.moveTo(px, py)
+              else gfx.lineTo(px, py)
+            }
+            gfx.strokePath()
+            // inner highlight arc
+            gfx.lineStyle(2, 0xFFFFFF, 0.5)
+            const ir = proj.radius * 0.5
+            gfx.beginPath()
+            for (let a = startA; a <= endA; a += 0.2) {
+              const px = proj.x + Math.cos(a) * ir
+              const py = proj.y + Math.sin(a) * ir
+              if (a === startA) gfx.moveTo(px, py)
+              else gfx.lineTo(px, py)
+            }
+            gfx.strokePath()
+          }
+          // auto-destroy after short duration
+          scene.time.delayedCall(50, () => {
+            try { gfx.destroy() } catch (e) {}
+          })
+        }
+
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
@@ -1220,7 +1301,151 @@ onMounted(() => {
           // block all movement and actions when game is over
           if (scene.gameOver) return
 
+          // ---------- H 键月光波蓄力系统 ----------
+          const CHARGE_DURATION = 2000  // 2 seconds to full charge
+          const WAVE_MP_COST = 30
+          const nowMs = Date.now()
+
+          // check if player has enough MP
+          const hasEnoughMp = scene.playerStats.mp >= WAVE_MP_COST
+
+          // ---- 开始蓄力 ----
+          try {
+            if (scene.keys.H && scene.keys.H.isDown && hasEnoughMp && !scene._waveCharging.active && !scene._wavePendingSend && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.wisdomOverlay) {
+              scene._waveCharging.active = true
+              scene._waveCharging.startTime = nowMs
+              scene._waveCharging.charged = false
+            }
+          } catch (e) {}
+
+          // ---- 发射函数 ----
+          const fireWave = () => {
+            if (scene._wavePendingSend) return
+            scene._wavePendingSend = true
+            // clear UI
+            try {
+              if (scene._waveCharging.chargeBarGfx) { scene._waveCharging.chargeBarGfx.destroy(); scene._waveCharging.chargeBarGfx = null }
+              if (scene._waveCharging.directionGfx) { scene._waveCharging.directionGfx.destroy(); scene._waveCharging.directionGfx = null }
+            } catch (e) {}
+            scene._waveCharging.active = false
+            scene._waveCharging.charged = false
+
+            const rbWave = scene._roomBounds || { left: 16, top: 16, right: 784, bottom: 584 }
+            const proj = scene.spawnWaveProjectile(scene.player.x, scene.player.y, scene.facingAngle, rbWave)
+            proj.hitMonsters = new Set()
+
+            ;(async () => {
+              try {
+                const res = await fetch('/api/command', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ command: 'wave _init' })
+                })
+                const j = await res.json()
+                emit('update', j)
+                if (j && j.data) scene.renderRoom(j.data)
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+              scene._wavePendingSend = false
+            })()
+
+            if (scene.cameras && scene.cameras.main) {
+              scene.cameras.main.shake(180, 0.008)
+            }
+            const flash = scene.add.rectangle(400, 300, 800, 600, 0xFFFFCC, 0.2).setDepth(500)
+            scene.tweens.add({
+              targets: flash, alpha: 0, duration: 300,
+              onComplete: () => { try { flash.destroy() } catch (e) {} }
+            })
+          }
+
+          // ---- 蓄力 / 瞄准状态处理 ----
+          if (scene._waveCharging.active) {
+            try {
+              const hDown = scene.keys.H && scene.keys.H.isDown
+              if (!hDown) {
+                // H 松开
+                if (scene._waveCharging.charged) {
+                  fireWave()   // 满蓄力松开 → 发射
+                } else {
+                  // 未满蓄力松开 → 取消
+                  scene._waveCharging.active = false
+                  if (scene._waveCharging.chargeBarGfx) {
+                    try { scene._waveCharging.chargeBarGfx.destroy() } catch (e) {}
+                    scene._waveCharging.chargeBarGfx = null
+                  }
+                }
+              } else if (!scene._waveCharging.charged) {
+                // 蓄力中（未满）
+                const elapsed = nowMs - scene._waveCharging.startTime
+                const progress = Math.min(1, elapsed / CHARGE_DURATION)
+
+                if (!scene._waveCharging.chargeBarGfx) {
+                  scene._waveCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._waveCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 30
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(1, 0x44aa44, 0.9)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                const r = Math.floor(30 + progress * 80)
+                const g = Math.floor(180 + progress * 75)
+                const b = Math.floor(30)
+                const fillColor = (r << 16) | (g << 8) | b
+                gfx.fillStyle(fillColor, 0.9)
+                gfx.fillRect(barX, barY, barWidth * progress, barHeight)
+                if (progress >= 1) {
+                  scene._waveCharging.charged = true
+                }
+              } else {
+                // 已满蓄力，保持满蓄力条 + 绘制方向指示器
+                if (!scene._waveCharging.chargeBarGfx) {
+                  scene._waveCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._waveCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 30
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(2, 0x00ff44, 1.0)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                gfx.fillStyle(0x00ff44, 0.4 + 0.4 * Math.sin(nowMs * 0.01))
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+
+                // 方向指示器：白色小三角形（基部贴在圆点外缘，尖端向外）
+                if (!scene._waveCharging.directionGfx) {
+                  scene._waveCharging.directionGfx = scene.add.graphics().setDepth(151)
+                }
+                const dgfx = scene._waveCharging.directionGfx
+                dgfx.clear()
+                const prInd = (scene.playerRadius || 10)
+                const triTipDist = prInd + 8       // 尖端在圆点外 8px
+                const triBaseDist = prInd + 5       // 基部与圆点外缘留出间距
+                const triHalfWidth = 4              // 基部半宽
+                const perpLeft = scene.facingAngle + Math.PI / 2
+                const perpRight = scene.facingAngle - Math.PI / 2
+                const triTipX = scene.player.x + Math.cos(scene.facingAngle) * triTipDist
+                const triTipY = scene.player.y + Math.sin(scene.facingAngle) * triTipDist
+                const baseLX = scene.player.x + Math.cos(scene.facingAngle) * triBaseDist + Math.cos(perpLeft) * triHalfWidth
+                const baseLY = scene.player.y + Math.sin(scene.facingAngle) * triBaseDist + Math.sin(perpLeft) * triHalfWidth
+                const baseRX = scene.player.x + Math.cos(scene.facingAngle) * triBaseDist + Math.cos(perpRight) * triHalfWidth
+                const baseRY = scene.player.y + Math.sin(scene.facingAngle) * triBaseDist + Math.sin(perpRight) * triHalfWidth
+                dgfx.fillStyle(0xffffff, 0.9 + 0.1 * Math.sin(nowMs * 0.005))
+                dgfx.fillTriangle(triTipX, triTipY, baseLX, baseLY, baseRX, baseRY)
+              }
+            } catch (e) {}
+          }
+
           // movement by WASD
+          const isCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 蓄力中（未满）禁止移动
+          const isAiming = scene._waveCharging.active && scene._waveCharging.charged      // 满蓄力瞄准中：允许转向
+          if (!isCharging) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -1231,14 +1456,15 @@ onMounted(() => {
             vx = vx / len
             vy = vy / len
             try { scene.facingAngle = Math.atan2(vy, vx) } catch (e) {}
-            let speed = scene.baseMoveSpeed
-            try {
-              if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
-            } catch (e) {}
-            const prevX = scene.player.x, prevY = scene.player.y
-            scene.player.x += vx * speed * dt
-            scene.player.y += vy * speed * dt
-            // 移除视差滚动：背景在同一房间内不应移动，避免出现拼接缝隙
+            if (!isAiming) {
+              let speed = scene.baseMoveSpeed
+              try {
+                if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
+              } catch (e) {}
+              scene.player.x += vx * speed * dt
+              scene.player.y += vy * speed * dt
+            }
+          }
           }
 
           // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------
@@ -1302,7 +1528,7 @@ onMounted(() => {
           // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
           // Also detect monsters in range and send damage commands to backend
           try {
-            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active) {
               const cfg = scene.attackConfig || {}
 
               // helper: send attack command to backend for a specific monster
@@ -1458,6 +1684,140 @@ onMounted(() => {
           scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
+          // ---------- 月光波弹射运动 ----------
+          // move projectiles, handle wall bounce, and knockback monsters
+          const waveRb = scene._roomBounds || { left: 16, top: 16, right: 784, bottom: 584 }
+          for (const proj of scene._waveProjectiles) {
+            if (!proj.alive) continue
+            // move
+            const stepX = Math.cos(proj.angle) * proj.speed * dt
+            const stepY = Math.sin(proj.angle) * proj.speed * dt
+            proj.x += stepX
+            proj.y += stepY
+            // spin visually
+            proj.rotation += 4 * dt
+
+            // store trail
+            proj.trailPositions.push({ x: proj.x, y: proj.y })
+            if (proj.trailPositions.length > 12) proj.trailPositions.shift()
+
+            // wall bounce
+            let bounced = false
+            if (proj.x - proj.radius < waveRb.left) {
+              proj.x = waveRb.left + proj.radius
+              proj.angle = Math.PI - proj.angle
+              bounced = true
+            } else if (proj.x + proj.radius > waveRb.right) {
+              proj.x = waveRb.right - proj.radius
+              proj.angle = Math.PI - proj.angle
+              bounced = true
+            }
+            if (proj.y - proj.radius < waveRb.top) {
+              proj.y = waveRb.top + proj.radius
+              proj.angle = -proj.angle
+              bounced = true
+            } else if (proj.y + proj.radius > waveRb.bottom) {
+              proj.y = waveRb.bottom - proj.radius
+              proj.angle = -proj.angle
+              bounced = true
+            }
+
+            if (bounced) {
+              proj.bounces++
+              // 反弹后重置伤害判定，允许对同一敌人重复造成伤害
+              proj.hitMonsters = new Set()
+              // bounce flash
+              const bounceFlash = scene.add.circle(proj.x, proj.y, proj.radius * 2, 0xFFD700, 0.5).setDepth(201)
+              scene.tweens.add({
+                targets: bounceFlash, alpha: 0, scale: 2, duration: 200,
+                onComplete: () => { try { bounceFlash.destroy() } catch (e) {} }
+              })
+            }
+
+            // check if max bounces reached
+            if (proj.bounces > proj.maxBounces) {
+              proj.alive = false
+              // death flash
+              const deathFlash = scene.add.circle(proj.x, proj.y, proj.radius * 3, 0xFFFFAA, 0.6).setDepth(202)
+              scene.tweens.add({
+                targets: deathFlash, alpha: 0, scale: 1.8, duration: 300,
+                onComplete: () => { try { deathFlash.destroy() } catch (e) {} }
+              })
+              continue
+            }
+
+            // collision: damage + knockback monsters in range of projectile
+            const COLLISION_RANGE = proj.radius + 30
+            const KNOCKBACK_FORCE = 40
+            if (!proj.hitMonsters) proj.hitMonsters = new Set()
+            for (const mon of scene.monstersData) {
+              if (!mon || !mon.circ) continue
+              const mdx = mon.x - proj.x
+              const mdy = mon.y - proj.y
+              const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
+              if (mdist < COLLISION_RANGE && mdist > 0.01) {
+                // send damage command if this monster hasn't been hit yet by this projectile
+                if (!proj.hitMonsters.has(mon.name)) {
+                  proj.hitMonsters.add(mon.name)
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'wave ' + mon.name })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data) scene.renderRoom(j.data)
+                      if (j && j.message && j.message.includes('游戏结束')) {
+                        scene.showGameOver()
+                      }
+                    } catch (e) {
+                      // ignore network errors during rapid collisions
+                    }
+                  })()
+                  // hit flash on monster
+                  const hitFlash = scene.add.circle(mon.x, mon.y, 24, 0xFFD700, 0.6).setDepth(50)
+                  scene.tweens.add({
+                    targets: hitFlash, alpha: 0, scale: 1.6, duration: 200,
+                    onComplete: () => { try { hitFlash.destroy() } catch (e) {} }
+                  })
+                }
+
+                // knockback
+                const nx = mdx / mdist
+                const ny = mdy / mdist
+                const pushX = nx * KNOCKBACK_FORCE
+                const pushY = ny * KNOCKBACK_FORCE
+                scene.tweens.add({
+                  targets: { x: mon.x, y: mon.y },
+                  x: Math.max(waveRb.left + pr, Math.min(waveRb.right - pr, mon.x + pushX)),
+                  y: Math.max(waveRb.top + pr, Math.min(waveRb.bottom - pr, mon.y + pushY)),
+                  duration: 150,
+                  ease: 'Cubic.easeOut',
+                  onUpdate: function (tween) {
+                    const target = tween.targets[0]
+                    mon.x = target.x
+                    mon.y = target.y
+                    try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                    try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                  }
+                })
+              }
+            }
+          }
+
+          // remove dead projectiles after 1 second
+          scene._waveProjectiles = scene._waveProjectiles.filter(p => {
+            if (!p.alive && !p._deathMarked) {
+              p._deathMarked = true
+              return true  // keep one more frame for flash
+            }
+            return p.alive
+          })
+
+          // draw wave projectiles every frame
+          scene.drawWaveProjectile()
+
           // 祭坛碰撞回避：玩家圆点不与祭坛方块重叠
           if (scene.altarsData && scene.altarsData.length > 0) {
             const pr3 = (scene.playerRadius || 10) + 2
@@ -1493,9 +1853,9 @@ onMounted(() => {
             }
           }
 
-          // 门检测
+          // 门检测 (skip if charging)
           let insideAnyDoor = false
-          if (scene.doorRects) {
+          if (scene.doorRects && !scene._waveCharging.active) {
             for (const dr of scene.doorRects) {
               const b = dr.rect.getBounds()
               if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
@@ -1582,9 +1942,9 @@ onMounted(() => {
             scene.shopIndicators.push(triangle)
           }
 
-          // SPACE 键交互（商店优先于祭坛）
+          // SPACE 键交互（商店优先于祭坛，skip if charging）
           try {
-            if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE)) {
+            if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
               if (nearShopNpc) {
                 // 与商人交互：弹出购物/售卖选项菜单
                 scene.showShopMenu()

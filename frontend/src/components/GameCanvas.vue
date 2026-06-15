@@ -235,10 +235,21 @@ onMounted(() => {
       create: async function () {
         const scene = this
 
+        // game over state
+        scene.gameOver = false
+        scene.gameOverOverlay = null
+
+        // container groups
         // 容器和图形
         scene.roomGraphics = scene.add.container(0, 0)
         scene.itemsGroup = scene.add.group()
+        // group for monsters (ensure it exists before renderRoom may add monsters)
+        scene.monstersGroup = scene.add.group()
+        // arrays / lists used by renderRoom (ensure they exist before renderRoom may be called)
         scene.exitButtons = []
+        scene.doorRects = []
+        scene.monstersData = []
+        scene.itemsData = []
         scene.roomBoundsGraphic = scene.add.graphics()
         scene.bgColor = 0x6bbf3a
         scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
@@ -343,16 +354,57 @@ onMounted(() => {
             })
             const j = await res.json()
             emit('update', j)
+            // if response contains room data, re-render
+            if (j && j.data) {
+              scene.renderRoom(j.data)
+            }
+            // check for game over from backend response
+            if (j && j.status === 'error' && j.message && j.message.includes('Game is over')) {
+              scene.showGameOver()
+            }
             if (j && j.data) scene.renderRoom(j.data)
           } catch (e) {
             emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
           }
         }
 
+        // show game over overlay
+        scene.showGameOver = function () {
+          scene.gameOver = true
+          // remove existing overlay if any
+          if (scene.gameOverOverlay) {
+            try { scene.gameOverOverlay.destroy() } catch (e) {}
+          }
+          const overlay = scene.add.container(0, 0)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.7)
+          bg.setInteractive() // block clicks behind
+          const title = scene.add.text(400, 240, '游戏结束', { font: 'bold 48px Arial', fill: '#ff4444' }).setOrigin(0.5)
+          const hint = scene.add.text(400, 310, '你被击败了！点击下方按钮重新开始', { font: '20px Arial', fill: '#ffffff' }).setOrigin(0.5)
+          const resetBtn = scene.add.text(400, 380, '[ 重新开始 ]', { font: 'bold 28px Arial', fill: '#ffcc00', backgroundColor: '#333', padding: { x: 20, y: 10 } }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          resetBtn.on('pointerdown', async () => {
+            try {
+              const res = await fetch('/api/reset', { method: 'POST' })
+              const j = await res.json()
+              scene.gameOver = false
+              if (scene.gameOverOverlay) { try { scene.gameOverOverlay.destroy() } catch (e) {}; scene.gameOverOverlay = null }
+              try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
+              if (j && j.data) scene.renderRoom(j.data)
+            } catch (e) { /* ignore */ }
+          })
+          overlay.add([bg, title, hint, resetBtn])
+          overlay.setDepth(9999)
+          scene.gameOverOverlay = overlay
+        }
+
+        // render room view given backend room info
         // renderRoom 核心函数
         scene.renderRoom = function (roomInfo) {
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
+          // clear previous monster sprites and state (fix: monsters were not being cleared)
+          scene.monstersGroup.clear(true, true)
+          scene.monstersData = []
+          // remove exit buttons
           scene.exitButtons.forEach(b => b.destroy && b.destroy())
           scene.exitButtons = []
 
@@ -459,11 +511,14 @@ onMounted(() => {
           })
 
           const monsters = roomInfo.monsters || []
-          const mStartX = 160
+          // vertical stacking layout to prevent label overlap
+          const mCenterX = 300
+          const mStartY = 160
+          const mSpacingY = 120
           let mi = 0
           monsters.forEach(mon => {
-            const x = mStartX + (mi % 2) * 60
-            const y = 220 + Math.floor(mi / 2) * 70
+            const x = mCenterX
+            const y = mStartY + mi * mSpacingY
             const circ = scene.add.circle(x, y, 20, 0xaa0000).setStrokeStyle(2, 0x000000)
             const label = scene.add.text(x - 32, y + 24, mon.name + ' (HP:' + (mon.hp || 0) + ')', { font: '14px Arial', fill: '#fff' })
             circ.setInteractive({ useHandCursor: true })
@@ -748,6 +803,11 @@ onMounted(() => {
         this.sys.events.on('update', function (time, delta) {
           const dt = delta / 1000
           const rb = scene._roomBounds || { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
+
+          // block all movement and actions when game is over
+          if (scene.gameOver) return
+
+          // movement by WASD
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -772,6 +832,172 @@ onMounted(() => {
             } catch (e) {}
           }
 
+          // handle attack key (J) pressed -> draw a sweeping blade that traces the sector clockwise, then fade out with ghosts
+          // Also check which monsters are in attack range and send damage commands to backend
+          try {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
+              const cfg = scene.attackConfig || {}
+
+              // helper: send attack command to backend for a specific monster
+              const attackMonster = async (monName) => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'attack ' + monName })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) {
+                    scene.renderRoom(j.data)
+                  }
+                  // detect game over from monster counterattack
+                  if (j && j.message && j.message.includes('游戏结束')) {
+                    scene.showGameOver()
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              }
+
+              // helper: check if a monster is inside the sweep sector (fan shape)
+              const isMonsterInSweep = (monster) => {
+                const monDx = monster.x - scene.player.x
+                const monDy = monster.y - scene.player.y
+                const dist = Math.sqrt(monDx * monDx + monDy * monDy)
+                if (dist > (cfg.radius || 110)) return false
+                const angleToMon = Math.atan2(monDy, monDx)
+                let angleDiff = angleToMon - scene.facingAngle
+                // normalize to [-PI, PI]
+                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
+                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
+                const halfSpan = Phaser.Math.DegToRad((cfg.angleDeg || 135) / 2)
+                return Math.abs(angleDiff) <= halfSpan
+              }
+
+              // helper: check if a monster is along the pierce line (rectangle in front of player)
+              const isMonsterInPierce = (monster, startX, startY, dirX, dirY, dist) => {
+                const monDx = monster.x - startX
+                const monDy = monster.y - startY
+                // distance along the facing direction (projected onto direction vector)
+                const along = monDx * dirX + monDy * dirY
+                if (along < 0 || along > dist) return false
+                // perpendicular distance from the pierce center line
+                const perpDist = Math.abs(monDx * (-dirY) + monDy * dirX)
+                const halfW = (cfg.pierceWidth || 12) / 2 + 15 // add margin for monster radius
+                return perpDist <= halfW
+              }
+
+              // if Shift + movement key(s) are held, perform a forward pierce/dash attack instead of sweep
+              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              if (isShiftMove) {
+                // forward pierce: tween player forward a short distance and draw a thin elongated effect that fades
+                const startX = scene.player.x
+                const startY = scene.player.y
+                const dx = Math.cos(scene.facingAngle)
+                const dy = Math.sin(scene.facingAngle)
+                const dist = cfg.pierceDistance || 120
+                const pr = scene.playerRadius || 10
+                const targetX = Phaser.Math.Clamp(startX + dx * dist, rb.left + pr, rb.right - pr)
+                const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
+
+                // detect monsters in pierce range BEFORE moving
+                const hitMonsters = []
+                for (const mon of scene.monstersData) {
+                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
+                    hitMonsters.push(mon.name)
+                  }
+                }
+
+                // tween player movement
+                scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+                // draw pierce effect: diamond (rhombus) spanning from start to target, then fade
+                try {
+                  const g2 = scene.add.graphics()
+                  const extra = cfg.pierceDistanceExpand || 1.0
+                   const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, rb.left + pr, rb.right - pr)
+                   const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, rb.top + pr, rb.bottom - pr)
+                  // midpoint
+                  const mx = (startX + effTargetX) / 2
+                  const my = (startY + effTargetY) / 2
+                  const w = cfg.pierceWidth || 12
+                  // perpendicular unit
+                  const px = -dy
+                  const py = dx
+                  const hx = (px * (w/2))
+                  const hy = (py * (w/2))
+                  const front = { x: effTargetX, y: effTargetY }
+                  const right = { x: mx + hx, y: my + hy }
+                  const back = { x: startX, y: startY }
+                  const left = { x: mx - hx, y: my - hy }
+                  g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
+                  g2.fillPoints([front, right, back, left], true)
+                  // fade and destroy
+                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
+                } catch (e) { /* ignore drawing issues */ }
+
+                // send attack commands for all monsters hit by pierce
+                for (const monName of hitMonsters) {
+                  attackMonster(monName)
+                }
+              } else {
+              const cx = scene.player.x
+              const cy = scene.player.y
+              const radius = cfg.radius || 110
+              const spanRad = Phaser.Math.DegToRad(cfg.angleDeg || 135)
+              const half = spanRad / 2
+              const startAngle = scene.facingAngle - half
+              const segments = cfg.segments || 30
+
+              const redraw = (gfx, progress, alpha = (cfg.mainAlpha || 0.85), color = 0xff4444) => {
+                gfx.clear()
+                // slightly increase radius during sweep for a dynamic feel
+                const grow = cfg.radiusGrow || 0.08
+                const adjRadius = radius * (1 + grow * Phaser.Math.Clamp(progress, 0, 1))
+                gfx.fillStyle(color, alpha)
+                const usedSpan = spanRad * Phaser.Math.Clamp(progress, 0, 1)
+                const endAngle = startAngle + usedSpan
+                const points = []
+                points.push({ x: cx, y: cy })
+                for (let i = 0; i <= segments; i++) {
+                  const t = i / segments
+                  const ang = startAngle + (endAngle - startAngle) * t
+                  const px = cx + Math.cos(ang) * adjRadius
+                  const py = cy + Math.sin(ang) * adjRadius
+                  points.push({ x: px, y: py })
+                }
+                gfx.fillPoints(points, true)
+                // draw a pale silver ring near center (outer silver, inner masked by background color)
+                try {
+                  const ringInner = Math.max(4, Math.round(adjRadius * (cfg.ringInnerFactor || 0.12)))
+                  const ringThickness = Math.max(3, Math.round(adjRadius * (cfg.ringThicknessFactor || 0.06)))
+                  const ringOuter = ringInner + ringThickness
+                  // outer pale silver
+                  gfx.fillStyle(0xC0C0C0, alpha * (cfg.ringAlphaFactor || 0.9))
+                  gfx.fillCircle(cx, cy, ringOuter)
+                  // mask inner with background color to form a ring hole
+                  gfx.fillStyle(scene.bgColor || 0x2d2d2d, 1)
+                  gfx.fillCircle(cx, cy, ringInner)
+                } catch (e) { /* ignore */ }
+              }
+
+              const g = scene.add.graphics()
+              redraw(g, 0)
+
+              let lastGhostT = -1
+              const ghostSpacing = cfg.ghostSpacing || 0.12
+              const ghostFade = cfg.ghostFade || 150
+              const sweepDuration = cfg.sweepDuration || 150
+              const finalFade = cfg.finalFade || 100
+
+              // detect which monsters are in sweep range
+              const hitMonsters = []
+              for (const mon of scene.monstersData) {
+                if (isMonsterInSweep(mon)) {
+                  hitMonsters.push(mon.name)
+                }
+              }
+
+              const prog = { t: 0 }
           // 攻击逻辑 (保留 J 键攻击和 Shift+移动穿刺)
           if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J)) {
             const cfg = scene.attackConfig || {}
@@ -864,6 +1090,15 @@ onMounted(() => {
                     onComplete: () => fireGfx.destroy()
                   })
                 }
+               })
+
+              // send attack commands for all monsters hit by sweep
+              for (const monName of hitMonsters) {
+                attackMonster(monName)
+              }
+              }
+             }
+          } catch (e) { /* ignore input issues */ }
               })
             }
           }

@@ -775,7 +775,7 @@ onMounted(() => {
           // 最外层扩散光晕
           const glowOuter = []
           for (let i = 0; i <= segs; i++) {
-            const t = i / segss
+            const t = i / segs
             const ang = startAngle + (endAngle - startAngle) * t
             glowOuter.push({ x: scene.player.x + Math.cos(ang) * outerR * 1.1, y: scene.player.y + Math.sin(ang) * outerR * 1.1 })
           }

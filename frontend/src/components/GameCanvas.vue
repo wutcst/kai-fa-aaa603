@@ -981,7 +981,6 @@ onMounted(() => {
         scene.altarUsedInRoom = false    // 当前房间祭坛是否已被使用
         // monster AI state: cooldown tracking (ms timestamp per monster name)
         scene.monsterAttackCooldowns = {}  // { monName: lastAttackTime }
-        scene.monsterAIPendingAttack = false  // prevent concurrent attack requests
 
         // update 循环
         this.sys.events.on('update', function (time, delta) {
@@ -1019,7 +1018,6 @@ onMounted(() => {
           const MONSTER_SPEED = 80           // 怪物移动速度 (pixel/s)
           const pr = scene.playerRadius || 10
 
-          let attackingThisFrame = false
           const now = Date.now()
 
           for (const mon of scene.monstersData) {
@@ -1029,30 +1027,25 @@ onMounted(() => {
             const dist = Math.sqrt(dx * dx + dy * dy)
 
             if (dist <= MONSTER_ATTACK_RANGE) {
-              // 在攻击范围内 → 攻击玩家
+              // 在攻击范围内 → 攻击玩家（每个怪物独立冷却，无全局锁）
               if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= MONSTER_ATTACK_COOLDOWN) {
                 scene.monsterAttackCooldowns[mon.name] = now
-                if (!scene.monsterAIPendingAttack) {
-                  scene.monsterAIPendingAttack = true
-                  attackingThisFrame = true
-                  ;(async () => {
-                    try {
-                      const res = await fetch('/api/command', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ command: 'attack ' + mon.name })
-                      })
-                      const j = await res.json()
-                      emit('update', j)
-                      if (j && j.data) scene.renderRoom(j.data)
-                      if (j && j.message && j.message.includes('游戏结束')) {
-                        scene.showGameOver()
-                      }
-                    } catch (e) {
-                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                ;(async () => {
+                  try {
+                    const res = await fetch('/api/command', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ command: 'monsterattack ' + mon.name })
+                    })
+                    const j = await res.json()
+                    emit('update', j)
+                    if (j && j.data) scene.renderRoom(j.data)
+                    if (j && j.message && j.message.includes('游戏结束')) {
+                      scene.showGameOver()
                     }
-                    scene.monsterAIPendingAttack = false
-                  })()
-                }
+                  } catch (e) {
+                    emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                  }
+                })()
               }
             } else if (dist <= MONSTER_DETECT_RANGE) {
               // 在索敌范围内 → 向玩家移动

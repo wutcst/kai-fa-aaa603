@@ -61,6 +61,15 @@ public class GoCommand implements Command {
             // 不要因为刷怪导致移动失败，记录或忽略异常
         }
 
+        // 进入篝火房间时初始化祭坛
+        try {
+            if (nextRoom.getRoomType() == RoomType.CAMPFIRE) {
+                nextRoom.initAltars();
+            }
+        } catch (Exception e) {
+            // 忽略祭坛初始化异常
+        }
+
         return GameResponse.success("你移动到了 " + nextRoom.getName(), nextRoom.getFullInfo());
     }
 

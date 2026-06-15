@@ -5,7 +5,7 @@ import lombok.Setter;
 import java.util.*;
 
 /**
- * 房间类：包含出口、物品、怪物、传输房间标记、房间类型
+ * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛
  */
 @Getter
 @Setter
@@ -17,6 +17,10 @@ public class Room {
     private List<Monster> monsters;
     private boolean isTeleportRoom;
     private RoomType roomType;
+    // 祭坛系统（仅篝火房间使用）
+    private List<Altar> altars;
+    // 该房间是否有祭坛已被选择（持久标记，再次进入不刷新）
+    private boolean altarUsed;
 
     public Room(String name, String description) {
         this.name = name;
@@ -26,6 +30,8 @@ public class Room {
         this.monsters = new ArrayList<>();
         this.isTeleportRoom = false;
         this.roomType = RoomType.NORMAL_MONSTER; // 默认普通怪物房
+        this.altars = new ArrayList<>();
+        this.altarUsed = false;
     }
 
     public void setExit(String direction, Room neighbor) {
@@ -88,7 +94,62 @@ public class Room {
         info.put("monsters", this.monsters);
         info.put("isTeleportRoom", this.isTeleportRoom);
         info.put("roomType", this.roomType != null ? this.roomType.name() : RoomType.NORMAL_MONSTER.name());
+        // 祭坛数据
+        info.put("altarUsed", this.altarUsed);
+        List<Map<String, Object>> altarList = new ArrayList<>();
+        if (this.altars != null) {
+            for (Altar altar : this.altars) {
+                altarList.add(altar.toMap());
+            }
+        }
+        info.put("altars", altarList);
         return info;
+    }
+
+    /**
+     * 初始化祭坛（篝火房间调用）
+     * 创建三个祭坛：HEAL（左）、TRAIN（中）、WISDOM（右）
+     */
+    public void initAltars() {
+        if (this.altars == null || this.altars.isEmpty()) {
+            this.altars = new ArrayList<>();
+            this.altars.add(new Altar(AltarType.HEAL));
+            this.altars.add(new Altar(AltarType.TRAIN));
+            this.altars.add(new Altar(AltarType.WISDOM));
+        }
+        // 同步 roomUsed 状态到所有祭坛
+        for (Altar a : this.altars) {
+            if (this.altarUsed) {
+                a.markRoomUsed();
+            }
+        }
+    }
+
+    /**
+     * 获取指定类型的祭坛
+     */
+    public Altar getAltar(AltarType type) {
+        if (this.altars == null) return null;
+        for (Altar a : this.altars) {
+            if (a.getType() == type) return a;
+        }
+        return null;
+    }
+
+    /**
+     * 激活祭坛（返回激活的祭坛，null表示失败）
+     */
+    public Altar activateAltar(AltarType type) {
+        Altar altar = getAltar(type);
+        if (altar != null && altar.activate()) {
+            this.altarUsed = true;
+            // 标记所有其他祭坛为 roomUsed
+            for (Altar a : this.altars) {
+                a.markRoomUsed();
+            }
+            return altar;
+        }
+        return null;
     }
 
     // 安全的 hashCode / equals（只使用 name）

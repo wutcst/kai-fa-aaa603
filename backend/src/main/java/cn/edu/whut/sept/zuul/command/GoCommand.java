@@ -91,7 +91,7 @@ public class GoCommand implements Command {
         String desc = "恐怖的" + base + "——最终挑战";
         int hp = 100 + rnd.nextInt(51);   // 100-150
         int attack = 15 + rnd.nextInt(11); // 15-25
-        Monster m = new Monster(mname, desc, hp, attack);
+        Monster m = new Monster(mname, desc, hp, attack, Monster.TYPE_BOSS);
         room.addMonster(m);
     }
 
@@ -108,7 +108,7 @@ public class GoCommand implements Command {
             String desc = "强大的" + base;
             int hp = 35 + rnd.nextInt(26);    // 35-60
             int attack = 8 + rnd.nextInt(8);   // 8-15
-            Monster m = new Monster(mname, desc, hp, attack);
+            Monster m = new Monster(mname, desc, hp, attack, Monster.TYPE_ELITE);
             room.addMonster(m);
         }
     }
@@ -126,7 +126,7 @@ public class GoCommand implements Command {
             String desc = "一个可怕的" + base;
             int hp = 8 + rnd.nextInt(23);   // 8-30
             int attack = 1 + rnd.nextInt(8); // 1-8
-            Monster m = new Monster(mname, desc, hp, attack);
+            Monster m = new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL);
             room.addMonster(m);
         }
     }

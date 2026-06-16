@@ -6,7 +6,6 @@ import cn.edu.whut.sept.zuul.model.Magic;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
-import cn.edu.whut.sept.zuul.model.RoomType;
 
 /**
  * 月光波命令：长按 H 蓄力2秒后释放，消耗30魔力
@@ -67,15 +66,18 @@ public class WaveCommand implements Command {
             current.removeMonster(m);
             sb.append("\n你击败了 ").append(m.getName()).append("！");
 
-            // 根据房间类型给予货币奖励
-            RoomType roomType = current.getRoomType();
+            // 根据怪物类型给予货币奖励
             int reward = 0;
-            if (roomType == RoomType.NORMAL_MONSTER) {
-                reward = 15;
-            } else if (roomType == RoomType.ELITE_MONSTER) {
-                reward = 35;
-            } else if (roomType == RoomType.BOSS) {
-                reward = 100;
+            switch (m.getType()) {
+                case Monster.TYPE_NORMAL:
+                    reward = 15;
+                    break;
+                case Monster.TYPE_ELITE:
+                    reward = 35;
+                    break;
+                case Monster.TYPE_BOSS:
+                    reward = 100;
+                    break;
             }
             if (reward > 0 && player.getMoney() != null) {
                 player.getMoney().add(reward);

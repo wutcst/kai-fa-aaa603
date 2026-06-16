@@ -63,8 +63,14 @@ public class WaveCommand implements Command {
         sb.append("月光波命中了 ").append(m.getName()).append("，造成 ").append(magicDmg).append(" 点法术伤害。");
 
         if (!m.isAlive()) {
-            current.removeMonster(m);
-            sb.append("\n你击败了 ").append(m.getName()).append("！");
+            // 火焰史莱姆：进入自爆倒计时，不立即移除
+            if (Monster.SPECIAL_FLAME_SLIME.equals(m.getSpecialType())) {
+                m.startExploding();
+                sb.append("\n你击败了 ").append(m.getName()).append("！但它即将自爆，快远离！");
+            } else {
+                current.removeMonster(m);
+                sb.append("\n你击败了 ").append(m.getName()).append("！");
+            }
 
             // 根据怪物类型给予货币奖励
             int reward = 0;

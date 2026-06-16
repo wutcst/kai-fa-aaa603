@@ -34,6 +34,11 @@ public class AttackCommand implements Command {
             return GameResponse.error("这里没有叫 '" + targetName + "' 的怪物。");
         }
 
+        // 爆炸倒计时中的怪物不可被攻击
+        if (m.isExploding()) {
+            return GameResponse.error(m.getName() + " 正在自爆倒计时中，无法被攻击。");
+        }
+
         // 玩家攻击（使用状态修正后的攻击力）
         int dmg = Math.max(1, player.getEffectiveAttack());
         m.takeDamage(dmg);
@@ -41,10 +46,16 @@ public class AttackCommand implements Command {
         sb.append("你对 ").append(m.getName()).append(" 造成了 ").append(dmg).append(" 点伤害。\n");
 
         if (!m.isAlive()) {
-            current.removeMonster(m);
-            sb.append("你击败了 ").append(m.getName()).append("！");
+            // 火焰史莱姆：进入自爆倒计时，不立即移除
+            if (Monster.SPECIAL_FLAME_SLIME.equals(m.getSpecialType())) {
+                m.startExploding();
+                sb.append("你击败了 ").append(m.getName()).append("！但它即将自爆，快远离！");
+            } else {
+                current.removeMonster(m);
+                sb.append("你击败了 ").append(m.getName()).append("！");
+            }
 
-            // 根据怪物类型给予货币奖励
+            // 根据怪物类型给予货币奖励（火焰史莱姆也开始爆炸时立即发放）
             int reward = 0;
             switch (m.getType()) {
                 case Monster.TYPE_NORMAL:

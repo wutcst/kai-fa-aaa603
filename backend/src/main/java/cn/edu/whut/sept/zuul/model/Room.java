@@ -247,13 +247,22 @@ public class Room {
     private void spawnNormalMonsters(Random rnd) {
         String[] monsterNames = new String[]{"哥布林", "史莱姆", "骷髅", "狼人", "食人魔"};
         int count = 1 + rnd.nextInt(2); // 1-2 个怪物
+        // 约 25% 概率将其中一个普通怪物替换为火焰史莱姆
+        boolean flameSlimeSpawned = false;
         for (int i = 0; i < count; i++) {
-            String base = monsterNames[rnd.nextInt(monsterNames.length)];
-            String mname = base + "#" + (rnd.nextInt(9000) + 1000);
-            String desc = "一个可怕的" + base;
-            int hp = 80 + rnd.nextInt(21);   // 80-100
-            int attack = 15 + rnd.nextInt(4); // 15-18
-            addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
+            // 如果还没生成火焰史莱姆且为最后一个怪物或随机命中，生成火焰史莱姆
+            if (!flameSlimeSpawned && rnd.nextInt(4) == 0) {
+                String suffix = String.valueOf(rnd.nextInt(9000) + 1000);
+                addMonster(Monster.createFlameSlime(suffix));
+                flameSlimeSpawned = true;
+            } else {
+                String base = monsterNames[rnd.nextInt(monsterNames.length)];
+                String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+                String desc = "一个可怕的" + base;
+                int hp = 80 + rnd.nextInt(21);   // 80-100
+                int attack = 15 + rnd.nextInt(4); // 15-18
+                addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
+            }
         }
     }
 

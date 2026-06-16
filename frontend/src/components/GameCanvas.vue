@@ -20,6 +20,112 @@
         z-index: 10;
       "
     ></canvas>
+
+    <!-- ==================== 背包 UI 覆盖层 ==================== -->
+    <div v-if="backpackVisible" class="backpack-overlay" @click.self="closeBackpack">
+      <div class="backpack-panel">
+        <!-- 标题栏 -->
+        <div class="backpack-header">
+          <span class="backpack-title">🎒 背包</span>
+          <span class="backpack-close" @click="closeBackpack">✕</span>
+        </div>
+
+        <div class="backpack-body">
+          <!-- 左侧：5x3 物品格子 -->
+          <div class="backpack-left">
+            <div
+                v-for="i in 15"
+                :key="'slot-' + i"
+                class="backpack-slot"
+                :class="{
+                'has-item': getSlotItem(i - 1),
+                'slot-selected': selectedSlot === (i - 1),
+                'slot-hovered': hoveredSlot === (i - 1)
+              }"
+                @click="selectSlot(i - 1)"
+                @mouseenter="hoveredSlot = (i - 1)"
+                @mouseleave="hoveredSlot = null"
+            >
+              <!-- 物品简略图标 -->
+              <!-- 生命浆果：三个红色重叠圆点 -->
+              <div v-if="getSlotItem(i - 1) && getSlotItem(i - 1).rarity === 'lifeBerry'" class="slot-icon slot-icon-lifeberry">
+                <span class="berry-dot" style="left:10px;top:14px;"></span>
+                <span class="berry-dot" style="left:20px;top:10px;"></span>
+                <span class="berry-dot" style="left:28px;top:18px;"></span>
+              </div>
+              <!-- 魔力浆果：三个蓝色重叠椭圆 -->
+              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).rarity === 'manaBerry'" class="slot-icon slot-icon-manaberry">
+                <span class="mana-ellipse" style="left:10px;top:16px;"></span>
+                <span class="mana-ellipse" style="left:18px;top:10px;"></span>
+                <span class="mana-ellipse" style="left:26px;top:18px;"></span>
+              </div>
+              <!-- 其他物品：显示名称首字母 -->
+              <div v-else-if="getSlotItem(i - 1)" class="slot-icon">
+                {{ getSlotItem(i - 1).name.charAt(0) }}
+              </div>
+              <!-- 物品数量角标 -->
+              <span v-if="getSlotItem(i - 1)" class="slot-qty">x{{ getSlotItem(i - 1).quantity }}</span>
+            </div>
+          </div>
+
+          <!-- 右侧：物品详情 -->
+          <div class="backpack-right">
+            <!-- 上方大图像框 -->
+            <div class="detail-image-frame">
+              <span v-if="!selectedItem" class="placeholder-text">选择物品查看详情</span>
+              <div v-else class="detail-image-placeholder">
+                {{ selectedItem.name.charAt(0) }}
+              </div>
+            </div>
+
+            <!-- 下方物品信息 -->
+            <div class="detail-info">
+              <template v-if="selectedItem">
+                <!-- 第一行：名称 + 编号 + 数量 -->
+                <div class="detail-row1">
+                  <span class="detail-name" :style="{ color: rarityColor(selectedItem.rarity) }">
+                    {{ selectedItem.name }}
+                  </span>
+                  <span class="detail-id" :style="{ color: rarityColor(selectedItem.rarity) }">
+                    NO.{{ String(selectedItem.itemId).padStart(2, '0') }}
+                  </span>
+                  <span class="detail-qty" :style="{ color: rarityColor(selectedItem.rarity) }">
+                    拥有：{{ selectedItem.quantity }}
+                  </span>
+                </div>
+                <!-- 功能描述 -->
+                <div class="detail-func">
+                  {{ selectedItem.functionDesc }}
+                </div>
+                <!-- 空行间距 -->
+                <div class="detail-spacer"></div>
+                <!-- 背景描述（斜体） -->
+                <div class="detail-lore">
+                  "{{ selectedItem.loreDesc }}"
+                </div>
+              </template>
+              <template v-else>
+                <div class="detail-empty">← 点击左侧物品查看详情</div>
+              </template>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="detail-buttons">
+              <button
+                  class="btn-use"
+                  :disabled="!selectedItem"
+                  @click="useItem"
+              >使用</button>
+              <button
+                  class="btn-discard"
+                  :disabled="!selectedItem"
+                  @click="discardItem"
+              >丢弃</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -31,6 +137,152 @@ const emit = defineEmits(['update'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
+
+// ==================== 背包 UI 响应式状态 ====================
+const backpackVisible = ref(false)
+const selectedSlot = ref(null)      // 选中的格子索引 (0-14)
+const hoveredSlot = ref(null)       // 鼠标悬停的格子索引
+const backpackItems = ref([])       // 背包物品列表 [{itemId, name, rarity, functionDesc, loreDesc, quantity, ...}]
+
+// 稀有度对应颜色
+function rarityColor(rarity) {
+  switch (rarity) {
+    case 'legendary': return '#FF6600'
+    case 'epic': return '#CC44FF'
+    case 'rare': return '#4488FF'
+    case 'lifeBerry': return '#44cc44' // 生命浆果 → 绿色
+    case 'manaBerry': return '#4488ff' // 魔力浆果 → 蓝色
+    default: return '#FFD700' // common -> 金色
+  }
+}
+
+// 获取某个格子对应的物品
+function getSlotItem(slotIndex) {
+  return slotIndex < backpackItems.value.length ? backpackItems.value[slotIndex] : null
+}
+
+// 当前选中的物品
+const selectedItem = ref(null)
+
+// 选中格子
+function selectSlot(slotIndex) {
+  const item = getSlotItem(slotIndex)
+  if (item) {
+    selectedSlot.value = slotIndex
+    selectedItem.value = item
+  } else {
+    selectedSlot.value = null
+    selectedItem.value = null
+  }
+}
+
+// 从后端刷新背包数据
+async function refreshBackpack() {
+  try {
+    const res = await fetch('/api/backpack')
+    const j = await res.json()
+    console.log('[Backpack] API full response:', JSON.stringify(j, null, 2))
+    if (j && j.data && j.data.backpack) {
+      backpackItems.value = j.data.backpack
+      console.log('[Backpack] items loaded:', backpackItems.value.length,
+        backpackItems.value.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
+    } else {
+      console.warn('[Backpack] No backpack data in response. data keys:', j.data ? Object.keys(j.data) : 'null')
+    }
+  } catch (e) {
+    console.warn('[Backpack] 无法获取背包数据', e)
+  }
+}
+
+// 使用物品
+async function useItem() {
+  if (!selectedItem.value) return
+  try {
+    const res = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'bag use ' + selectedItem.value.name })
+    })
+    const j = await res.json()
+    emit('update', j)
+    if (j && j.data) {
+      if (j.data.backpack) backpackItems.value = j.data.backpack
+      // 通知游戏场景更新渲染
+      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
+    }
+    // 重置选择
+    if (selectedItem.value) {
+      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
+      if (!stillExists) {
+        selectedSlot.value = null
+        selectedItem.value = null
+      } else {
+        const idx = backpackItems.value.indexOf(stillExists)
+        selectedSlot.value = idx
+        selectedItem.value = stillExists
+      }
+    }
+  } catch (e) {
+    console.warn('使用物品失败', e)
+  }
+}
+
+// 丢弃物品
+async function discardItem() {
+  if (!selectedItem.value) return
+  if (!confirm('确定要丢弃全部 "' + selectedItem.value.name + '" 吗？')) return
+  try {
+    const res = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'bag discard ' + selectedItem.value.name })
+    })
+    const j = await res.json()
+    emit('update', j)
+    if (j && j.data) {
+      if (j.data.backpack) backpackItems.value = j.data.backpack
+      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
+    }
+    selectedSlot.value = null
+    selectedItem.value = null
+  } catch (e) {
+    console.warn('丢弃物品失败', e)
+  }
+}
+
+// 关闭背包（同时通知 Phaser 恢复游戏）
+function closeBackpack() {
+  backpackVisible.value = false
+  window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: false } }))
+}
+
+// B 键切换背包（全局监听）
+function onKeyDown(e) {
+  if (e.key === 'b' || e.key === 'B') {
+    // 避免在输入框中误触发
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+    e.preventDefault()
+    backpackVisible.value = !backpackVisible.value
+    if (backpackVisible.value) {
+      refreshBackpack()
+      selectedSlot.value = null
+      selectedItem.value = null
+    }
+    // 通知 Phaser 场景暂停/恢复
+    window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: backpackVisible.value } }))
+  }
+  // 背包打开时阻止 Esc 之外的其他按键进入游戏
+  if (backpackVisible.value) {
+    if (e.key === 'Escape') {
+      closeBackpack()
+    }
+    // 阻止所有游戏按键传递
+    if (['w','W','a','A','s','S','d','D','j','J',' ', 'h','H','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+    }
+  }
+}
 
 // ---------- 小地图状态 ----------
 let mapLayout = null          // { rooms, roomMap, coords }
@@ -1292,6 +1544,30 @@ onMounted(() => {
         // monster AI state: cooldown tracking (ms timestamp per monster name)
         scene.monsterAttackCooldowns = {}  // { monName: lastAttackTime }
 
+        // 背包暂停状态
+        scene._backpackPaused = false
+        window.addEventListener('backpack:toggle', function(e) {
+          scene._backpackPaused = e.detail.visible
+        })
+
+        // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条
+        window.__zuul_game_update_handler = function(e) {
+          const j = e.detail
+          if (j && j.data) {
+            const hp = j.data.playerHp !== undefined ? j.data.playerHp : scene.playerStats.hp
+            const maxHp = j.data.playerMaxHp !== undefined ? j.data.playerMaxHp : scene.playerStats.maxHp
+            const mp = j.data.playerMp !== undefined ? j.data.playerMp : scene.playerStats.mp
+            const maxMp = j.data.playerMaxMp !== undefined ? j.data.playerMaxMp : scene.playerStats.maxMp
+            const money = j.data.playerMoney !== undefined ? j.data.playerMoney : scene.playerStats.money
+            try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
+          }
+          // 如果背包未打开且响应包含房间数据，正常渲染房间
+          if (!scene._backpackPaused && j && j.data && j.data.name) {
+            try { scene.renderRoom(j.data) } catch (e) {}
+          }
+        }
+        window.addEventListener('game:update', window.__zuul_game_update_handler)
+
         // update 循环
         this.sys.events.on('update', function (time, delta) {
           const dt = delta / 1000
@@ -1299,6 +1575,9 @@ onMounted(() => {
 
           // block all movement and actions when game is over
           if (scene.gameOver) return
+
+          // block all movement and actions when backpack is open
+          if (scene._backpackPaused) return
 
           // ---------- H 键月光波蓄力系统 ----------
           const CHARGE_DURATION = 2000  // 2 seconds to full charge
@@ -1993,6 +2272,9 @@ onMounted(() => {
   // 初始化小地图并监听更新事件
   initMinimap()
   window.addEventListener('minimap:update', onMinimapUpdate)
+
+  // 注册 B 键背包全局监听
+  window.addEventListener('keydown', onKeyDown, true)
 })
 
 onBeforeUnmount(() => {
@@ -2001,6 +2283,7 @@ onBeforeUnmount(() => {
     game = null
   }
   window.removeEventListener('minimap:update', onMinimapUpdate)
+  window.removeEventListener('keydown', onKeyDown, true)
   // 清理其他全局事件
   try {
     if (window.__zuul_key_handler) {
@@ -2018,5 +2301,311 @@ onBeforeUnmount(() => {
 <style scoped>
 .minimap {
   /* 可根据需要微调样式 */
+}
+
+/* ==================== 背包 UI 样式 ==================== */
+.backpack-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 800px;
+  height: 600px;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.backpack-panel {
+  width: 720px;
+  height: 480px;
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  border: 2px solid #4a6fa5;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 0 40px rgba(0, 100, 200, 0.3), inset 0 0 20px rgba(0, 100, 200, 0.1);
+}
+
+.backpack-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #4a6fa5;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 12px 12px 0 0;
+}
+
+.backpack-title {
+  font-size: 22px;
+  font-weight: bold;
+  color: #FFD700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.backpack-close {
+  font-size: 22px;
+  color: #ff6666;
+  cursor: pointer;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+.backpack-close:hover {
+  background: rgba(255, 100, 100, 0.3);
+}
+
+.backpack-body {
+  display: flex;
+  flex: 1;
+  padding: 16px;
+  gap: 16px;
+  overflow: hidden;
+}
+
+.backpack-left {
+  display: grid;
+  grid-template-columns: repeat(5, 72px);
+  grid-template-rows: repeat(3, 72px);
+  gap: 8px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid #3a5a8c;
+  border-radius: 8px;
+}
+
+.backpack-slot {
+  width: 72px;
+  height: 72px;
+  background: rgba(30, 40, 60, 0.8);
+  border: 2px solid #3a5a8c;
+  border-radius: 6px;
+  position: relative;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backpack-slot.has-item {
+  background: rgba(40, 55, 80, 0.9);
+  border-color: #5a7aac;
+}
+
+.backpack-slot.slot-hovered.has-item {
+  transform: scale(1.12);
+  border-color: #88aadd;
+  box-shadow: 0 0 12px rgba(100, 150, 255, 0.4);
+  z-index: 2;
+}
+
+.backpack-slot.slot-selected {
+  border-color: #ffffff;
+  border-width: 3px;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
+}
+
+.slot-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 215, 0, 0.15);
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  font-weight: bold;
+  color: #FFD700;
+  position: relative;
+  overflow: visible;
+}
+
+/* 生命浆果图标：三个红色重叠圆点 */
+.slot-icon-lifeberry {
+  background: rgba(68, 204, 68, 0.12);
+  border-color: rgba(68, 204, 68, 0.25);
+}
+
+.berry-dot {
+  display: block;
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ff4444, #cc0000);
+  box-shadow: 0 0 4px rgba(255, 50, 50, 0.6);
+}
+
+/* 魔力浆果图标：三个蓝色重叠椭圆 */
+.slot-icon-manaberry {
+  background: rgba(68, 136, 255, 0.12);
+  border-color: rgba(68, 136, 255, 0.25);
+}
+
+.mana-ellipse {
+  display: block;
+  position: absolute;
+  width: 18px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 35% 35%, #66aaff, #2255cc);
+  box-shadow: 0 0 5px rgba(80, 140, 255, 0.6);
+  transform: rotate(-30deg);
+}
+
+.slot-qty {
+  position: absolute;
+  bottom: 3px;
+  right: 5px;
+  font-size: 11px;
+  color: #FFD700;
+  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+  font-weight: bold;
+}
+
+.backpack-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-image-frame {
+  height: 180px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid #3a5a8c;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.placeholder-text {
+  color: #667799;
+  font-size: 16px;
+  font-style: italic;
+}
+
+.detail-image-placeholder {
+  width: 120px;
+  height: 120px;
+  background: rgba(255, 215, 0, 0.08);
+  border: 2px solid rgba(255, 215, 0, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  font-weight: bold;
+  color: #FFD700;
+  text-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
+}
+
+.detail-info {
+  flex: 1;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid #3a5a8c;
+  border-radius: 8px;
+  overflow-y: auto;
+}
+
+.detail-row1 {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+
+.detail-name {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.detail-id {
+  font-size: 13px;
+}
+
+.detail-qty {
+  font-size: 13px;
+}
+
+.detail-func {
+  font-size: 14px;
+  color: #ccddff;
+  line-height: 1.5;
+  margin-bottom: 4px;
+}
+
+.detail-spacer {
+  height: 16px;
+}
+
+.detail-lore {
+  font-size: 13px;
+  color: #99aacc;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.detail-empty {
+  color: #667799;
+  font-size: 14px;
+  font-style: italic;
+  text-align: center;
+  padding-top: 20px;
+}
+
+.detail-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.btn-use {
+  padding: 8px 28px;
+  font-size: 16px;
+  font-weight: bold;
+  background: linear-gradient(180deg, #33cc44 0%, #228833 100%);
+  color: #ffffff;
+  border: 1px solid #2aa033;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.btn-use:hover:not(:disabled) {
+  background: linear-gradient(180deg, #44dd55 0%, #33aa44 100%);
+  box-shadow: 0 0 12px rgba(50, 200, 60, 0.5);
+}
+.btn-use:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-discard {
+  padding: 8px 28px;
+  font-size: 16px;
+  font-weight: bold;
+  background: linear-gradient(180deg, #dd3333 0%, #991111 100%);
+  color: #ffffff;
+  border: 1px solid #bb2222;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.btn-discard:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ee4444 0%, #aa2222 100%);
+  box-shadow: 0 0 12px rgba(220, 40, 40, 0.5);
+}
+.btn-discard:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>

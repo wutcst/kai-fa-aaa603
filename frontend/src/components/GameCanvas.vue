@@ -709,6 +709,14 @@ onMounted(() => {
           font: 'bold 12px Arial', fill: '#ffffff'
         }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
 
+        // ---------- Buff/Debuff 显示状态初始化 ----------
+        scene._activeEffects = []          // 后端传来的活跃状态列表
+        scene._burnFlameGfx = null         // 火焰 Graphics 对象
+        scene._burnLayersText = null       // 层数文字
+        scene._burnTimerText = null        // 倒计时文字
+        scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
+        scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
+
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
         scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -759,6 +767,167 @@ onMounted(() => {
             scene.playerStats = { hp, maxHp, mp, maxMp, money }
           } else {
             scene.playerStats = { hp, maxHp, mp, maxMp }
+          }
+        }
+
+        // ---------- 烧伤火焰显示区域（魔力条下方 到 房间方框上缘 之间） ----------
+        // buff 栏区域：mpY + barH + 4 ~ roomTop（由 renderRoom 更新 roomTop）
+
+        /**
+         * 绘制一朵动态火焰与层数标注。
+         * 火焰使用多层不规则多边形模拟，颜色从橙黄到红，有闪烁动画。
+         * @param {Phaser.Scene} scene
+         * @param {number} cx      火焰中心X
+         * @param {number} cy      火焰中心Y（底部基点）
+         * @param {number} size    火焰大小系数
+         * @param {number} layers  烧伤层数
+         * @param {number} timerSec 距下次结算秒数
+         */
+        scene.drawBurnFlame = function (cx, cy, size, layers, timerSec) {
+          // 清理旧的火焰
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+
+          if (layers <= 0) return  // 无烧伤则不绘制
+
+          const gfx = scene.add.graphics().setDepth(120)
+          scene._burnFlameGfx = gfx
+
+          const baseY = cy
+          const flameH = 28 + size * 10
+          const flameW = 14 + size * 5
+
+          // 火焰主体：三层从内到外的渐变填充
+          // 内层（白色/亮黄）
+          gfx.fillStyle(0xFFFF88, 0.85)
+          gfx.fillTriangle(
+            cx, baseY - flameH * 0.85,
+            cx - flameW * 0.15, baseY - flameH * 0.20,
+            cx + flameW * 0.15, baseY - flameH * 0.20
+          )
+          gfx.fillTriangle(
+            cx, baseY - flameH * 0.55,
+            cx - flameW * 0.22, baseY - flameH * 0.05,
+            cx + flameW * 0.22, baseY - flameH * 0.05
+          )
+
+          // 中层（橙色）
+          gfx.fillStyle(0xFF8800, 0.75)
+          gfx.fillTriangle(
+            cx, baseY - flameH * 0.95,
+            cx - flameW * 0.32, baseY,
+            cx + flameW * 0.32, baseY
+          )
+          gfx.fillTriangle(
+            cx, baseY - flameH * 0.65,
+            cx - flameW * 0.38, baseY + 2,
+            cx + flameW * 0.38, baseY + 2
+          )
+
+          // 外层（红色）
+          gfx.fillStyle(0xFF3300, 0.55)
+          gfx.fillTriangle(
+            cx, baseY - flameH * 1.05,
+            cx - flameW * 0.55, baseY + 4,
+            cx + flameW * 0.55, baseY + 4
+          )
+          gfx.fillTriangle(
+            cx, baseY - flameH * 0.45,
+            cx - flameW * 0.6, baseY + 6,
+            cx + flameW * 0.6, baseY + 6
+          )
+
+          // 外焰光晕
+          gfx.fillStyle(0xFF6600, 0.2)
+          gfx.fillEllipse(cx, baseY - flameH * 0.5, flameW * 1.3, flameH * 1.1)
+
+          // 火星粒子点缀
+          const rng = () => (Math.sin(Date.now() * 0.003 + cx) * 0.5 + 0.5)  // 伪随机用于静态点缀
+          for (let i = 0; i < 5; i++) {
+            const px = cx - flameW * 0.4 + (i / 4) * flameW * 0.8 + (Math.sin(i * 2.3 + cx * 0.7) * flameW * 0.15)
+            const py = baseY - flameH * 0.1 - (i % 3) * flameH * 0.25 - Math.random() * flameH * 0.15
+            gfx.fillStyle(0xFFDD44, 0.5 + Math.random() * 0.3)
+            gfx.fillCircle(px, py, 1.2 + Math.random() * 1.5)
+          }
+
+          // 层数标注（火焰右下角）
+          const layersText = scene.add.text(cx + flameW * 0.8, baseY + 2, String(layers), {
+            font: 'bold 14px Arial',
+            fill: '#FF6644',
+            stroke: '#000000',
+            strokeThickness: 3
+          }).setDepth(121).setOrigin(0, 0.5)
+          scene._burnLayersText = layersText
+
+          // 倒计时标注（火焰下方）
+          const timerText = scene.add.text(cx, baseY + 8, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#FFAA66',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._burnTimerText = timerText
+        }
+
+        /**
+         * 根据后端 activeEffects 数据更新 buff 显示。
+         * 位置：HP/MP 条下方，房间方框上缘之间的空隙。
+         * @param {Array} activeEffects  后端传来的活跃状态列表
+         */
+        scene.updateBuffDisplay = function (activeEffects) {
+          scene._activeEffects = activeEffects || []
+
+          // 获取房间边界上缘（用于计算 buff 栏下边界）
+          const rb = scene._roomBounds
+          const roomTop = rb ? rb.top : 100   // 默认100（通常约75+）
+
+          // buff 栏位置参数
+          const barDepth = 100
+          const mpY = 39          // MP 条 Y（与 create 中一致）
+          const barH = 18          // MP 条高度
+          const barX = 570
+          const barW = 210
+
+          // buff 栏范围：mpY + barH + 4 到 roomTop - 4
+          const buffTop = mpY + barH + 10   // MP条下缘 + 间距
+          const buffBottom = roomTop - 4
+          const buffLeft = barX - 30         // HP/MP label 左边缘
+          const buffRight = barX + barW       // HP/MP 条右边缘
+          const buffMidX = (buffLeft + buffRight) / 2
+          const buffMidY = (buffTop + buffBottom) / 2
+
+          // 查找烧伤状态
+          let burnEffect = null
+          for (const eff of scene._activeEffects) {
+            if (eff && eff.type === 'BURN') {
+              burnEffect = eff
+              break
+            }
+          }
+
+          if (burnEffect && burnEffect.layers > 0) {
+            const layers = burnEffect.layers || 0
+            const nextTickIn = burnEffect.nextTickIn || 3000
+
+            // 记录用于实时倒计时
+            scene._burnLastTickMs = Date.now()
+            scene._burnNextTickMs = nextTickIn
+
+            const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
+            const timerSec = nextTickIn / 1000
+
+            // 火焰置于 buff 栏中央偏左
+            const flameCX = buffMidX - 40
+            const flameCY = buffMidY + 6
+
+            scene.drawBurnFlame(flameCX, flameCY, flameSize, layers, timerSec)
+          } else {
+            // 无烧伤：清理火焰显示
+            if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+            if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+            if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+            scene._burnNextTickMs = 0
           }
         }
 
@@ -929,6 +1098,9 @@ onMounted(() => {
           })
 
           scene._roomBounds = { left: rectLeft, top: rectTop, right: rectLeft + roomW, bottom: rectTop + roomH }
+
+          // 更新 Buff/Debuff 显示（基于后端 activeEffects）
+          try { scene.updateBuffDisplay(roomInfo.activeEffects) } catch (e) {}
 
           const opposite = { north: 'south', south: 'north', east: 'west', west: 'east' }
           if (scene._lastMoveDir) {
@@ -1560,6 +1732,10 @@ onMounted(() => {
             const maxMp = j.data.playerMaxMp !== undefined ? j.data.playerMaxMp : scene.playerStats.maxMp
             const money = j.data.playerMoney !== undefined ? j.data.playerMoney : scene.playerStats.money
             try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
+            // 更新 Buff/Debuff 显示
+            if (j.data.activeEffects) {
+              try { scene.updateBuffDisplay(j.data.activeEffects) } catch (e) {}
+            }
           }
           // 如果背包未打开且响应包含房间数据，正常渲染房间
           if (!scene._backpackPaused && j && j.data && j.data.name) {
@@ -1578,6 +1754,33 @@ onMounted(() => {
 
           // block all movement and actions when backpack is open
           if (scene._backpackPaused) return
+
+          // ---------- 烧伤倒计时实时更新 ----------
+          if (scene._burnNextTickMs > 0) {
+            const nowBurn = Date.now()
+            const elapsed = nowBurn - scene._burnLastTickMs
+            const remaining = Math.max(0, scene._burnNextTickMs - elapsed)
+            scene._burnNextTickMs = remaining
+            scene._burnLastTickMs = nowBurn
+            // 更新倒计时文字
+            if (scene._burnTimerText && scene._burnTimerText.active) {
+              const timerSec = remaining / 1000
+              scene._burnTimerText.setText(Math.ceil(timerSec) + 's')
+              // 小于3秒时变红色闪烁
+              if (timerSec < 3) {
+                const flash = Math.sin(nowBurn * 0.01) * 0.3 + 0.7
+                scene._burnTimerText.setAlpha(flash)
+                scene._burnTimerText.setColor('#FF4444')
+              } else {
+                scene._burnTimerText.setAlpha(1)
+                scene._burnTimerText.setColor('#FFAA66')
+              }
+            }
+            if (remaining <= 0) {
+              // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
+              scene._burnNextTickMs = 0
+            }
+          }
 
           // ---------- H 键月光波蓄力系统 ----------
           const CHARGE_DURATION = 2000  // 2 seconds to full charge

@@ -119,6 +119,9 @@ public class Game {
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
+        if (player.getMoney() != null) {
+            player.getMoney().reset();
+        }
     }
     /**
      * 返回全地图数据，供前端小地图使用

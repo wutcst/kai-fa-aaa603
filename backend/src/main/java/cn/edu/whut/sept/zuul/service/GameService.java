@@ -34,6 +34,9 @@ public class GameService {
             data.put("playerMaxHp", player.getMaxHp());
             data.put("playerMp", player.getMp());
             data.put("playerMaxMp", player.getMaxMp());
+            if (player.getMoney() != null) {
+                data.put("playerMoney", player.getMoney().getAmount());
+            }
         }
     }
 

@@ -26,5 +26,6 @@ public class Monster {
     public void takeDamage(int dmg) {
         this.hp = Math.max(0, this.hp - dmg);
     }
+
 }
 

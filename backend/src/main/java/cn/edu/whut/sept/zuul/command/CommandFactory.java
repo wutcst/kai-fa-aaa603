@@ -26,6 +26,8 @@ public class CommandFactory {
             case "items" -> new ItemsCommand(game);
             case "eat" -> new EatCookieCommand(game);
             case "interact" -> new InteractCommand(game);
+            case "shop" -> new ShopCommand(game);
+            case "wave" -> new WaveCommand(game);
             default -> null;
         };
     }

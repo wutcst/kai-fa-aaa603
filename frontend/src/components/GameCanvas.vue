@@ -986,7 +986,7 @@ onMounted(() => {
             if (!scene.monstersData) scene.monstersData = []
             scene.monstersGroup.add(circ)
             scene.monstersGroup.add(label)
-            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp })
+            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp, type: mon.type })
             mi++
           })
 
@@ -1781,8 +1781,9 @@ onMounted(() => {
                   }
                 })()
               }
-            } else if (dist <= MONSTER_DETECT_RANGE) {
+            } else if (dist <= MONSTER_DETECT_RANGE || mon.type === 2) {
               // 在索敌范围内 → 向玩家移动
+              // Boss（type===2）不受距离限制，全图索敌
               const norm = Math.max(1, dist)
               const mvx = (dx / norm) * MONSTER_SPEED * dt
               const mvy = (dy / norm) * MONSTER_SPEED * dt

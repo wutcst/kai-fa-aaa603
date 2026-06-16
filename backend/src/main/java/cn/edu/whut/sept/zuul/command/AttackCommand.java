@@ -5,10 +5,12 @@ import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
-import cn.edu.whut.sept.zuul.model.RoomType;
 
 /**
  * 攻击命令：attack <monsterName>
+ * 玩家主动攻击指定的怪物。
+ * 注意：怪物反击是独立的，由前端的怪物AI通过 MonsterAttackCommand 触发，
+ * 与玩家是否攻击无关。因此本命令仅处理玩家对怪物的伤害，不附带怪物反击。
  */
 public class AttackCommand implements Command {
     private Game game;
@@ -32,7 +34,7 @@ public class AttackCommand implements Command {
             return GameResponse.error("这里没有叫 '" + targetName + "' 的怪物。");
         }
 
-        // 玩家先手
+        // 玩家攻击
         int dmg = Math.max(1, player.getAttack());
         m.takeDamage(dmg);
         StringBuilder sb = new StringBuilder();
@@ -42,15 +44,18 @@ public class AttackCommand implements Command {
             current.removeMonster(m);
             sb.append("你击败了 ").append(m.getName()).append("！");
 
-            // 根据房间类型给予货币奖励
-            RoomType roomType = current.getRoomType();
+            // 根据怪物类型给予货币奖励
             int reward = 0;
-            if (roomType == RoomType.NORMAL_MONSTER) {
-                reward = 15;
-            } else if (roomType == RoomType.ELITE_MONSTER) {
-                reward = 35;
-            } else if (roomType == RoomType.BOSS) {
-                reward = 100;
+            switch (m.getType()) {
+                case Monster.TYPE_NORMAL:
+                    reward = 15;
+                    break;
+                case Monster.TYPE_ELITE:
+                    reward = 35;
+                    break;
+                case Monster.TYPE_BOSS:
+                    reward = 100;
+                    break;
             }
             if (reward > 0 && player.getMoney() != null) {
                 player.getMoney().add(reward);
@@ -58,18 +63,6 @@ public class AttackCommand implements Command {
             }
 
             return GameResponse.success(sb.toString(), current.getFullInfo());
-        }
-
-        // 怪物反击 — 使用怪物的实际攻击力
-        int retaliate = m.getAttack();
-        player.takeDamage(retaliate);
-        sb.append(m.getName()).append(" 反击造成 ").append(retaliate).append(" 点伤害。\n");
-        sb.append("你当前生命：").append(player.getHp()).append("。\n");
-
-        if (!player.isAlive()) {
-            game.setGameOver(true);
-            sb.append("你被 ").append(m.getName()).append(" 击败，游戏结束。");
-            return GameResponse.error(sb.toString());
         }
 
         return GameResponse.success(sb.toString(), current.getFullInfo());
@@ -82,4 +75,3 @@ public class AttackCommand implements Command {
         }
     }
 }
-

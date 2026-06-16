@@ -7,51 +7,22 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 /**
- * 背包类：管理物品存储、负重计算、物品增删查改
+ * 背包类：管理物品存储、物品增删查改
  */
 @Getter
 @Setter
 public class Bag {
     private List<Item> inventory;
-    private double maxWeight;
 
     public Bag() {
         this.inventory = new ArrayList<>();
-        this.maxWeight = 10.0;
-    }
-
-    public Bag(double maxWeight) {
-        this.inventory = new ArrayList<>();
-        this.maxWeight = maxWeight;
     }
 
     /**
-     * 计算当前背包总重量
+     * 添加物品到背包（无重量限制）
      */
-    public double getTotalWeight() {
-        double total = 0;
-        for (Item item : inventory) {
-            total += item.getWeight();
-        }
-        return total;
-    }
-
-    /**
-     * 判断能否携带此物品（不超过最大负重）
-     */
-    public boolean canCarry(Item item) {
-        return getTotalWeight() + item.getWeight() <= maxWeight;
-    }
-
-    /**
-     * 添加物品到背包
-     */
-    public boolean addItem(Item item) {
-        if (canCarry(item)) {
-            inventory.add(item);
-            return true;
-        }
-        return false;
+    public void addItem(Item item) {
+        inventory.add(item);
     }
 
     /**
@@ -122,13 +93,6 @@ public class Bag {
             }
         }
         return count;
-    }
-
-    /**
-     * 增加最大负重
-     */
-    public void increaseMaxWeight(double amount) {
-        this.maxWeight += amount;
     }
 
     /**

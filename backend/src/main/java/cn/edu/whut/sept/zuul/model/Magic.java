@@ -56,7 +56,7 @@ public class Magic {
      * @return 魔法伤害值
      */
     public static int calcMagicDamage(Player player, Skill skill) {
-        return (int) (player.getMagicAttack() * skill.getDamageMultiplier());
+        return (int) (player.getEffectiveMagicAttack() * skill.getDamageMultiplier());
     }
 
     /**

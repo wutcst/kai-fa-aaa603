@@ -56,8 +56,9 @@ public class BagCommand implements Command {
             player.restoreMp(25);
             effectMsg.append("你恢复了 25 点魔力！");
         } else if (lowerName.contains("cookie") || lowerName.contains("饼干")) {
-            bag.increaseMaxWeight(5.0);
-            effectMsg.append("你的最大负重增加了 5.0 kg！");
+            player.setMaxHp(player.getMaxHp() + 10);
+            player.restoreHp(10);
+            effectMsg.append("你的最大生命值提升了 10 点！");
         } else if (lowerName.contains("berry") || lowerName.contains("浆果") || lowerName.contains("potion") || lowerName.contains("药水")) {
             player.restoreHp(20);
             player.restoreMp(30);

@@ -63,8 +63,8 @@ public class ShopCommand implements Command {
             // 标记售出
             shopItem.setSold(true);
 
-            // 创建物品并放入背包（无视重量）
-            Item item = new Item(itemName, shopItem.getPrice() / 10.0); // 重量设为价格的十分之一
+            // 创建物品并放入背包
+            Item item = new Item(itemName);
             item.setDescription("从商店购买的" + itemName);
             player.getBag().addItem(item);
 

@@ -16,7 +16,6 @@ public class InventoryItem {
     private String rarity;       // 稀有度（common/rare/epic/legendary）
     private String functionDesc; // 功能描述
     private String loreDesc;     // 背景描述
-    private double weight;       // 单件重量
     private int quantity;        // 拥有数量
 
     /**
@@ -26,7 +25,6 @@ public class InventoryItem {
         InventoryItem inv = new InventoryItem();
         inv.itemId = itemId;
         inv.name = item.getName();
-        inv.weight = item.getWeight();
         inv.quantity = quantity;
 
         // 根据物品名称推断稀有度和描述
@@ -41,7 +39,7 @@ public class InventoryItem {
             inv.loreDesc = "比较罕见的浆果，散发着浅浅的魔力波动。";
         } else if (lowerName.contains("cookie") || lowerName.contains("饼干")) {
             inv.rarity = "rare";
-            inv.functionDesc = "使用后，永久增加最大负重5kg。";
+            inv.functionDesc = "使用后，提升最大生命值10点。";
             inv.loreDesc = "散发着魔法光芒的饼干，据说吃了会变强壮......";
         } else if (lowerName.contains("potion") || lowerName.contains("药水")) {
             inv.rarity = "common";

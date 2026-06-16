@@ -37,12 +37,11 @@ public class MonsterAttackCommand implements Command {
             return GameResponse.error("怪物 '" + targetName + "' 已经死亡。");
         }
 
-        // 怪物主动攻击玩家 — 直接扣除生命值（无视玩家防御）
-        // 原因：怪物攻击绕过防御计算，确保对玩家造成实质威胁（防御已体现在玩家抗怪能力上）
+        // 怪物主动攻击玩家 — 走统一的受击流程（闪避判定 → 防御结算 → 伤害计数器记录）
         int dmg = m.getAttack();
-        player.setHp(Math.max(0, player.getHp() - dmg));
+        player.takeDamage(dmg);
         StringBuilder sb = new StringBuilder();
-        sb.append(m.getName()).append(" 对你造成了 ").append(dmg).append(" 点伤害（防御无效）。\n");
+        sb.append(m.getName()).append(" 对你造成了 ").append(dmg).append(" 点伤害。\n");
         sb.append("你当前生命：").append(player.getHp()).append("。\n");
 
         if (!player.isAlive()) {

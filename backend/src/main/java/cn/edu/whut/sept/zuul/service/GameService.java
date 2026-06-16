@@ -22,11 +22,22 @@ public class GameService {
     }
 
     /**
-     * 将玩家状态注入到响应数据 Map 中
+     * 将玩家状态注入到响应数据 Map 中。
+     * 同时驱动烧伤结算计时（tickBurn），确保无论前端以多高频率轮询，
+     * 烧伤每3秒都至少被结算一次。
      */
     private void injectPlayerStatus(Map<String, Object> data) {
         Player player = game.getPlayer();
         if (player != null) {
+            // ---- 驱动烧伤计时 ----
+            if (player.getStatusManager() != null) {
+                int burnDmg = player.getStatusManager().tickBurn();
+                if (burnDmg > 0) {
+                    data.put("burnDamage", burnDmg);
+                    data.put("burnLayers", player.getStatusManager().getBurnLayers());
+                }
+            }
+
             data.put("playerHp", player.getHp());
             data.put("playerMaxHp", player.getMaxHp());
             data.put("playerMp", player.getMp());
@@ -41,6 +52,17 @@ public class GameService {
                 System.out.println("  - " + it.getName() + " rarity=" + it.getRarity() + " qty=" + it.getQuantity());
             }
             data.put("backpack", bp);
+            // 注入活跃状态效果
+            if (player.getStatusManager() != null) {
+                data.put("activeEffects", player.getStatusManager().getActiveEffectsInfo());
+            }
+            // 注入修正后属性（供前端HUD显示）
+            data.put("effectiveAttack", player.getEffectiveAttack());
+            data.put("effectiveDefense", player.getEffectiveDefense());
+            data.put("effectiveMagicAttack", player.getEffectiveMagicAttack());
+            data.put("effectiveMagicResist", player.getEffectiveMagicResist());
+            data.put("effectiveSpeed", player.getEffectiveSpeed());
+            data.put("effectiveDodge", player.getEffectiveDodge());
         }
     }
 
@@ -66,7 +88,6 @@ public class GameService {
         return switch (commandWord.toLowerCase()) {
             case "go" -> new GoCommand(game);
             case "look" -> new LookCommand(game);
-            case "quit" -> new QuitCommand(game);
             case "attack" -> new AttackCommand(game);
             case "monsterattack" -> new MonsterAttackCommand(game);
             case "take" -> new TakeCommand(game);

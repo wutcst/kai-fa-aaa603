@@ -31,14 +31,11 @@ public class TakeCommand implements Command {
             return GameResponse.error("这里没有名为 '" + itemName + "' 的物品！");
         }
 
-        if (player.getBag().addItem(item)) {
-            currentRoom.removeItem(item);
-            // 返回当前房间完整信息作为 data，前端依赖 data 来渲染房间
-            return GameResponse.success("你拾取了 " + itemName + "。",
-                    currentRoom.getFullInfo());
-        } else {
-            return GameResponse.error("你无法携带 '" + itemName + "'！太重了！");
-        }
+        player.getBag().addItem(item);
+        currentRoom.removeItem(item);
+        // 返回当前房间完整信息作为 data，前端依赖 data 来渲染房间
+        return GameResponse.success("你拾取了 " + itemName + "。",
+                currentRoom.getFullInfo());
     }
 
     @Override

@@ -2,9 +2,13 @@ package cn.edu.whut.sept.zuul.model;
 
 import lombok.Getter;
 import lombok.Setter;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
- * 玩家类：管理玩家状态、战斗属性和货币
+ * 玩家类，管理基础属性、位置、背包和货币。
+ * 增益/减益状态委托给 {@link Status.StatusManager} 处理。
  */
 @Getter
 @Setter
@@ -13,92 +17,168 @@ public class Player {
     private Room currentRoom;
     private Bag bag;
     private Money money;
+    private Status.StatusManager statusManager;
 
-    // ---- 战斗属性 ----
-    private int hp;           // 当前生命值
-    private int mp;           // 当前魔力值
-    private int maxHp;        // 最大生命值
-    private int maxMp;        // 最大魔力值
-    private int attack;       // 物理攻击力
-    private int magicAttack;  // 魔法攻击力
-    private int defense;      // 物理防御力
-    private int magicResist;  // 魔法抗性（百分比，0-100，超过100按100计算）
-    private int speed;        // 移动速度
-    private int dodge;        // 闪避率（百分比，0-100）
+    // -- 基础战斗属性 --
+    private int hp;
+    private int mp;
+    private int maxHp;
+    private int maxMp;
+    private int attack;
+    private int magicAttack;
+    private int defense;
+    private int magicResist;   // 0-100，超出按100计
+    private int speed;
+    private int dodge;         // 0-100
+
+    // -- 伤害计数器 --
+    /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
+    private List<DamageRecord> damageRecords;
+
+    /**
+     * 伤害记录：记录单次受击的时间戳与经过防御/魔抗结算后的最终伤害量。
+     */
+    @Getter
+    public static class DamageRecord {
+        /** 受击时间戳（毫秒） */
+        private final long timestamp;
+        /** 经过防御/魔抗结算后的最终伤害量 */
+        private final int amount;
+
+        public DamageRecord(long timestamp, int amount) {
+            this.timestamp = timestamp;
+            this.amount = amount;
+        }
+    }
 
     public Player(String name, Room currentRoom) {
         this.name = name;
         this.currentRoom = currentRoom;
         this.bag = new Bag();
         this.money = new Money();
+        this.statusManager = new Status.StatusManager(this);
+        this.damageRecords = new ArrayList<>();
 
-        // 初始属性
-        this.hp = 100;
-        this.mp = 100;
-        this.maxHp = 100;
-        this.maxMp = 100;
-        this.attack = 20;
-        this.magicAttack = 15;
-        this.defense = 10;
-        this.magicResist = 0;
-        this.speed = 100;
-        this.dodge = 0;
+        hp = 100;
+        mp = 100;
+        maxHp = 100;
+        maxMp = 100;
+        attack = 20;
+        magicAttack = 15;
+        defense = 10;
+        magicResist = 0;
+        speed = 100;
+        dodge = 0;
+    }
+
+    // -- 伤害计数器方法 --
+
+    /**
+     * 记录一次受到的伤害。
+     * 应在防御/魔抗结算后调用，传入最终实际伤害量。
+     * 闪避成功时不应调用此方法。
+     * @param amount 经过防御/魔抗结算后的最终伤害量（可为0）
+     */
+    public void recordDamage(int amount) {
+        damageRecords.add(new DamageRecord(System.currentTimeMillis(), amount));
     }
 
     /**
-     * 受到物理伤害：最终伤害 = 原始伤害 - 物防（最低为0）
-     * 闪避判定优先：有 dodge% 概率完全免受此次伤害
+     * 查询最近 windowMs 毫秒内累计受到的总伤害量。
+     * @param windowMs 时间窗口（毫秒）
+     * @return 时间窗口内的累计伤害量
      */
+    public int getRecentDamage(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
+        int total = 0;
+        for (DamageRecord dr : damageRecords) {
+            if (dr.timestamp >= cutoff) {
+                total += dr.amount;
+            }
+        }
+        return total;
+    }
+
+    /**
+     * 查询最近 windowMs 毫秒内受到伤害的次数。
+     * 不包含闪避成功的攻击，但包含结算后伤害为0的攻击。
+     * @param windowMs 时间窗口（毫秒）
+     * @return 时间窗口内的受击次数
+     */
+    public int getRecentHitCount(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
+        int count = 0;
+        for (DamageRecord dr : damageRecords) {
+            if (dr.timestamp >= cutoff) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * 清理超过 windowMs 毫秒的旧记录，避免内存持续增长。
+     * @param windowMs 保留的时间窗口（毫秒）
+     */
+    public void cleanupOldRecords(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
+        damageRecords.removeIf(dr -> dr.timestamp < cutoff);
+    }
+
+    // -- 受击 --
+
+    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定 */
     public void takeDamage(int dmg) {
-        // 闪避判定
-        if (dodge > 0 && Math.random() * 100 < dodge) {
-            return;
+        int effDodge = statusManager.getModifiedDodge();
+        if (effDodge > 0 && Math.random() * 100 < effDodge) {
+            return; // 闪避成功，不计入伤害计数器
         }
-        int actualDmg = Math.max(0, dmg - defense);
-        this.hp = Math.max(0, this.hp - actualDmg);
+        int effDef = statusManager.getModifiedDefense();
+        int actual = Math.max(0, dmg - effDef);
+        hp = Math.max(0, hp - actual);
+        recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
-    /**
-     * 受到魔法伤害：最终伤害 = 原始伤害 * (1 - 魔抗/100)
-     * 魔抗超过100按100计算（即完全免疫）
-     * 闪避判定优先：有 dodge% 概率完全免受此次伤害
-     */
+    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定 */
     public void takeMagicDamage(int dmg) {
-        // 闪避判定
-        if (dodge > 0 && Math.random() * 100 < dodge) {
-            return;
+        int effDodge = statusManager.getModifiedDodge();
+        if (effDodge > 0 && Math.random() * 100 < effDodge) {
+            return; // 闪避成功，不计入伤害计数器
         }
-        int resist = Math.min(100, magicResist);
-        int actualDmg = (int) Math.round(dmg * (1.0 - resist / 100.0));
-        this.hp = Math.max(0, this.hp - actualDmg);
+        int resist = Math.min(100, statusManager.getModifiedMagicResist());
+        int actual = (int) Math.floor(dmg * (1.0 - resist / 100.0));
+        hp = Math.max(0, hp - actual);
+        recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
-    /**
-     * 消耗魔力，返回是否成功
-     */
+    // -- 状态修正后的有效属性 --
+
+    public int getEffectiveAttack()      { return statusManager.getModifiedAttack(); }
+    public int getEffectiveMagicAttack() { return statusManager.getModifiedMagicAttack(); }
+    public int getEffectiveDefense()     { return statusManager.getModifiedDefense(); }
+    public int getEffectiveMagicResist() { return statusManager.getModifiedMagicResist(); }
+    public int getEffectiveSpeed()       { return statusManager.getModifiedSpeed(); }
+    public int getEffectiveDodge()       { return statusManager.getModifiedDodge(); }
+
+    // -- 资源管理 --
+
     public boolean consumeMp(int amount) {
-        if (this.mp >= amount) {
-            this.mp -= amount;
+        if (mp >= amount) {
+            mp -= amount;
             return true;
         }
         return false;
     }
 
-    /**
-     * 恢复魔力
-     */
     public void restoreMp(int amount) {
-        this.mp = Math.min(this.mp + amount, this.maxMp);
+        mp = Math.min(mp + amount, maxMp);
     }
 
-    /**
-     * 恢复生命值
-     */
     public void restoreHp(int amount) {
-        this.hp = Math.min(this.hp + amount, this.maxHp);
+        hp = Math.min(hp + amount, maxHp);
     }
 
     public boolean isAlive() {
-        return this.hp > 0;
+        return hp > 0;
     }
 }

@@ -207,6 +207,57 @@ public class Room {
     }
 
     /**
+     * 根据房间类型生成怪物（幂等：仅当房间无怪物时生成）
+     */
+    public void spawnMonsters() {
+        if (monsters != null && !monsters.isEmpty()) return;
+        if (roomType == null) return;
+        Random rnd = new Random();
+        switch (roomType) {
+            case BOSS -> spawnBossMonster(rnd);
+            case ELITE_MONSTER -> spawnEliteMonsters(rnd);
+            case NORMAL_MONSTER -> spawnNormalMonsters(rnd);
+            default -> { /* 非怪物房间不生成 */ }
+        }
+    }
+
+    private void spawnBossMonster(Random rnd) {
+        String[] bossNames = new String[]{"巨龙", "恶魔领主", "巫妖王", "巨型石魔像", "暗影之王"};
+        String base = bossNames[rnd.nextInt(bossNames.length)];
+        String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+        String desc = "恐怖的" + base + "——最终挑战";
+        int hp = 600 + rnd.nextInt(201);   // 600-800
+        int attack = 30 + rnd.nextInt(6); // 30-35
+        addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_BOSS));
+    }
+
+    private void spawnEliteMonsters(Random rnd) {
+        String[] eliteNames = new String[]{"暗影骑士", "地狱犬", "石像鬼", "暗黑法师", "巨型蜘蛛"};
+        int count = 1 + rnd.nextInt(2); // 1-2 个怪物
+        for (int i = 0; i < count; i++) {
+            String base = eliteNames[rnd.nextInt(eliteNames.length)];
+            String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+            String desc = "强大的" + base;
+            int hp = 200 + rnd.nextInt(101);    // 200-300
+            int attack = 20 + rnd.nextInt(6);   // 20-25
+            addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_ELITE));
+        }
+    }
+
+    private void spawnNormalMonsters(Random rnd) {
+        String[] monsterNames = new String[]{"哥布林", "史莱姆", "骷髅", "狼人", "食人魔"};
+        int count = 1 + rnd.nextInt(2); // 1-2 个怪物
+        for (int i = 0; i < count; i++) {
+            String base = monsterNames[rnd.nextInt(monsterNames.length)];
+            String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+            String desc = "一个可怕的" + base;
+            int hp = 80 + rnd.nextInt(21);   // 80-100
+            int attack = 15 + rnd.nextInt(4); // 15-18
+            addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
+        }
+    }
+
+    /**
      * 获取指定名称的商店商品
      */
     public ShopItem getShopItem(String name) {

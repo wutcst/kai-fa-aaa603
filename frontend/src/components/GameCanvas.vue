@@ -986,7 +986,7 @@ onMounted(() => {
             if (!scene.monstersData) scene.monstersData = []
             scene.monstersGroup.add(circ)
             scene.monstersGroup.add(label)
-            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp, type: mon.type })
+            scene.monstersData.push({ name: mon.name, x, y, circ, label, hp: mon.hp, type: mon.type, defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100 })
             mi++
           })
 
@@ -1749,7 +1749,6 @@ onMounted(() => {
           const MONSTER_DETECT_RANGE = 280   // 发现玩家的距离
           const MONSTER_ATTACK_RANGE = 45    // 攻击距离
           const MONSTER_ATTACK_COOLDOWN = 1500 // 攻击间隔 (ms)
-          const MONSTER_SPEED = 80           // 怪物移动速度 (pixel/s)
           const pr = scene.playerRadius || 10
 
           const now = Date.now()
@@ -1784,9 +1783,10 @@ onMounted(() => {
             } else if (dist <= MONSTER_DETECT_RANGE || mon.type === 2) {
               // 在索敌范围内 → 向玩家移动
               // Boss（type===2）不受距离限制，全图索敌
+              const speed = mon.speed || 100
               const norm = Math.max(1, dist)
-              const mvx = (dx / norm) * MONSTER_SPEED * dt
-              const mvy = (dy / norm) * MONSTER_SPEED * dt
+              const mvx = (dx / norm) * speed * dt
+              const mvy = (dy / norm) * speed * dt
               mon.x += mvx
               mon.y += mvy
               // 限制在房间边界内

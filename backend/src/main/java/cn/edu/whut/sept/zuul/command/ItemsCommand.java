@@ -32,22 +32,19 @@ public class ItemsCommand implements Command {
             for (Item item : currentRoom.getItems()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }
 
         // 显示玩家背包
         Bag bag = player.getBag();
-        sb.append("\n背包（").append(bag.getTotalWeight())
-                .append("/").append(bag.getMaxWeight()).append(" kg）：\n");
+        sb.append("\n背包：\n");
         if (bag.isEmpty()) {
             sb.append("  （空）\n");
         } else {
             for (Item item : bag.getInventory()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }

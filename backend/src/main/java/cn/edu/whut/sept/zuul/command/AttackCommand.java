@@ -34,8 +34,8 @@ public class AttackCommand implements Command {
             return GameResponse.error("这里没有叫 '" + targetName + "' 的怪物。");
         }
 
-        // 玩家攻击
-        int dmg = Math.max(1, player.getAttack());
+        // 玩家攻击（使用状态修正后的攻击力）
+        int dmg = Math.max(1, player.getEffectiveAttack());
         m.takeDamage(dmg);
         StringBuilder sb = new StringBuilder();
         sb.append("你对 ").append(m.getName()).append(" 造成了 ").append(dmg).append(" 点伤害。\n");

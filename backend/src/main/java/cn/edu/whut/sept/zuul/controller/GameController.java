@@ -57,4 +57,13 @@ public class GameController {
     public ResponseEntity<Map<String, Object>> getMap() {
         return ResponseEntity.ok(gameService.getFullMap());
     }
+
+    /**
+     * 获取背包数据
+     * GET /api/backpack
+     */
+    @GetMapping("/backpack")
+    public GameResponse getBackpack() {
+        return gameService.getGameStatus();
+    }
 }

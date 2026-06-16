@@ -37,6 +37,13 @@ public class GameService {
             if (player.getMoney() != null) {
                 data.put("playerMoney", player.getMoney().getAmount());
             }
+            // 注入背包数据
+            java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBackpackItems();
+            System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getInventory().size() + ", backpack items=" + bp.size());
+            for (cn.edu.whut.sept.zuul.model.InventoryItem it : bp) {
+                System.out.println("  - " + it.getName() + " rarity=" + it.getRarity() + " qty=" + it.getQuantity());
+            }
+            data.put("backpack", bp);
         }
     }
 

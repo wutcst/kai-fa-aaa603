@@ -16,19 +16,17 @@ import java.util.*;
 public class Game {
     private Room currentRoom;
     private Player player;
-    private List<Room> roomHistory;
     private boolean gameOver;
     private List<Room> allRooms;
 
     public Game() {
-        roomHistory = new ArrayList<>();
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
-            player.getInventory().add(new Item("生命浆果", "回复生命的红色浆果", 0.1));
-            player.getInventory().add(new Item("魔力浆果", "回复魔力的蓝色浆果", 0.1));
+            player.getBag().addItem(new Item("生命浆果", "回复生命的红色浆果", 0.1));
+            player.getBag().addItem(new Item("魔力浆果", "回复魔力的蓝色浆果", 0.1));
         }
     }
 
@@ -68,6 +66,14 @@ public class Game {
         if (player != null) {
             player.setCurrentRoom(room);
         }
+        // 进入篝火房间时初始化祭坛
+        try {
+            if (room != null && room.getRoomType() == cn.edu.whut.sept.zuul.model.RoomType.CAMPFIRE) {
+                room.initAltars();
+            }
+        } catch (Exception e) {
+            // 忽略祭坛初始化异常
+        }
     }
 
     public void triggerTeleport(Room room) {
@@ -102,32 +108,14 @@ public class Game {
         }
     }
 
-    public void addRoomHistory(Room room) {
-        roomHistory.add(room);
-    }
-
-    public Room getPreviousRoom() {
-        if (roomHistory.isEmpty()) {
-            return null;
-        }
-        return roomHistory.get(roomHistory.size() - 1);
-    }
-
-    public void removeLastRoomHistory() {
-        if (!roomHistory.isEmpty()) {
-            roomHistory.remove(roomHistory.size() - 1);
-        }
-    }
-
     public void reset() {
-        roomHistory.clear();
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
-            player.getInventory().add(new Item("生命浆果", "回复生命的红色浆果", 0.1));
-            player.getInventory().add(new Item("魔力浆果", "回复魔力的蓝色浆果", 0.1));
+            player.getBag().addItem(new Item("生命浆果", "回复生命的红色浆果", 0.1));
+            player.getBag().addItem(new Item("魔力浆果", "回复魔力的蓝色浆果", 0.1));
         }
         if (player.getMoney() != null) {
             player.getMoney().reset();

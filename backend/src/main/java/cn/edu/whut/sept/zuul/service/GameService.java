@@ -4,8 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import cn.edu.whut.sept.zuul.Game;
-import cn.edu.whut.sept.zuul.command.Command;
-import cn.edu.whut.sept.zuul.command.CommandFactory;
+import cn.edu.whut.sept.zuul.command.*;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Player;
 import org.springframework.stereotype.Service;
@@ -17,11 +16,9 @@ import org.springframework.stereotype.Service;
 public class GameService {
     // 游戏实例（单例，模拟单玩家；多玩家需改为Map<玩家ID, Game>）
     private final Game game;
-    private final CommandFactory commandFactory;
 
     public GameService() {
         this.game = new Game();
-        this.commandFactory = new CommandFactory(game);
     }
 
     /**
@@ -38,8 +35,8 @@ public class GameService {
                 data.put("playerMoney", player.getMoney().getAmount());
             }
             // 注入背包数据
-            java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBackpackItems();
-            System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getInventory().size() + ", backpack items=" + bp.size());
+            java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBag().getBackpackItems();
+            System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getBag().getInventory().size() + ", backpack items=" + bp.size());
             for (cn.edu.whut.sept.zuul.model.InventoryItem it : bp) {
                 System.out.println("  - " + it.getName() + " rarity=" + it.getRarity() + " qty=" + it.getQuantity());
             }
@@ -60,8 +57,32 @@ public class GameService {
     }
 
     /**
+     * 根据命令字符串创建对应命令实例（替代原 CommandFactory）
+     */
+    private Command createCommand(String commandWord) {
+        if (commandWord == null) {
+            return null;
+        }
+        return switch (commandWord.toLowerCase()) {
+            case "go" -> new GoCommand(game);
+            case "look" -> new LookCommand(game);
+            case "quit" -> new QuitCommand(game);
+            case "attack" -> new AttackCommand(game);
+            case "monsterattack" -> new MonsterAttackCommand(game);
+            case "take" -> new TakeCommand(game);
+            case "drop" -> new DropCommand(game);
+            case "items" -> new ItemsCommand(game);
+            case "interact" -> new InteractCommand(game);
+            case "shop" -> new ShopCommand(game);
+            case "wave" -> new WaveCommand(game);
+            case "bag" -> new BagCommand(game);
+            default -> null;
+        };
+    }
+
+    /**
      * 执行玩家命令
-     * @param commandStr 命令字符串（如"go east"、"back"）
+     * @param commandStr 命令字符串（如"go east"）
      * @return 游戏响应
      */
     public GameResponse executeCommand(String commandStr) {
@@ -75,7 +96,7 @@ public class GameService {
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
         // 创建并执行命令
-        Command command = commandFactory.createCommand(commandWord);
+        Command command = createCommand(commandWord);
         if (command == null) {
             return GameResponse.error("I don't know what you mean by '" + commandWord + "'! Type 'help' for available commands.");
         }

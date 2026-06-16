@@ -25,7 +25,8 @@ public class BagCommand implements Command {
         }
 
         Player player = game.getPlayer();
-        Item item = player.getItem(itemName);
+        Bag bag = player.getBag();
+        Item item = bag.getItem(itemName);
 
         if (item == null) {
             return buildInventoryResponse("背包中没有名为 '" + itemName + "' 的物品！");
@@ -33,15 +34,15 @@ public class BagCommand implements Command {
 
         switch (subCommand.toLowerCase()) {
             case "use":
-                return executeUse(player, item);
+                return executeUse(player, bag, item);
             case "discard":
-                return executeDiscard(player, itemName);
+                return executeDiscard(bag, itemName);
             default:
                 return buildInventoryResponse("未知的背包操作：" + subCommand);
         }
     }
 
-    private GameResponse executeUse(Player player, Item item) {
+    private GameResponse executeUse(Player player, Bag bag, Item item) {
         String itemName = item.getName();
         String lowerName = itemName.toLowerCase();
 
@@ -55,7 +56,7 @@ public class BagCommand implements Command {
             player.restoreMp(25);
             effectMsg.append("你恢复了 25 点魔力！");
         } else if (lowerName.contains("cookie") || lowerName.contains("饼干")) {
-            player.increaseMaxWeight(5.0);
+            bag.increaseMaxWeight(5.0);
             effectMsg.append("你的最大负重增加了 5.0 kg！");
         } else if (lowerName.contains("berry") || lowerName.contains("浆果") || lowerName.contains("potion") || lowerName.contains("药水")) {
             player.restoreHp(20);
@@ -73,13 +74,13 @@ public class BagCommand implements Command {
         }
 
         // 从背包中移除一个该物品
-        player.useItem(itemName);
+        bag.useItem(itemName);
 
         return buildInventoryResponse("使用了 " + itemName + "。" + effectMsg.toString());
     }
 
-    private GameResponse executeDiscard(Player player, String itemName) {
-        int count = player.discardAllItem(itemName);
+    private GameResponse executeDiscard(Bag bag, String itemName) {
+        int count = bag.discardAllItem(itemName);
         if (count > 0) {
             return buildInventoryResponse("丢弃了 " + count + " 个 " + itemName + "。");
         }
@@ -95,7 +96,7 @@ public class BagCommand implements Command {
 
         // 注入背包数据
         if (game.getPlayer() != null) {
-            List<InventoryItem> backpack = game.getPlayer().getBackpackItems();
+            List<InventoryItem> backpack = game.getPlayer().getBag().getBackpackItems();
             data.put("backpack", backpack);
         }
 

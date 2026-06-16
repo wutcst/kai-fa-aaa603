@@ -32,8 +32,6 @@ public class GoCommand implements Command {
 
         // 触发传输房间逻辑
         game.triggerTeleport(nextRoom);
-        // 记录房间历史（供back命令使用）
-        game.addRoomHistory(currentRoom);
         game.setCurrentRoom(nextRoom);
 
         // 如果房间当前没有怪物，且房间为怪物房，则生成怪物
@@ -59,15 +57,6 @@ public class GoCommand implements Command {
             }
         } catch (Exception e) {
             // 不要因为刷怪导致移动失败，记录或忽略异常
-        }
-
-        // 进入篝火房间时初始化祭坛
-        try {
-            if (nextRoom.getRoomType() == RoomType.CAMPFIRE) {
-                nextRoom.initAltars();
-            }
-        } catch (Exception e) {
-            // 忽略祭坛初始化异常
         }
 
         return GameResponse.success("你移动到了 " + nextRoom.getName(), nextRoom.getFullInfo());

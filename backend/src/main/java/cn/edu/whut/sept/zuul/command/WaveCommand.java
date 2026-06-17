@@ -1,6 +1,7 @@
 package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
+import cn.edu.whut.sept.zuul.model.DroppedItem;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Magic;
 import cn.edu.whut.sept.zuul.model.Monster;
@@ -63,13 +64,16 @@ public class WaveCommand implements Command {
         sb.append("月光波命中了 ").append(m.getName()).append("，造成 ").append(magicDmg).append(" 点法术伤害。");
 
         if (!m.isAlive()) {
-            // 火焰史莱姆：进入自爆倒计时，不立即移除
-            if (Monster.SPECIAL_FLAME_SLIME.equals(m.getSpecialType())) {
-                m.startExploding();
-                sb.append("\n你击败了 ").append(m.getName()).append("！但它即将自爆，快远离！");
-            } else {
-                current.removeMonster(m);
-                sb.append("\n你击败了 ").append(m.getName()).append("！");
+            current.removeMonster(m);
+            sb.append("\n你击败了 ").append(m.getName()).append("！");
+
+            // Boss 掉落药水（生命浆果或魔力浆果）
+            if (m.getType() == Monster.TYPE_BOSS) {
+                java.util.Random rnd = new java.util.Random();
+                String dropName = rnd.nextBoolean() ? "生命浆果" : "魔力浆果";
+                DroppedItem drop = new DroppedItem(dropName, 0, 0);
+                current.addDroppedItem(drop);
+                sb.append("\n" + m.getName() + "掉落了 " + dropName + "！");
             }
 
             // 根据怪物类型给予货币奖励

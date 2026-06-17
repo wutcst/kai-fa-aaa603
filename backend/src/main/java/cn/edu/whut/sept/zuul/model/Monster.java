@@ -103,8 +103,12 @@ public class Monster {
     /**
      * 进入自爆倒计时状态。
      * 调用后怪物停止移动/攻击，3秒后触发爆炸伤害结算。
+     * 如果怪物已在自爆状态，不重置计时器（防止重复调用导致倒计时无限延长）。
      */
     public void startExploding() {
+        if (this.exploding) {
+            return; // 已在自爆中，不重置计时器
+        }
         this.exploding = true;
         this.explodeStartTime = System.currentTimeMillis();
     }

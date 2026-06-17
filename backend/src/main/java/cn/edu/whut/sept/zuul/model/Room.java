@@ -5,7 +5,7 @@ import lombok.Setter;
 import java.util.*;
 
 /**
- * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛、商店
+ * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛、商店、掉落物
  */
 @Getter
 @Setter
@@ -25,6 +25,8 @@ public class Room {
     private List<ShopItem> shopItems;
     // 商店是否已初始化
     private boolean shopInitialized;
+    // 掉落物列表（怪物死亡后掉落的物品，带坐标信息）
+    private List<DroppedItem> droppedItems;
 
     public Room(String name, String description) {
         this.name = name;
@@ -38,6 +40,7 @@ public class Room {
         this.altarUsed = false;
         this.shopItems = new ArrayList<>();
         this.shopInitialized = false;
+        this.droppedItems = new ArrayList<>();
     }
 
     public void setExit(String direction, Room neighbor) {
@@ -123,6 +126,8 @@ public class Room {
             }
         }
         info.put("shopItems", shopItemList);
+        // 掉落物数据（含坐标信息）
+        info.put("droppedItems", this.droppedItems != null ? this.droppedItems : new ArrayList<>());
         return info;
     }
 
@@ -287,6 +292,22 @@ public class Room {
             if (!si.isSold()) available.add(si);
         }
         return available;
+    }
+
+    /**
+     * 添加掉落物到房间
+     */
+    public void addDroppedItem(DroppedItem item) {
+        if (this.droppedItems == null) this.droppedItems = new ArrayList<>();
+        this.droppedItems.add(item);
+    }
+
+    /**
+     * 按名称移除掉落物（拾取后调用）
+     */
+    public boolean removeDroppedItem(String itemName) {
+        if (this.droppedItems == null) return false;
+        return this.droppedItems.removeIf(d -> d.getItemName().equalsIgnoreCase(itemName));
     }
 
     // 安全的 toString（不包含 exits 等循环引用字段）

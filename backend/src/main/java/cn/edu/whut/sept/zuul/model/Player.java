@@ -2,204 +2,114 @@ package cn.edu.whut.sept.zuul.model;
 
 import lombok.Getter;
 import lombok.Setter;
-
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
 
 /**
- * 玩家类：管理玩家状态、背包和负重
+ * 玩家类，管理基础属性、位置、背包和货币。
+ * 增益/减益状态委托给 {@link Status.StatusManager} 处理。
  */
 @Getter
 @Setter
 public class Player {
     private String name;
     private Room currentRoom;
-    private List<Item> inventory;
-    private double maxWeight;
+    private Bag bag;
     private Money money;
+    private Status.StatusManager statusManager;
 
-    // ---- 战斗属性 ----
-    private int hp;           // 当前生命值
-    private int mp;           // 当前魔力值
-    private int maxHp;        // 最大生命值
-    private int maxMp;        // 最大魔力值
-    private int attack;       // 物理攻击力
-    private int magicAttack;  // 魔法攻击力
-    private int defense;      // 物理防御力
-    private int magicResist;  // 魔法抗性（百分比，0-100，超过100按100计算）
-    private int speed;        // 移动速度
-    private int dodge;        // 闪避率（百分比，0-100）
+    // -- 基础战斗属性 --
+    private int hp;
+    private int mp;
+    private int maxHp;
+    private int maxMp;
+    private int attack;
+    private int magicAttack;
+    private int defense;
+    private int magicResist;   // 0-100，超出按100计
+    private int speed;
+    private int dodge;         // 0-100
+
+    // -- 伤害计数器 --
+    /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
+    private List<DamageRecord> damageRecords;
+
+    /**
+     * 伤害记录：记录单次受击的时间戳与经过防御/魔抗结算后的最终伤害量。
+     */
+    @Getter
+    public static class DamageRecord {
+        /** 受击时间戳（毫秒） */
+        private final long timestamp;
+        /** 经过防御/魔抗结算后的最终伤害量 */
+        private final int amount;
+
+        public DamageRecord(long timestamp, int amount) {
+            this.timestamp = timestamp;
+            this.amount = amount;
+        }
+    }
 
     public Player(String name, Room currentRoom) {
         this.name = name;
         this.currentRoom = currentRoom;
-        this.inventory = new ArrayList<>();
-        this.maxWeight = 10.0;
+        this.bag = new Bag();
         this.money = new Money();
+        this.statusManager = new Status.StatusManager(this);
+        this.damageRecords = new ArrayList<>();
 
-        // 初始属性
-        this.hp = 100;
-        this.mp = 100;
-        this.maxHp = 100;
-        this.maxMp = 100;
-        this.attack = 20;
-        this.magicAttack = 15;
-        this.defense = 10;
-        this.magicResist = 0;
-        this.speed = 100;
-        this.dodge = 0;
+        hp = 100;
+        mp = 100;
+        maxHp = 100;
+        maxMp = 100;
+        attack = 20;
+        magicAttack = 15;
+        defense = 10;
+        magicResist = 0;
+        speed = 100;
+        dodge = 0;
+    }
+
+    // -- 伤害计数器方法 --
+
+    /**
+     * 记录一次受到的伤害。
+     * 应在防御/魔抗结算后调用，传入最终实际伤害量。
+     * 闪避成功时不应调用此方法。
+     * @param amount 经过防御/魔抗结算后的最终伤害量（可为0）
+     */
+    public void recordDamage(int amount) {
+        damageRecords.add(new DamageRecord(System.currentTimeMillis(), amount));
     }
 
     /**
-     * 计算当前背包总重量
+     * 查询最近 windowMs 毫秒内累计受到的总伤害量。
+     * @param windowMs 时间窗口（毫秒）
+     * @return 时间窗口内的累计伤害量
      */
-    public double getTotalWeight() {
-        double total = 0;
-        for (Item item : inventory) {
-            total += item.getWeight();
+    public int getRecentDamage(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
+        int total = 0;
+        for (DamageRecord dr : damageRecords) {
+            if (dr.timestamp >= cutoff) {
+                total += dr.amount;
+            }
         }
         return total;
     }
 
     /**
-     * 判断能否携带此物品（不超过最大负重）
+     * 查询最近 windowMs 毫秒内受到伤害的次数。
+     * 不包含闪避成功的攻击，但包含结算后伤害为0的攻击。
+     * @param windowMs 时间窗口（毫秒）
+     * @return 时间窗口内的受击次数
      */
-    public boolean canCarry(Item item) {
-        return getTotalWeight() + item.getWeight() <= maxWeight;
-    }
-
-    /**
-     * 添加物品到背包
-     */
-    public boolean addItem(Item item) {
-        if (canCarry(item)) {
-            inventory.add(item);
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * 从背包移除物品
-     */
-    public boolean removeItem(Item item) {
-        return inventory.remove(item);
-    }
-
-    /**
-     * 受到物理伤害：最终伤害 = 原始伤害 - 物防（最低为0）
-     * 闪避判定优先：有 dodge% 概率完全免受此次伤害
-     */
-    public void takeDamage(int dmg) {
-        // 闪避判定
-        if (dodge > 0 && Math.random() * 100 < dodge) {
-            return;
-        }
-        int actualDmg = Math.max(0, dmg - defense);
-        this.hp = Math.max(0, this.hp - actualDmg);
-    }
-
-    /**
-     * 受到魔法伤害：最终伤害 = 原始伤害 * (1 - 魔抗/100)
-     * 魔抗超过100按100计算（即完全免疫）
-     * 闪避判定优先：有 dodge% 概率完全免受此次伤害
-     */
-    public void takeMagicDamage(int dmg) {
-        // 闪避判定
-        if (dodge > 0 && Math.random() * 100 < dodge) {
-            return;
-        }
-        int resist = Math.min(100, magicResist);
-        int actualDmg = (int) Math.round(dmg * (1.0 - resist / 100.0));
-        this.hp = Math.max(0, this.hp - actualDmg);
-    }
-
-    /**
-     * 消耗魔力，返回是否成功
-     */
-    public boolean consumeMp(int amount) {
-        if (this.mp >= amount) {
-            this.mp -= amount;
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * 恢复魔力
-     */
-    public void restoreMp(int amount) {
-        this.mp = Math.min(this.mp + amount, this.maxMp);
-    }
-
-    /**
-     * 恢复生命值
-     */
-    public void restoreHp(int amount) {
-        this.hp = Math.min(this.hp + amount, this.maxHp);
-    }
-
-    public boolean isAlive() {
-        return this.hp > 0;
-    }
-
-    /**
-     * 根据名称在背包中查找物品
-     */
-    public Item getItem(String itemName) {
-        for (Item item : inventory) {
-            if (item.getName().equalsIgnoreCase(itemName)) {
-                return item;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * 获取背包物品列表（合并同类物品，带数量统计）
-     * 返回 InventoryItem 列表供前端背包UI使用
-     */
-    public List<InventoryItem> getBackpackItems() {
-        // 统计每种物品的数量
-        Map<String, List<Item>> grouped = inventory.stream()
-                .collect(Collectors.groupingBy(Item::getName));
-
-        List<InventoryItem> result = new ArrayList<>();
-        int idCounter = 1;
-        for (Map.Entry<String, List<Item>> entry : grouped.entrySet()) {
-            String name = entry.getKey();
-            List<Item> items = entry.getValue();
-            InventoryItem invItem = InventoryItem.fromItem(items.get(0), items.size(), idCounter++);
-            result.add(invItem);
-        }
-        return result;
-    }
-
-    /**
-     * 使用物品（数量-1，若为0则移除）
-     * @param itemName 物品名称
-     * @return 返回被使用的物品，null表示失败
-     */
-    public Item useItem(String itemName) {
-        Item item = getItem(itemName);
-        if (item != null) {
-            inventory.remove(item);
-        }
-        return item;
-    }
-
-    /**
-     * 丢弃全部数量的某种物品
-     * @param itemName 物品名称
-     * @return 丢弃的物品数量
-     */
-    public int discardAllItem(String itemName) {
+    public int getRecentHitCount(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
         int count = 0;
-        Iterator<Item> it = inventory.iterator();
-        while (it.hasNext()) {
-            Item item = it.next();
-            if (item.getName().equalsIgnoreCase(itemName)) {
-                it.remove();
+        for (DamageRecord dr : damageRecords) {
+            if (dr.timestamp >= cutoff) {
                 count++;
             }
         }
@@ -207,9 +117,68 @@ public class Player {
     }
 
     /**
-     * 增加最大负重
+     * 清理超过 windowMs 毫秒的旧记录，避免内存持续增长。
+     * @param windowMs 保留的时间窗口（毫秒）
      */
-    public void increaseMaxWeight(double amount) {
-        this.maxWeight += amount;
+    public void cleanupOldRecords(long windowMs) {
+        long cutoff = System.currentTimeMillis() - windowMs;
+        damageRecords.removeIf(dr -> dr.timestamp < cutoff);
+    }
+
+    // -- 受击 --
+
+    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定 */
+    public void takeDamage(int dmg) {
+        int effDodge = statusManager.getModifiedDodge();
+        if (effDodge > 0 && Math.random() * 100 < effDodge) {
+            return; // 闪避成功，不计入伤害计数器
+        }
+        int effDef = statusManager.getModifiedDefense();
+        int actual = Math.max(0, dmg - effDef);
+        hp = Math.max(0, hp - actual);
+        recordDamage(actual); // 记录最终伤害（含为0的情况）
+    }
+
+    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定 */
+    public void takeMagicDamage(int dmg) {
+        int effDodge = statusManager.getModifiedDodge();
+        if (effDodge > 0 && Math.random() * 100 < effDodge) {
+            return; // 闪避成功，不计入伤害计数器
+        }
+        int resist = Math.min(100, statusManager.getModifiedMagicResist());
+        int actual = (int) Math.floor(dmg * (1.0 - resist / 100.0));
+        hp = Math.max(0, hp - actual);
+        recordDamage(actual); // 记录最终伤害（含为0的情况）
+    }
+
+    // -- 状态修正后的有效属性 --
+
+    public int getEffectiveAttack()      { return statusManager.getModifiedAttack(); }
+    public int getEffectiveMagicAttack() { return statusManager.getModifiedMagicAttack(); }
+    public int getEffectiveDefense()     { return statusManager.getModifiedDefense(); }
+    public int getEffectiveMagicResist() { return statusManager.getModifiedMagicResist(); }
+    public int getEffectiveSpeed()       { return statusManager.getModifiedSpeed(); }
+    public int getEffectiveDodge()       { return statusManager.getModifiedDodge(); }
+
+    // -- 资源管理 --
+
+    public boolean consumeMp(int amount) {
+        if (mp >= amount) {
+            mp -= amount;
+            return true;
+        }
+        return false;
+    }
+
+    public void restoreMp(int amount) {
+        mp = Math.min(mp + amount, maxMp);
+    }
+
+    public void restoreHp(int amount) {
+        hp = Math.min(hp + amount, maxHp);
+    }
+
+    public boolean isAlive() {
+        return hp > 0;
     }
 }

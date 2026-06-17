@@ -1,13 +1,16 @@
 package cn.edu.whut.sept.zuul.service;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 import cn.edu.whut.sept.zuul.Game;
-import cn.edu.whut.sept.zuul.command.Command;
-import cn.edu.whut.sept.zuul.command.CommandFactory;
+import cn.edu.whut.sept.zuul.command.*;
 import cn.edu.whut.sept.zuul.model.GameResponse;
+import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
+import cn.edu.whut.sept.zuul.model.Room;
 import org.springframework.stereotype.Service;
 
 /**
@@ -15,21 +18,111 @@ import org.springframework.stereotype.Service;
  */
 @Service
 public class GameService {
+    /** 火焰史莱姆自爆倒计时（毫秒）：3秒 */
+    private static final long EXPLODE_DELAY = 3000L;
+
     // 游戏实例（单例，模拟单玩家；多玩家需改为Map<玩家ID, Game>）
     private final Game game;
-    private final CommandFactory commandFactory;
 
     public GameService() {
         this.game = new Game();
-        this.commandFactory = new CommandFactory(game);
     }
 
     /**
-     * 将玩家状态注入到响应数据 Map 中
+     * 驱动所有房间中爆炸倒计时怪物的结算。
+     * 如果倒计时已到，执行爆炸伤害并移除怪物。
+     * 同时将爆炸中的怪物信息注入 data 供前端渲染。
+     */
+    private void tickExplosions(Map<String, Object> data) {
+        Player player = game.getPlayer();
+        if (player == null) return;
+
+        List<Room> allRooms = game.getAllRooms();
+        if (allRooms == null) return;
+
+        Room currentRoom = game.getCurrentRoom();
+        long now = System.currentTimeMillis();
+
+        // 收集当前房间中爆炸中的怪物信息
+        java.util.List<Map<String, Object>> explodingList = new java.util.ArrayList<>();
+
+        for (Room room : allRooms) {
+            List<Monster> monsters = room.getMonsters();
+            if (monsters == null) continue;
+
+            Iterator<Monster> it = monsters.iterator();
+            while (it.hasNext()) {
+                Monster m = it.next();
+                if (!m.isExploding()) continue;
+
+                long elapsed = now - m.getExplodeStartTime();
+                long remaining = Math.max(0, EXPLODE_DELAY - elapsed);
+
+                if (remaining <= 0) {
+                    // 爆炸倒计时到 — 标记已通知，不在此移除（由ExplodeCommand移除）
+                    // 防止重复通知
+                    if (!m.isExplodeNotified()) {
+                        m.setExplodeNotified(true);
+
+                        Map<String, Object> triggered = new HashMap<>();
+                        triggered.put("name", m.getName());
+                        triggered.put("specialType", m.getSpecialType());
+                        triggered.put("explodeRange", m.getExplodeRange());
+                        triggered.put("explodeDamage", (int)(m.getAttack() * 2.0));
+                        triggered.put("x", 0);
+                        triggered.put("y", 0);
+
+                        @SuppressWarnings("unchecked")
+                        java.util.List<Map<String, Object>> triggeredList =
+                            (java.util.List<Map<String, Object>>) data.get("explodeTriggeredMonsters");
+                        if (triggeredList == null) {
+                            triggeredList = new java.util.ArrayList<>();
+                            data.put("explodeTriggeredMonsters", triggeredList);
+                        }
+                        triggeredList.add(triggered);
+                    }
+                } else {
+                    // 仍在倒计时中，收集信息（仅当前房间）
+                    if (room == currentRoom) {
+                        Map<String, Object> info = new HashMap<>();
+                        info.put("name", m.getName());
+                        info.put("exploding", true);
+                        info.put("specialType", m.getSpecialType());
+                        info.put("explodeRange", m.getExplodeRange());
+                        info.put("explodeRemaining", remaining);
+                        info.put("x", 0);  // 前端覆盖
+                        info.put("y", 0);
+                        explodingList.add(info);
+                    }
+                }
+            }
+        }
+
+        if (!explodingList.isEmpty()) {
+            data.put("explodingMonsters", explodingList);
+        }
+    }
+
+    /**
+     * 将玩家状态注入到响应数据 Map 中。
+     * 同时驱动烧伤结算计时（tickBurn），确保无论前端以多高频率轮询，
+     * 烧伤每3秒都至少被结算一次。
      */
     private void injectPlayerStatus(Map<String, Object> data) {
         Player player = game.getPlayer();
         if (player != null) {
+            // ---- 驱动烧伤计时 ----
+            if (player.getStatusManager() != null) {
+                int burnDmg = player.getStatusManager().tickBurn();
+                if (burnDmg > 0) {
+                    data.put("burnDamage", burnDmg);
+                    data.put("burnLayers", player.getStatusManager().getBurnLayers());
+                }
+            }
+
+            // ---- 驱动爆炸计时 ----
+            tickExplosions(data);
+
             data.put("playerHp", player.getHp());
             data.put("playerMaxHp", player.getMaxHp());
             data.put("playerMp", player.getMp());
@@ -38,12 +131,23 @@ public class GameService {
                 data.put("playerMoney", player.getMoney().getAmount());
             }
             // 注入背包数据
-            java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBackpackItems();
-            System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getInventory().size() + ", backpack items=" + bp.size());
+            java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBag().getBackpackItems();
+            System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getBag().getInventory().size() + ", backpack items=" + bp.size());
             for (cn.edu.whut.sept.zuul.model.InventoryItem it : bp) {
                 System.out.println("  - " + it.getName() + " rarity=" + it.getRarity() + " qty=" + it.getQuantity());
             }
             data.put("backpack", bp);
+            // 注入活跃状态效果
+            if (player.getStatusManager() != null) {
+                data.put("activeEffects", player.getStatusManager().getActiveEffectsInfo());
+            }
+            // 注入修正后属性（供前端HUD显示）
+            data.put("effectiveAttack", player.getEffectiveAttack());
+            data.put("effectiveDefense", player.getEffectiveDefense());
+            data.put("effectiveMagicAttack", player.getEffectiveMagicAttack());
+            data.put("effectiveMagicResist", player.getEffectiveMagicResist());
+            data.put("effectiveSpeed", player.getEffectiveSpeed());
+            data.put("effectiveDodge", player.getEffectiveDodge());
         }
     }
 
@@ -60,8 +164,32 @@ public class GameService {
     }
 
     /**
+     * 根据命令字符串创建对应命令实例（替代原 CommandFactory）
+     */
+    private Command createCommand(String commandWord) {
+        if (commandWord == null) {
+            return null;
+        }
+        return switch (commandWord.toLowerCase()) {
+            case "go" -> new GoCommand(game);
+            case "look" -> new LookCommand(game);
+            case "attack" -> new AttackCommand(game);
+            case "monsterattack" -> new MonsterAttackCommand(game);
+            case "take" -> new TakeCommand(game);
+            case "drop" -> new DropCommand(game);
+            case "items" -> new ItemsCommand(game);
+            case "interact" -> new InteractCommand(game);
+            case "shop" -> new ShopCommand(game);
+            case "wave" -> new WaveCommand(game);
+            case "explode" -> new ExplodeCommand(game);
+            case "bag" -> new BagCommand(game);
+            default -> null;
+        };
+    }
+
+    /**
      * 执行玩家命令
-     * @param commandStr 命令字符串（如"go east"、"back"）
+     * @param commandStr 命令字符串（如"go east"）
      * @return 游戏响应
      */
     public GameResponse executeCommand(String commandStr) {
@@ -75,7 +203,7 @@ public class GameService {
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
         // 创建并执行命令
-        Command command = commandFactory.createCommand(commandWord);
+        Command command = createCommand(commandWord);
         if (command == null) {
             return GameResponse.error("I don't know what you mean by '" + commandWord + "'! Type 'help' for available commands.");
         }

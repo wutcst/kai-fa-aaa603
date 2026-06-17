@@ -5,7 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 物品类：名称、描述、重量
+ * 物品类：名称、描述
  */
 @Data
 @NoArgsConstructor
@@ -13,12 +13,12 @@ import lombok.NoArgsConstructor;
 public class Item {
     private String name;       // 物品名称
     private String description;// 物品描述
-    private double weight;     // 物品重量
 
-    // 简化构造器（兼容原有逻辑）
-    public Item(String name, double weight) {
+    /**
+     * 简化构造器（仅名称，描述自动生成）
+     */
+    public Item(String name) {
         this.name = name;
-        this.weight = weight;
         this.description = "普通的" + name;
     }
 }

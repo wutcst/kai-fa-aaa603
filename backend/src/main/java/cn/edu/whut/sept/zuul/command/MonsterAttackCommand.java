@@ -10,8 +10,13 @@ import cn.edu.whut.sept.zuul.model.Room;
  * 怪物主动攻击命令：monsterattack <monsterName>
  * 由前端怪物AI调用，怪物主动对玩家造成伤害（不附带玩家反击效果）。
  * 与 AttackCommand（玩家攻击，怪物反击）区分开。
+ *
+ * 特殊怪物：火焰史莱姆 — 接触攻击造成法术伤害 + 施加2层烧伤，1s冷却间隔。
  */
 public class MonsterAttackCommand implements Command {
+    /** 火焰史莱姆接触攻击冷却（毫秒） */
+    private static final long FLAME_SLIME_ATTACK_COOLDOWN = 1000L;
+
     private Game game;
     private String targetName;
 
@@ -37,13 +42,40 @@ public class MonsterAttackCommand implements Command {
             return GameResponse.error("怪物 '" + targetName + "' 已经死亡。");
         }
 
-        // 怪物主动攻击玩家 — 直接扣除生命值（无视玩家防御）
-        // 原因：怪物攻击绕过防御计算，确保对玩家造成实质威胁（防御已体现在玩家抗怪能力上）
-        int dmg = m.getAttack();
-        player.setHp(Math.max(0, player.getHp() - dmg));
+        // 爆炸倒计时中的怪物不攻击
+        if (m.isExploding()) {
+            return GameResponse.error("怪物 '" + targetName + "' 正在准备自爆，无法攻击。");
+        }
+
         StringBuilder sb = new StringBuilder();
-        sb.append(m.getName()).append(" 对你造成了 ").append(dmg).append(" 点伤害（防御无效）。\n");
-        sb.append("你当前生命：").append(player.getHp()).append("。\n");
+
+        // 判断是否为火焰史莱姆的特殊攻击
+        if (Monster.SPECIAL_FLAME_SLIME.equals(m.getSpecialType())) {
+            // 接触攻击冷却检查
+            long now = System.currentTimeMillis();
+            if (m.getLastContactAttackTime() > 0
+                    && now - m.getLastContactAttackTime() < FLAME_SLIME_ATTACK_COOLDOWN) {
+                return GameResponse.error("火焰史莱姆攻击冷却中。");
+            }
+            m.setLastContactAttackTime(now);
+
+            // 法术伤害 = 攻击力 × 100%
+            int dmg = m.getAttack();
+            player.takeMagicDamage(dmg);
+            sb.append(m.getName()).append(" 的火焰接触对你造成了 ").append(dmg).append(" 点法术伤害。\n");
+
+            // 施加2层烧伤
+            player.getStatusManager().applyBurn(2);
+            sb.append("你被施加了 2 层烧伤！（当前层数：").append(player.getStatusManager().getBurnLayers()).append("）\n");
+
+            sb.append("你当前生命：").append(player.getHp()).append("。\n");
+        } else {
+            // 普通怪物攻击 — 物理伤害
+            int dmg = m.getAttack();
+            player.takeDamage(dmg);
+            sb.append(m.getName()).append(" 对你造成了 ").append(dmg).append(" 点伤害。\n");
+            sb.append("你当前生命：").append(player.getHp()).append("。\n");
+        }
 
         if (!player.isAlive()) {
             game.setGameOver(true);

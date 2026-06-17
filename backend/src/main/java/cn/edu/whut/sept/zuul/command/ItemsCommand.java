@@ -1,6 +1,7 @@
 package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
+import cn.edu.whut.sept.zuul.model.Bag;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Item;
 import cn.edu.whut.sept.zuul.model.Player;
@@ -31,21 +32,19 @@ public class ItemsCommand implements Command {
             for (Item item : currentRoom.getItems()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }
 
         // 显示玩家背包
-        sb.append("\n背包（").append(player.getTotalWeight())
-                .append("/").append(player.getMaxWeight()).append(" kg）：\n");
-        if (player.getInventory().isEmpty()) {
+        Bag bag = player.getBag();
+        sb.append("\n背包：\n");
+        if (bag.isEmpty()) {
             sb.append("  （空）\n");
         } else {
-            for (Item item : player.getInventory()) {
+            for (Item item : bag.getInventory()) {
                 sb.append("  - ").append(item.getName())
                         .append(" (").append(item.getDescription())
-                        .append("，重量: ").append(item.getWeight())
                         .append(")\n");
             }
         }

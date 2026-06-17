@@ -731,6 +731,13 @@ onMounted(() => {
         scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
         scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
 
+        // 中毒状态相关
+        scene._poisonIconGfx = null        // 中毒图标（💀）
+        scene._poisonLayersText = null     // 中毒层数文字
+        scene._poisonTimerText = null      // 中毒倒计时文字
+        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
+        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
+
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
         scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -805,68 +812,14 @@ onMounted(() => {
 
           if (layers <= 0) return  // 无烧伤则不绘制
 
-          const gfx = scene.add.graphics().setDepth(120)
-          scene._burnFlameGfx = gfx
+          // 使用 🔥 emoji 作为烧伤图标，固定大小不随层数变化
+          const flameText = scene.add.text(cx, cy, '🔥', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._burnFlameGfx = flameText
 
-          const baseY = cy
-          const flameH = 28 + size * 10
-          const flameW = 14 + size * 5
-
-          // 火焰主体：三层从内到外的渐变填充
-          // 内层（白色/亮黄）
-          gfx.fillStyle(0xFFFF88, 0.85)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.85,
-            cx - flameW * 0.15, baseY - flameH * 0.20,
-            cx + flameW * 0.15, baseY - flameH * 0.20
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.55,
-            cx - flameW * 0.22, baseY - flameH * 0.05,
-            cx + flameW * 0.22, baseY - flameH * 0.05
-          )
-
-          // 中层（橙色）
-          gfx.fillStyle(0xFF8800, 0.75)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.95,
-            cx - flameW * 0.32, baseY,
-            cx + flameW * 0.32, baseY
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.65,
-            cx - flameW * 0.38, baseY + 2,
-            cx + flameW * 0.38, baseY + 2
-          )
-
-          // 外层（红色）
-          gfx.fillStyle(0xFF3300, 0.55)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 1.05,
-            cx - flameW * 0.55, baseY + 4,
-            cx + flameW * 0.55, baseY + 4
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.45,
-            cx - flameW * 0.6, baseY + 6,
-            cx + flameW * 0.6, baseY + 6
-          )
-
-          // 外焰光晕
-          gfx.fillStyle(0xFF6600, 0.2)
-          gfx.fillEllipse(cx, baseY - flameH * 0.5, flameW * 1.3, flameH * 1.1)
-
-          // 火星粒子点缀
-          const rng = () => (Math.sin(Date.now() * 0.003 + cx) * 0.5 + 0.5)  // 伪随机用于静态点缀
-          for (let i = 0; i < 5; i++) {
-            const px = cx - flameW * 0.4 + (i / 4) * flameW * 0.8 + (Math.sin(i * 2.3 + cx * 0.7) * flameW * 0.15)
-            const py = baseY - flameH * 0.1 - (i % 3) * flameH * 0.25 - Math.random() * flameH * 0.15
-            gfx.fillStyle(0xFFDD44, 0.5 + Math.random() * 0.3)
-            gfx.fillCircle(px, py, 1.2 + Math.random() * 1.5)
-          }
-
-          // 层数标注（火焰右下角）
-          const layersText = scene.add.text(cx + flameW * 0.8, baseY + 2, String(layers), {
+          // 层数标注（火焰右侧）
+          const layersText = scene.add.text(cx + 10, cy, String(layers), {
             font: 'bold 14px Arial',
             fill: '#FF6644',
             stroke: '#000000',
@@ -875,7 +828,7 @@ onMounted(() => {
           scene._burnLayersText = layersText
 
           // 倒计时标注（火焰下方）
-          const timerText = scene.add.text(cx, baseY + 8, Math.ceil(timerSec) + 's', {
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
             font: '10px Arial',
             fill: '#FFAA66',
             stroke: '#000000',
@@ -904,22 +857,25 @@ onMounted(() => {
           const barW = 210
 
           // buff 栏范围：mpY + barH + 4 到 roomTop - 4
-          const buffTop = mpY + barH + 10   // MP条下缘 + 间距
+          const buffTop = mpY + barH - 7      // MP条下缘
           const buffBottom = roomTop - 4
-          const buffLeft = barX - 30         // HP/MP label 左边缘
+          const buffLeft = barX - 105        // HP/MP label 左边缘
           const buffRight = barX + barW       // HP/MP 条右边缘
           const buffMidX = (buffLeft + buffRight) / 2
           const buffMidY = (buffTop + buffBottom) / 2
 
-          // 查找烧伤状态
+          // 查找烧伤状态和中毒状态
           let burnEffect = null
+          let poisonEffect = null
           for (const eff of scene._activeEffects) {
             if (eff && eff.type === 'BURN') {
               burnEffect = eff
-              break
+            } else if (eff && eff.type === 'POISON') {
+              poisonEffect = eff
             }
           }
 
+          // ---- 烧伤渲染 ----
           if (burnEffect && burnEffect.layers > 0) {
             const layers = burnEffect.layers || 0
             const nextTickIn = burnEffect.nextTickIn || 3000
@@ -931,11 +887,12 @@ onMounted(() => {
             const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
             const timerSec = nextTickIn / 1000
 
-            // 火焰置于 buff 栏中央偏左
-            const flameCX = buffMidX - 40
-            const flameCY = buffMidY + 6
+            // 火焰置于 buff 栏中央偏左（中毒存在时，烧伤再往左偏移，避免重叠）
+            const hasPoison = poisonEffect && poisonEffect.layers > 0
+            const burnCX = buffMidX - (hasPoison ? 90 : 40)
+            const burnCY = buffMidY + 6
 
-            scene.drawBurnFlame(flameCX, flameCY, flameSize, layers, timerSec)
+            scene.drawBurnFlame(burnCX, burnCY, flameSize, layers, timerSec)
           } else {
             // 无烧伤：清理火焰显示
             if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
@@ -943,6 +900,71 @@ onMounted(() => {
             if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
             scene._burnNextTickMs = 0
           }
+
+          // ---- 中毒渲染 ----
+          if (poisonEffect && poisonEffect.layers > 0) {
+            const layers = poisonEffect.layers || 0
+            const nextTickIn = poisonEffect.nextTickIn || 1000
+
+            // 记录用于实时倒计时
+            scene._poisonLastTickMs = Date.now()
+            scene._poisonNextTickMs = nextTickIn
+
+            const timerSec = nextTickIn / 1000
+
+            // 中毒图标置于 buff 栏中央偏右
+            const poisonCX = buffMidX + 50
+            const poisonCY = buffMidY + 6
+
+            scene.drawPoisonIcon(poisonCX, poisonCY, layers, timerSec)
+          } else {
+            // 无中毒：清理中毒显示
+            if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+            if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+            if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+            scene._poisonNextTickMs = 0
+          }
+        }
+
+        /**
+         * 绘制中毒状态图标与层数标注。
+         * @param {Phaser.Scene} scene
+         * @param {number} cx      图标中心X
+         * @param {number} cy      图标中心Y
+         * @param {number} layers  中毒层数
+         * @param {number} timerSec 距下次结算秒数
+         */
+        scene.drawPoisonIcon = function (cx, cy, layers, timerSec) {
+          // 清理旧的中毒显示
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+
+          if (layers <= 0) return
+
+          // 使用 💀 emoji 作为中毒图标
+          const iconText = scene.add.text(cx, cy, '💀', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._poisonIconGfx = iconText
+
+          // 层数标注（图标右侧）
+          const layersText = scene.add.text(cx + 10, cy, String(layers), {
+            font: 'bold 14px Arial',
+            fill: '#BB44FF',
+            stroke: '#000000',
+            strokeThickness: 3
+          }).setDepth(121).setOrigin(0, 0.5)
+          scene._poisonLayersText = layersText
+
+          // 倒计时标注（图标下方）
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#CC88FF',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._poisonTimerText = timerText
         }
 
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -1552,7 +1574,7 @@ onMounted(() => {
         }
 
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H,Q')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -1794,8 +1816,19 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        // 返回菜单暂停状态（防止销毁时视觉扭曲）
+        scene._menuPaused = false
         window.addEventListener('backpack:toggle', function(e) {
           scene._backpackPaused = e.detail.visible
+        })
+        window.addEventListener('game:pause', function() {
+          scene._menuPaused = true
+          // 暂停场景的 update 事件
+          scene.sys.events.pause()
+          // 停止所有 tween 动画
+          scene.tweens.killAll()
+          // 停止所有时间事件
+          scene.time.removeAllEvents()
         })
 
         // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条
@@ -1855,6 +1888,38 @@ onMounted(() => {
             if (remaining <= 0) {
               // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
               scene._burnNextTickMs = 0
+            }
+          }
+
+          // ---------- 中毒倒计时实时更新 ----------
+          if (scene._poisonNextTickMs > 0) {
+            const nowPoison = Date.now()
+            const elapsed = nowPoison - scene._poisonLastTickMs
+            const remaining = Math.max(0, scene._poisonNextTickMs - elapsed)
+            scene._poisonNextTickMs = remaining
+            scene._poisonLastTickMs = nowPoison
+            // 更新倒计时文字
+            if (scene._poisonTimerText && scene._poisonTimerText.active) {
+              const timerSec = remaining / 1000
+              scene._poisonTimerText.setText(Math.ceil(timerSec) + 's')
+              // 小于1秒时变红色闪烁
+              if (timerSec < 1) {
+                const flash = Math.sin(nowPoison * 0.02) * 0.3 + 0.7
+                scene._poisonTimerText.setAlpha(flash)
+                scene._poisonTimerText.setColor('#FF4444')
+              } else {
+                scene._poisonTimerText.setAlpha(1)
+                scene._poisonTimerText.setColor('#CC88FF')
+              }
+            }
+            // 中毒图标呼吸闪烁效果
+            if (scene._poisonIconGfx && scene._poisonIconGfx.active) {
+              const pulse = 0.7 + Math.sin(nowPoison * 0.003) * 0.3
+              scene._poisonIconGfx.setAlpha(pulse)
+            }
+            if (remaining <= 0) {
+              // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
+              scene._poisonNextTickMs = 0
             }
           }
 
@@ -2594,6 +2659,25 @@ onMounted(() => {
           }
 
           // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
+          // ---- Q 键测试：施加一层烧伤 ----
+          try {
+            if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test burn' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) scene.renderRoom(j.data)
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+          // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
               if (scene._closestDropItem) {

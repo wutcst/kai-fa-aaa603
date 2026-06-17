@@ -73,12 +73,14 @@ export default {
         // ignore
       }
 
-      // 切换到游戏
+      // 切换到游戏界面（遮罩仍在覆盖）
       screen.value = 'game'
-      transitioning.value = false
 
-      // 加载游戏数据
+      // 等待 Phaser 挂载 + 首次渲染完成后再移除遮罩
+      await new Promise(r => setTimeout(r, 200))
       await loadGameData()
+      await new Promise(r => requestAnimationFrame(r))
+      transitioning.value = false
     }
 
     // 继续冒险（读取存档，当前直接加载游戏）
@@ -87,9 +89,11 @@ export default {
       await new Promise(r => setTimeout(r, 600))
 
       screen.value = 'game'
-      transitioning.value = false
 
+      await new Promise(r => setTimeout(r, 200))
       await loadGameData()
+      await new Promise(r => requestAnimationFrame(r))
+      transitioning.value = false
     }
 
     // 加载后端数据
@@ -109,13 +113,27 @@ export default {
       }
     }
 
-    // 返回主菜单
-    function backToMenu() {
+    // 返回主菜单（带过渡动画）
+    async function backToMenu() {
+      // 过渡动画：先显示遮罩覆盖当前画面
+      transitioning.value = true
+      await new Promise(r => setTimeout(r, 400))
+
+      // 在切换前停止 Phaser 游戏轮询，避免销毁时产生视觉错位
+      try {
+        window.dispatchEvent(new CustomEvent('game:pause'))
+      } catch (e) {}
+
+      // 切换界面并清空状态
       screen.value = 'menu'
       gameStatus.value = null
       message.value = ''
       data.value = null
       roomItems.value = []
+
+      // 等待菜单完整渲染后再移去遮罩
+      await new Promise(r => setTimeout(r, 800))
+      transitioning.value = false
     }
 
     function onUpdate(payload) {
@@ -168,6 +186,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   background: #0d0804;
+  padding-top: 60px;
 }
 
 /* 游戏视图 */
@@ -217,6 +236,21 @@ body {
   opacity: 1;
 }
 
+/* ============ 游戏离开动画 ============ */
+.game-enter-leave-active {
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.game-enter-leave-from {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.game-enter-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
 /* ============ 过渡遮罩 ============ */
 .transition-overlay {
   position: fixed;
@@ -231,7 +265,7 @@ body {
 }
 
 .transition-flash-leave-active {
-  transition: opacity 0.6s ease 0.15s;
+  transition: opacity 0.8s ease 0.2s;
 }
 
 .transition-flash-enter-from,

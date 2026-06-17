@@ -36,6 +36,18 @@ public class GameService {
                     data.put("burnDamage", burnDmg);
                     data.put("burnLayers", player.getStatusManager().getBurnLayers());
                 }
+                // ---- 驱动中毒计时 ----
+                int poisonDmg = player.getStatusManager().tickPoison();
+                if (poisonDmg > 0) {
+                    data.put("poisonDamage", poisonDmg);
+                    data.put("poisonLayers", player.getStatusManager().getPoisonLayers());
+                }
+            }
+
+            // ---- 检查玩家是否因烧伤死亡 ----
+            if (!player.isAlive() && !game.isGameOver()) {
+                game.setGameOver(true);
+                data.put("gameOver", true);
             }
 
             data.put("playerHp", player.getHp());
@@ -114,6 +126,29 @@ public class GameService {
         // 解析命令（分割命令词和参数）
         String[] parts = commandStr.trim().split("\\s+");
         String commandWord = parts[0];
+
+        // ---- 测试命令：test burn - 施加一层烧伤 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "burn".equalsIgnoreCase(parts[1])) {
+            Player player = game.getPlayer();
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applyBurn(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加 1 层烧伤", data);
+            }
+            return GameResponse.error("施加烧伤失败");
+        }
+        // ---- 测试命令：test poison - 施加一层中毒 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "poison".equalsIgnoreCase(parts[1])) {
+            Player player = game.getPlayer();
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applyPoison(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加 1 层中毒", data);
+            }
+            return GameResponse.error("施加中毒失败");
+        }
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
         // 创建并执行命令

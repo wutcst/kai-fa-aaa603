@@ -6,7 +6,7 @@ import java.util.*;
 
 /**
  * 状态效果系统：管理玩家的增益(Buff)和减益(Debuff)状态。
- * 当前仅包含烧伤(BURN)状态。
+ * 当前包含烧伤(BURN)和中毒(POISON)两种状态。
  *
  * 烧伤机制：
  * - 可叠加数层，每次施加烧伤会在现有层数上累加。
@@ -14,9 +14,17 @@ import java.util.*;
  *   然后将烧伤层数减半（向下取整）。
  * - 层数降至0时烧伤状态自动移除。
  *
+ * 中毒机制：
+ * - 可叠加数层，每次施加中毒会在现有层数上累加。
+ * - 每1秒触发一次：受到等同于当前中毒层数的真实伤害（无视防御和魔抗，直接扣除血量），
+ *   然后将中毒层数减1。
+ * - 玩家不会因中毒状态导致血量降低至1以下，即当玩家血量不大于中毒层数时，
+ *   中毒结算仅扣除层数而不造成实际伤害（不触发伤害计数器）。
+ * - 层数降至0时中毒状态自动移除。
+ *
  * 使用方式：Player 持有一个 StatusManager 实例，
- * 通过 statusManager.applyBurn(n) 施加烧伤，
- * 通过 statusManager.tickBurn() 驱动每3秒的烧伤结算。
+ * 通过 statusManager.applyBurn(n) / applyPoison(n) 施加状态，
+ * 通过 statusManager.tickBurn() / tickPoison() 驱动计时结算。
  */
 public class Status {
 
@@ -25,7 +33,9 @@ public class Status {
      */
     public enum StatusType {
         /** 烧伤：可叠加数层，每3秒受到等同于层数的法术伤害，然后层数减半 */
-        BURN("烧伤", true);
+        BURN("烧伤", true),
+        /** 中毒：可叠加数层，每1秒受到等同于层数的真实伤害，然后层数减1 */
+        POISON("中毒", true);
 
         private final String displayName;
         private final boolean debuff;
@@ -99,13 +109,18 @@ public class Status {
         private final Player player;
         /** 烧伤状态实例（null 表示无烧伤） */
         private StatusEffect burnEffect;
+        /** 中毒状态实例（null 表示无中毒） */
+        private StatusEffect poisonEffect;
 
         /** 烧伤触发间隔（毫秒）：3秒 */
         public static final long BURN_TICK_INTERVAL = 3000L;
+        /** 中毒触发间隔（毫秒）：1秒 */
+        public static final long POISON_TICK_INTERVAL = 1000L;
 
         public StatusManager(Player player) {
             this.player = player;
             this.burnEffect = null;
+            this.poisonEffect = null;
         }
 
         // ---- 状态管理 ----
@@ -121,6 +136,8 @@ public class Status {
                 burnEffect = new StatusEffect(StatusType.BURN, layers);
             } else {
                 burnEffect.setLayers(burnEffect.getLayers() + layers);
+                // 重置结算计时器：新层数叠加后从此刻重新开始3秒倒计时
+                burnEffect.setLastTickTime(System.currentTimeMillis());
             }
         }
 
@@ -132,10 +149,34 @@ public class Status {
         }
 
         /**
-         * 清除所有状态（当前即清除烧伤）。
+         * 施加中毒层数。若已有中毒状态则在现有层数上累加，否则新建。
+         *
+         * @param layers 要增加的中毒层数（必须 > 0）
+         */
+        public void applyPoison(int layers) {
+            if (layers <= 0) return;
+            if (poisonEffect == null || poisonEffect.isExpired()) {
+                poisonEffect = new StatusEffect(StatusType.POISON, layers);
+            } else {
+                poisonEffect.setLayers(poisonEffect.getLayers() + layers);
+                // 重置结算计时器：新层数叠加后从此刻重新开始1秒倒计时
+                poisonEffect.setLastTickTime(System.currentTimeMillis());
+            }
+        }
+
+        /**
+         * 移除中毒状态。
+         */
+        public void removePoison() {
+            poisonEffect = null;
+        }
+
+        /**
+         * 清除所有状态（烧伤和中毒）。
          */
         public void clear() {
             burnEffect = null;
+            poisonEffect = null;
         }
 
         /**
@@ -150,6 +191,20 @@ public class Status {
          */
         public int getBurnLayers() {
             return (burnEffect != null && !burnEffect.isExpired()) ? burnEffect.getLayers() : 0;
+        }
+
+        /**
+         * 是否拥有中毒状态。
+         */
+        public boolean hasPoison() {
+            return poisonEffect != null && !poisonEffect.isExpired();
+        }
+
+        /**
+         * 获取当前中毒层数。
+         */
+        public int getPoisonLayers() {
+            return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
         }
 
         // ---- 属性修正方法 ----
@@ -255,6 +310,62 @@ public class Status {
             return actualDamage;
         }
 
+        /**
+         * 驱动中毒的每1秒结算逻辑。
+         * 应由 GameService 在每次命令执行和状态查询时调用，确保中毒持续生效。
+         *
+         * 每次触发时：
+         * 1. 真实伤害 = 当前层数（无视防御和魔抗）
+         * 2. 若玩家血量 > 中毒层数，扣除血量并记录伤害
+         * 3. 若玩家血量 <= 中毒层数，仅扣除层数而不造成实际伤害（HP最低保持1）
+         * 4. 中毒层数减1
+         * 5. 若层数降至 0，移除中毒状态
+         *
+         * @return 本次结算造成的实际伤害（未触发或免伤时返回 0）
+         */
+        public int tickPoison() {
+            if (poisonEffect == null || poisonEffect.isExpired()) {
+                poisonEffect = null;
+                return 0;
+            }
+
+            long now = System.currentTimeMillis();
+            if (now - poisonEffect.getLastTickTime() < POISON_TICK_INTERVAL) {
+                return 0; // 还未到1秒
+            }
+
+            int layers = poisonEffect.getLayers();
+            if (layers <= 0) {
+                poisonEffect = null;
+                return 0;
+            }
+
+            // 真实伤害 = 层数，无视防御和魔抗
+            int rawDamage = layers;
+            int currentHp = player.getHp();
+
+            int actualDamage = 0;
+            // 仅当玩家血量 > 中毒层数时才造成实际伤害，否则HP最低保持1
+            if (currentHp > rawDamage) {
+                actualDamage = rawDamage;
+                player.setHp(currentHp - actualDamage);
+                player.recordDamage(actualDamage);
+            }
+            // 若 currentHp <= rawDamage，不扣血也不记录伤害
+
+            // 层数减1
+            int newLayers = layers - 1;
+            poisonEffect.setLayers(newLayers);
+            poisonEffect.setLastTickTime(now);
+
+            // 层数归零则移除
+            if (newLayers <= 0) {
+                poisonEffect = null;
+            }
+
+            return actualDamage;
+        }
+
         // ---- 辅助方法 ----
 
         /**
@@ -270,6 +381,16 @@ public class Status {
                 map.put("layers", burnEffect.getLayers());
                 long elapsed = System.currentTimeMillis() - burnEffect.getLastTickTime();
                 map.put("nextTickIn", Math.max(0, BURN_TICK_INTERVAL - elapsed));
+                info.add(map);
+            }
+            if (poisonEffect != null && !poisonEffect.isExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.POISON.name());
+                map.put("name", StatusType.POISON.getDisplayName());
+                map.put("isDebuff", true);
+                map.put("layers", poisonEffect.getLayers());
+                long elapsed = System.currentTimeMillis() - poisonEffect.getLastTickTime();
+                map.put("nextTickIn", Math.max(0, POISON_TICK_INTERVAL - elapsed));
                 info.add(map);
             }
             return info;

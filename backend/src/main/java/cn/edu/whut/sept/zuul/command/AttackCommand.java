@@ -1,6 +1,7 @@
 package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
+import cn.edu.whut.sept.zuul.model.DroppedItem;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
@@ -46,13 +47,22 @@ public class AttackCommand implements Command {
         sb.append("你对 ").append(m.getName()).append(" 造成了 ").append(dmg).append(" 点伤害。\n");
 
         if (!m.isAlive()) {
-            // 火焰史莱姆：进入自爆倒计时，不立即移除
-            if (Monster.SPECIAL_FLAME_SLIME.equals(m.getSpecialType())) {
-                m.startExploding();
-                sb.append("你击败了 ").append(m.getName()).append("！但它即将自爆，快远离！");
-            } else {
-                current.removeMonster(m);
-                sb.append("你击败了 ").append(m.getName()).append("！");
+            // 记录怪物位置用于掉落
+            int monsterX = 300; // 默认位置，稍后由前端覆盖
+            int monsterY = 160;
+
+            current.removeMonster(m);
+            sb.append("你击败了 ").append(m.getName()).append("！");
+
+            // Boss 掉落药水（生命浆果或魔力浆果）
+            if (m.getType() == Monster.TYPE_BOSS) {
+                java.util.Random rnd = new java.util.Random();
+                String dropName = rnd.nextBoolean() ? "生命浆果" : "魔力浆果";
+                // 掉落位置放在玩家附近的地面上
+                String playerRoomName = game.getPlayer().getCurrentRoom().getName();
+                DroppedItem drop = new DroppedItem(dropName, monsterX, monsterY);
+                current.addDroppedItem(drop);
+                sb.append("\n" + m.getName() + "掉落了 " + dropName + "！");
             }
 
             // 根据怪物类型给予货币奖励（火焰史莱姆也开始爆炸时立即发放）

@@ -1,4 +1,4 @@
-package cn.edu.whut.sept.zuul.service;
+﻿package cn.edu.whut.sept.zuul.service;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -14,14 +14,14 @@ import cn.edu.whut.sept.zuul.model.Room;
 import org.springframework.stereotype.Service;
 
 /**
- * 游戏服务层：封装游戏核心逻辑，解耦控制器和游戏类
+ * 娓告垙鏈嶅姟灞傦細灏佽娓告垙鏍稿績閫昏緫锛岃В鑰︽帶鍒跺櫒鍜屾父鎴忕被
  */
 @Service
 public class GameService {
-    /** 火焰史莱姆自爆倒计时（毫秒）：3秒 */
+    /** 鐏劙鍙茶幈濮嗚嚜鐖嗗€掕鏃讹紙姣锛夛細3绉?*/
     private static final long EXPLODE_DELAY = 3000L;
 
-    // 游戏实例（单例，模拟单玩家；多玩家需改为Map<玩家ID, Game>）
+    // 娓告垙瀹炰緥锛堝崟渚嬶紝妯℃嫙鍗曠帺瀹讹紱澶氱帺瀹堕渶鏀逛负Map<鐜╁ID, Game>锛?
     private final Game game;
 
     public GameService() {
@@ -29,9 +29,9 @@ public class GameService {
     }
 
     /**
-     * 驱动所有房间中爆炸倒计时怪物的结算。
-     * 如果倒计时已到，执行爆炸伤害并移除怪物。
-     * 同时将爆炸中的怪物信息注入 data 供前端渲染。
+     * 椹卞姩鎵€鏈夋埧闂翠腑鐖嗙偢鍊掕鏃舵€墿鐨勭粨绠椼€?
+     * 濡傛灉鍊掕鏃跺凡鍒帮紝鎵ц鐖嗙偢浼ゅ骞剁Щ闄ゆ€墿銆?
+     * 鍚屾椂灏嗙垎鐐镐腑鐨勬€墿淇℃伅娉ㄥ叆 data 渚涘墠绔覆鏌撱€?
      */
     private void tickExplosions(Map<String, Object> data) {
         Player player = game.getPlayer();
@@ -43,7 +43,7 @@ public class GameService {
         Room currentRoom = game.getCurrentRoom();
         long now = System.currentTimeMillis();
 
-        // 收集当前房间中爆炸中的怪物信息
+        // 鏀堕泦褰撳墠鎴块棿涓垎鐐镐腑鐨勬€墿淇℃伅
         java.util.List<Map<String, Object>> explodingList = new java.util.ArrayList<>();
 
         for (Room room : allRooms) {
@@ -59,8 +59,8 @@ public class GameService {
                 long remaining = Math.max(0, EXPLODE_DELAY - elapsed);
 
                 if (remaining <= 0) {
-                    // 爆炸倒计时到 — 标记已通知，不在此移除（由ExplodeCommand移除）
-                    // 防止重复通知
+                    // 鐖嗙偢鍊掕鏃跺埌 鈥?鏍囪宸查€氱煡锛屼笉鍦ㄦ绉婚櫎锛堢敱ExplodeCommand绉婚櫎锛?
+                    // 闃叉閲嶅閫氱煡
                     if (!m.isExplodeNotified()) {
                         m.setExplodeNotified(true);
 
@@ -82,7 +82,7 @@ public class GameService {
                         triggeredList.add(triggered);
                     }
                 } else {
-                    // 仍在倒计时中，收集信息（仅当前房间）
+                    // 浠嶅湪鍊掕鏃朵腑锛屾敹闆嗕俊鎭紙浠呭綋鍓嶆埧闂达級
                     if (room == currentRoom) {
                         Map<String, Object> info = new HashMap<>();
                         info.put("name", m.getName());
@@ -90,7 +90,7 @@ public class GameService {
                         info.put("specialType", m.getSpecialType());
                         info.put("explodeRange", m.getExplodeRange());
                         info.put("explodeRemaining", remaining);
-                        info.put("x", 0);  // 前端覆盖
+                        info.put("x", 0);  // 鍓嶇瑕嗙洊
                         info.put("y", 0);
                         explodingList.add(info);
                     }
@@ -104,14 +104,14 @@ public class GameService {
     }
 
     /**
-     * 将玩家状态注入到响应数据 Map 中。
-     * 同时驱动烧伤结算计时（tickBurn），确保无论前端以多高频率轮询，
-     * 烧伤每3秒都至少被结算一次。
+     * 灏嗙帺瀹剁姸鎬佹敞鍏ュ埌鍝嶅簲鏁版嵁 Map 涓€?
+     * 鍚屾椂椹卞姩鐑т激缁撶畻璁℃椂锛坱ickBurn锛夛紝纭繚鏃犺鍓嶇浠ュ楂橀鐜囪疆璇紝
+     * 鐑т激姣?绉掗兘鑷冲皯琚粨绠椾竴娆°€?
      */
     private void injectPlayerStatus(Map<String, Object> data) {
         Player player = game.getPlayer();
         if (player != null) {
-            // ---- 驱动烧伤计时 ----
+            // ---- 椹卞姩鐑т激璁℃椂 ----
             if (player.getStatusManager() != null) {
                 int burnDmg = player.getStatusManager().tickBurn();
                 if (burnDmg > 0) {
@@ -120,7 +120,7 @@ public class GameService {
                 }
             }
 
-            // ---- 驱动爆炸计时 ----
+            // ---- 椹卞姩鐖嗙偢璁℃椂 ----
             tickExplosions(data);
 
             data.put("playerHp", player.getHp());
@@ -130,18 +130,18 @@ public class GameService {
             if (player.getMoney() != null) {
                 data.put("playerMoney", player.getMoney().getAmount());
             }
-            // 注入背包数据
+            // 娉ㄥ叆鑳屽寘鏁版嵁
             java.util.List<cn.edu.whut.sept.zuul.model.InventoryItem> bp = player.getBag().getBackpackItems();
             System.out.println("[Backpack] injectPlayerStatus: inventory size=" + player.getBag().getInventory().size() + ", backpack items=" + bp.size());
             for (cn.edu.whut.sept.zuul.model.InventoryItem it : bp) {
                 System.out.println("  - " + it.getName() + " rarity=" + it.getRarity() + " qty=" + it.getQuantity());
             }
             data.put("backpack", bp);
-            // 注入活跃状态效果
+            // 娉ㄥ叆娲昏穬鐘舵€佹晥鏋?
             if (player.getStatusManager() != null) {
                 data.put("activeEffects", player.getStatusManager().getActiveEffectsInfo());
             }
-            // 注入修正后属性（供前端HUD显示）
+            // 娉ㄥ叆淇鍚庡睘鎬э紙渚涘墠绔疕UD鏄剧ず锛?
             data.put("effectiveAttack", player.getEffectiveAttack());
             data.put("effectiveDefense", player.getEffectiveDefense());
             data.put("effectiveMagicAttack", player.getEffectiveMagicAttack());
@@ -152,7 +152,7 @@ public class GameService {
     }
 
     /**
-     * 包装 GameResponse，在其 data 中注入玩家状态
+     * 鍖呰 GameResponse锛屽湪鍏?data 涓敞鍏ョ帺瀹剁姸鎬?
      */
     private GameResponse wrapWithPlayerStatus(GameResponse response) {
         if (response != null && response.getData() instanceof Map) {
@@ -164,7 +164,7 @@ public class GameService {
     }
 
     /**
-     * 根据命令字符串创建对应命令实例（替代原 CommandFactory）
+     * 鏍规嵁鍛戒护瀛楃涓插垱寤哄搴斿懡浠ゅ疄渚嬶紙鏇夸唬鍘?CommandFactory锛?
      */
     private Command createCommand(String commandWord) {
         if (commandWord == null) {
@@ -172,10 +172,9 @@ public class GameService {
         }
         return switch (commandWord.toLowerCase()) {
             case "go" -> new GoCommand(game);
-            case "look" -> new LookCommand(game);
             case "attack" -> new AttackCommand(game);
             case "monsterattack" -> new MonsterAttackCommand(game);
-            case "take" -> new TakeCommand(game);
+            case "take" -> new BagCommand(game);
             case "drop" -> new DropCommand(game);
             case "items" -> new ItemsCommand(game);
             case "interact" -> new InteractCommand(game);
@@ -188,21 +187,21 @@ public class GameService {
     }
 
     /**
-     * 执行玩家命令
-     * @param commandStr 命令字符串（如"go east"）
-     * @return 游戏响应
+     * 鎵ц鐜╁鍛戒护
+     * @param commandStr 鍛戒护瀛楃涓诧紙濡?go east"锛?
+     * @return 娓告垙鍝嶅簲
      */
     public GameResponse executeCommand(String commandStr) {
         if (game.isGameOver()) {
             return GameResponse.error("Game is over! Please reset the game.");
         }
 
-        // 解析命令（分割命令词和参数）
+        // 瑙ｆ瀽鍛戒护锛堝垎鍓插懡浠よ瘝鍜屽弬鏁帮級
         String[] parts = commandStr.trim().split("\\s+");
         String commandWord = parts[0];
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
-        // 创建并执行命令
+        // 鍒涘缓骞舵墽琛屽懡浠?
         Command command = createCommand(commandWord);
         if (command == null) {
             return GameResponse.error("I don't know what you mean by '" + commandWord + "'! Type 'help' for available commands.");
@@ -213,7 +212,7 @@ public class GameService {
     }
 
     /**
-     * 获取当前游戏状态（房间信息等）
+     * 鑾峰彇褰撳墠娓告垙鐘舵€侊紙鎴块棿淇℃伅绛夛級
      */
     public GameResponse getGameStatus() {
         if (game.isGameOver()) {
@@ -225,7 +224,7 @@ public class GameService {
     }
 
     /**
-     * 重置游戏
+     * 閲嶇疆娓告垙
      */
     public GameResponse resetGame() {
         game.reset();
@@ -235,7 +234,7 @@ public class GameService {
     }
 
     /**
-     * 获取全地图数据（供小地图使用）
+     * 鑾峰彇鍏ㄥ湴鍥炬暟鎹紙渚涘皬鍦板浘浣跨敤锛?
      */
     public Map<String, Object> getFullMap() {
         return game.getFullMap();

@@ -93,7 +93,6 @@
 |------|------|------|
 | go | `go <direction>` | 向指定方向移动（east / west / south / north） |
 | back | `back` | 返回上一个房间 |
-| look | `look` | 查看当前房间的详细信息 |
 | help | `help` | 显示所有可用命令 |
 | quit | `quit` | 退出游戏（标记游戏结束） |
 | take | `take <itemName>` | 从当前房间拾取物品放入背包（受负重限制） |

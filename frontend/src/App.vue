@@ -111,20 +111,24 @@ export default {
 
     // 返回主菜单（带过渡动画）
     async function backToMenu() {
-      // 过渡动画
+      // 过渡动画：先显示遮罩覆盖当前画面
       transitioning.value = true
-      await new Promise(r => setTimeout(r, 600))
+      await new Promise(r => setTimeout(r, 400))
 
       // 在切换前停止 Phaser 游戏轮询，避免销毁时产生视觉错位
       try {
         window.dispatchEvent(new CustomEvent('game:pause'))
       } catch (e) {}
 
+      // 切换界面并清空状态
       screen.value = 'menu'
       gameStatus.value = null
       message.value = ''
       data.value = null
       roomItems.value = []
+
+      // 等待菜单完整渲染后再移去遮罩
+      await new Promise(r => setTimeout(r, 800))
       transitioning.value = false
     }
 
@@ -257,7 +261,7 @@ body {
 }
 
 .transition-flash-leave-active {
-  transition: opacity 0.6s ease 0.15s;
+  transition: opacity 0.8s ease 0.2s;
 }
 
 .transition-flash-enter-from,

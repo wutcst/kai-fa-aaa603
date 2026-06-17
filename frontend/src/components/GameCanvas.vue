@@ -1552,7 +1552,7 @@ onMounted(() => {
         }
 
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H,Q')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -2605,6 +2605,25 @@ onMounted(() => {
           }
 
           // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
+          // ---- Q 键测试：施加一层烧伤 ----
+          try {
+            if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test burn' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) scene.renderRoom(j.data)
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+          // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
               if (scene._closestDropItem) {

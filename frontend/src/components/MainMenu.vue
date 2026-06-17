@@ -73,7 +73,7 @@
           <div class="about-divider"></div>
           <div class="about-content">
             <p>在远古遗迹的深处，沉睡着一个被遗忘的文明。</p>
-            <p>你——一位勇敢的探险者，穿越变幻莫测的迷宫，<br>与神秘的怪物战斗，收集强大的魔法物品，<br>揭示隐藏在废墟中的真相。</p>
+            <p>你，一位勇敢的探险者，将穿越变幻莫测的迷宫，<br>与神秘的怪物战斗，收集强大的魔法物品，<br>揭示隐藏在废墟中的真相。</p>
             <p class="about-motto">"勇气是人类最伟大的赞歌。"</p>
           </div>
           <div class="about-credits">

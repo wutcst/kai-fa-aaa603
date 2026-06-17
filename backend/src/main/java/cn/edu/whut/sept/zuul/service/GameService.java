@@ -1,4 +1,4 @@
-﻿package cn.edu.whut.sept.zuul.service;
+package cn.edu.whut.sept.zuul.service;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
@@ -87,10 +87,9 @@ public class GameService {
         }
         return switch (commandWord.toLowerCase()) {
             case "go" -> new GoCommand(game);
-            case "look" -> new LookCommand(game);
             case "attack" -> new AttackCommand(game);
             case "monsterattack" -> new MonsterAttackCommand(game);
-            case "take" -> new TakeCommand(game);
+            case "pickup", "take" -> new PickupCommand(game);
             case "drop" -> new DropCommand(game);
             case "items" -> new ItemsCommand(game);
             case "interact" -> new InteractCommand(game);
@@ -98,7 +97,6 @@ public class GameService {
             case "wave" -> new WaveCommand(game);
             case "explode" -> new ExplodeCommand(game);
             case "bag" -> new BagCommand(game);
-            case "pickup" -> new PickupCommand(game);
             default -> null;
         };
     }

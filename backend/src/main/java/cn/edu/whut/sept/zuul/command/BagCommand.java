@@ -6,12 +6,12 @@ import cn.edu.whut.sept.zuul.model.*;
 import java.util.*;
 
 /**
- * 背包命令：bag use <itemName> / bag discard <itemName>
- * 用于背包UI中的使用/丢弃操作
+ * 背包/拾取命令：bag use <itemName> / bag discard <itemName> / take <itemName>
+ * 用于背包UI中的使用/丢弃操作，以及从当前房间拾取物品
  */
 public class BagCommand implements Command {
     private Game game;
-    private String subCommand; // "use" or "discard"
+    private String subCommand; // "use", "discard", or "take"
     private String itemName;
 
     public BagCommand(Game game) {
@@ -21,10 +21,17 @@ public class BagCommand implements Command {
     @Override
     public GameResponse execute() {
         if (subCommand == null || itemName == null) {
-            return buildInventoryResponse("请指定操作：bag use <物品名> 或 bag discard <物品名>");
+            return buildInventoryResponse("请指定操作：bag use <物品名> / bag discard <物品名> / take <物品名>");
         }
 
         Player player = game.getPlayer();
+
+        // take 子命令：从当前房间拾取物品
+        if ("take".equalsIgnoreCase(subCommand)) {
+            return executeTake(player);
+        }
+
+        // use / discard 子命令：操作背包中的物品
         Bag bag = player.getBag();
         Item item = bag.getItem(itemName);
 
@@ -40,6 +47,23 @@ public class BagCommand implements Command {
             default:
                 return buildInventoryResponse("未知的背包操作：" + subCommand);
         }
+    }
+
+    /**
+     * 从当前房间拾取物品到背包
+     */
+    private GameResponse executeTake(Player player) {
+        Room currentRoom = game.getCurrentRoom();
+        Item item = currentRoom.getItem(itemName);
+
+        if (item == null) {
+            return GameResponse.error("这里没有名为 '" + itemName + "' 的物品！");
+        }
+
+        player.getBag().addItem(item);
+        currentRoom.removeItem(item);
+        return GameResponse.success("你拾取了 " + itemName + "。",
+                currentRoom.getFullInfo());
     }
 
     private GameResponse executeUse(Player player, Bag bag, Item item) {
@@ -112,11 +136,14 @@ public class BagCommand implements Command {
     @Override
     public void setParams(String... params) {
         if (params.length >= 2) {
+            // "bag use <itemName>" 或 "bag take <itemName>"
             this.subCommand = params[0];
             // 物品名可能包含空格，将所有剩余参数拼接
             this.itemName = String.join(" ", Arrays.copyOfRange(params, 1, params.length));
         } else if (params.length == 1) {
-            this.subCommand = params[0];
+            // "take <itemName>"
+            this.subCommand = "take";
+            this.itemName = params[0];
         }
     }
 }

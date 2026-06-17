@@ -2464,13 +2464,23 @@ onMounted(() => {
           }
 
           // 门检测 (skip if charging)
+          // 检查当前房间是否有存活怪物 — 有则禁止出门
+          const hasAliveMonsters = scene.monstersData && scene.monstersData.some(m => m && m.hp > 0)
           let insideAnyDoor = false
           if (scene.doorRects && !scene._waveCharging.active) {
             for (const dr of scene.doorRects) {
               const b = dr.rect.getBounds()
               if (scene.player.x >= b.left && scene.player.x <= b.right && scene.player.y >= b.top && scene.player.y <= b.bottom) {
                 insideAnyDoor = true
-                if (scene.lastDoorEntered !== dr.dir) {
+                // 有存活怪物时不允许通过门（突刺也可能会冲到门区域）
+                if (hasAliveMonsters) {
+                  // 将玩家推回房间内（沿门方向的反向）
+                  const pushBack = 10
+                  const opp = { north: { x: 0, y: pushBack }, south: { x: 0, y: -pushBack }, west: { x: pushBack, y: 0 }, east: { x: -pushBack, y: 0 } }
+                  const p = opp[dr.dir] || { x: 0, y: 0 }
+                  scene.player.x += p.x
+                  scene.player.y += p.y
+                } else if (scene.lastDoorEntered !== dr.dir) {
                   scene.lastDoorEntered = dr.dir
                   scene.sendCommand('go ' + dr.dir, dr.dir)
                 }

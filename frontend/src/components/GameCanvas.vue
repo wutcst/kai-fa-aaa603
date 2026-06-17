@@ -2070,8 +2070,11 @@ onMounted(() => {
 
           // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------
           const MONSTER_DETECT_RANGE = 280   // 发现玩家的距离
-          const MONSTER_ATTACK_RANGE = 45    // 攻击距离
-          const MONSTER_ATTACK_COOLDOWN = 1500 // 攻击间隔 (ms)
+          const MONSTER_ATTACK_RANGE = 45    // 普通怪物攻击距离
+          const MONSTER_ATTACK_COOLDOWN = 1500 // 普通怪物攻击间隔 (ms)
+          // Boss 特殊参数
+          const BOSS_ATTACK_RANGE = 90       // Boss攻击距离（普通怪物的2倍）
+          const BOSS_ATTACK_COOLDOWN = 750   // Boss攻击间隔（普通怪物的一半）
           const pr = scene.playerRadius || 10
 
           const now = Date.now()
@@ -2079,13 +2082,17 @@ onMounted(() => {
           for (const mon of scene.monstersData) {
             if (!mon || !mon.circ) continue
 
+            const isBoss = (mon.type === 2)
+            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
+            const attackCooldown = isBoss ? BOSS_ATTACK_COOLDOWN : MONSTER_ATTACK_COOLDOWN
+
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
             const dist = Math.sqrt(dx * dx + dy * dy)
 
-            if (dist <= MONSTER_ATTACK_RANGE) {
+            if (dist <= attackRange) {
               // 在攻击范围内 → 攻击玩家（每个怪物独立冷却，无全局锁）
-              if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= MONSTER_ATTACK_COOLDOWN) {
+              if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= attackCooldown) {
                 scene.monsterAttackCooldowns[mon.name] = now
                 ;(async () => {
                   try {

@@ -17,6 +17,8 @@ public class Room {
     private List<Monster> monsters;
     private boolean isTeleportRoom;
     private RoomType roomType;
+    // 该房间的怪物是否已被全部清除（用于防止再次进入时重新生成怪物）
+    private boolean monstersCleared;
     // 祭坛系统（仅篝火房间使用）
     private List<Altar> altars;
     // 该房间是否有祭坛已被选择（持久标记，再次进入不刷新）
@@ -36,6 +38,7 @@ public class Room {
         this.monsters = new ArrayList<>();
         this.isTeleportRoom = false;
         this.roomType = RoomType.NORMAL_MONSTER; // 默认普通怪物房
+        this.monstersCleared = false;
         this.altars = new ArrayList<>();
         this.altarUsed = false;
         this.shopItems = new ArrayList<>();
@@ -84,7 +87,32 @@ public class Room {
     }
 
     public boolean removeMonster(Monster m) {
-        return monsters.remove(m);
+        boolean removed = monsters.remove(m);
+        // 如果怪物列表变空，标记该房间怪物已清除
+        if (removed && monsters.isEmpty()) {
+            this.monstersCleared = true;
+        }
+        return removed;
+    }
+
+    /**
+     * 检查房间中是否有存活的怪物（用于锁定出口）
+     */
+    public boolean hasAliveMonsters() {
+        if (monsters == null || monsters.isEmpty()) return false;
+        for (Monster m : monsters) {
+            if (m != null && m.isAlive()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 判断房间是否为怪物房间类型（需要打怪才能离开）
+     */
+    public boolean isMonsterRoom() {
+        return roomType == RoomType.NORMAL_MONSTER
+            || roomType == RoomType.ELITE_MONSTER
+            || roomType == RoomType.BOSS;
     }
 
     public Monster getMonster(String name) {
@@ -105,6 +133,9 @@ public class Room {
         info.put("exits", this.getExitString());
         info.put("items", this.items);
         info.put("monsters", this.monsters);
+        info.put("monstersCleared", this.monstersCleared);
+        info.put("hasAliveMonsters", this.hasAliveMonsters());
+        info.put("isMonsterRoom", this.isMonsterRoom());
         info.put("isTeleportRoom", this.isTeleportRoom);
         info.put("roomType", this.roomType != null ? this.roomType.name() : RoomType.NORMAL_MONSTER.name());
         // 祭坛数据
@@ -215,6 +246,8 @@ public class Room {
      * 根据房间类型生成怪物（幂等：仅当房间无怪物时生成）
      */
     public void spawnMonsters() {
+        // 怪物已被清除的房间不再生成怪物
+        if (this.monstersCleared) return;
         if (monsters != null && !monsters.isEmpty()) return;
         if (roomType == null) return;
         Random rnd = new Random();

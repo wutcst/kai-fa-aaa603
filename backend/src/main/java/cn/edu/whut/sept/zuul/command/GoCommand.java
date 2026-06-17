@@ -22,6 +22,12 @@ public class GoCommand implements Command {
         }
 
         Room currentRoom = game.getCurrentRoom();
+        
+        // 检查当前房间是否为怪物房间且还有存活的怪物 — 阻止离开
+        if (currentRoom.isMonsterRoom() && currentRoom.hasAliveMonsters()) {
+            return GameResponse.error("还有怪物在附近！击败所有怪物后才能离开。");
+        }
+
         Room nextRoom = currentRoom.getExits().get(direction);
         if (nextRoom == null) {
             return GameResponse.error("该方向没有门：" + direction + "！");

@@ -121,6 +121,8 @@ public class Status {
                 burnEffect = new StatusEffect(StatusType.BURN, layers);
             } else {
                 burnEffect.setLayers(burnEffect.getLayers() + layers);
+                // 重置结算计时器：新层数叠加后从此刻重新开始3秒倒计时
+                burnEffect.setLastTickTime(System.currentTimeMillis());
             }
         }
 

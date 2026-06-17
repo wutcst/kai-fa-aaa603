@@ -2659,14 +2659,14 @@ onMounted(() => {
           }
 
           // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
-          // ---- Q 键测试：施加一层烧伤 ----
+          // ---- Q 键测试：施加一层中毒 ----
           try {
             if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
               ;(async () => {
                 try {
                   const res = await fetch('/api/command', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'test burn' })
+                    body: JSON.stringify({ command: 'test poison' })
                   })
                   const j = await res.json()
                   emit('update', j)

@@ -127,17 +127,6 @@ public class GameService {
         String[] parts = commandStr.trim().split("\\s+");
         String commandWord = parts[0];
 
-        // ---- 测试命令：test burn - 施加一层烧伤 ----
-        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "burn".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
-            if (player != null && player.getStatusManager() != null) {
-                player.getStatusManager().applyBurn(1);
-                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
-                injectPlayerStatus(data);
-                return GameResponse.success("测试：施加 1 层烧伤", data);
-            }
-            return GameResponse.error("施加烧伤失败");
-        }
         // ---- 测试命令：test poison - 施加一层中毒 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "poison".equalsIgnoreCase(parts[1])) {
             Player player = game.getPlayer();

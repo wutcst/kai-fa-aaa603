@@ -31,6 +31,14 @@ public class Player {
     private int speed;
     private int dodge;         // 0-100
 
+    // -- 饰品槽位（已装备的饰品名称，null表示空） --
+    /** 披风槽位 */
+    private String equippedCloak;
+    /** 戒指槽位 */
+    private String equippedRing;
+    /** 项链槽位 */
+    private String equippedAmulet;
+
     // -- 伤害计数器 --
     /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
     private List<DamageRecord> damageRecords;
@@ -69,6 +77,140 @@ public class Player {
         magicResist = 0;
         speed = 100;
         dodge = 0;
+
+        equippedCloak = null;
+        equippedRing = null;
+        equippedAmulet = null;
+    }
+
+    // -- 饰品系统 --
+
+    /**
+     * 获取指定物品对应的饰品槽位。
+     * @param itemName 物品名称
+     * @return "cloak" / "ring" / "amulet" / null（不是饰品）
+     */
+    public static String getItemSlot(String itemName) {
+        if (itemName == null) return null;
+        String lower = itemName.toLowerCase();
+        if (lower.contains("暗影披风")) return "cloak";
+        if (lower.contains("生命戒指")) return "ring";
+        if (lower.contains("元素项链")) return "amulet";
+        return null;
+    }
+
+    /**
+     * 判断某件物品是否已佩戴在身上。
+     */
+    public boolean isEquipped(String itemName) {
+        String slot = getItemSlot(itemName);
+        if (slot == null) return false;
+        String equipped = getEquippedInSlot(slot);
+        return itemName != null && itemName.equals(equipped);
+    }
+
+    /**
+     * 获取指定槽位已装备的物品名称。
+     */
+    public String getEquippedInSlot(String slot) {
+        return switch (slot) {
+            case "cloak" -> equippedCloak;
+            case "ring" -> equippedRing;
+            case "amulet" -> equippedAmulet;
+            default -> null;
+        };
+    }
+
+    /**
+     * 佩戴饰品：应用属性加成，记录到槽位。
+     * 如果该槽位已有饰品，先卸下旧的。
+     * @param itemName 饰品名称
+     * @return 被替换下的旧饰品名称（null表示无替换）
+     */
+    public String equipItem(String itemName) {
+        String slot = getItemSlot(itemName);
+        if (slot == null) return null;
+
+        // 如果槽位已有饰品，先卸下
+        String oldItem = unequipSlot(slot);
+
+        // 应用新饰品的属性加成
+        String lower = itemName.toLowerCase();
+        if (lower.contains("暗影披风")) {
+            this.dodge += 15;
+            this.speed += 20;
+        } else if (lower.contains("生命戒指")) {
+            this.maxHp += 50;
+            this.hp = Math.min(this.hp + 50, this.maxHp); // 同时回血
+        } else if (lower.contains("元素项链")) {
+            this.magicAttack += 15;
+            this.magicResist += 20;
+        }
+
+        // 记录到槽位
+        setEquippedSlot(slot, itemName);
+        return oldItem;
+    }
+
+    /**
+     * 卸下饰品：移除属性加成，清空槽位。
+     * @param itemName 饰品名称
+     * @return true表示卸下成功
+     */
+    public boolean unequipItem(String itemName) {
+        String slot = getItemSlot(itemName);
+        if (slot == null) return false;
+        if (!isEquipped(itemName)) return false;
+
+        // 移除属性加成
+        String lower = itemName.toLowerCase();
+        if (lower.contains("暗影披风")) {
+            this.dodge = Math.max(0, this.dodge - 15);
+            this.speed = Math.max(0, this.speed - 20);
+        } else if (lower.contains("生命戒指")) {
+            this.maxHp = Math.max(1, this.maxHp - 50);
+            this.hp = Math.min(this.hp, this.maxHp); // 当前生命不超过最大生命
+        } else if (lower.contains("元素项链")) {
+            this.magicAttack = Math.max(0, this.magicAttack - 15);
+            this.magicResist = Math.max(0, this.magicResist - 20);
+        }
+
+        // 清空槽位
+        setEquippedSlot(slot, null);
+        return true;
+    }
+
+    /**
+     * 清空指定槽位（内部方法，不处理属性加减）。
+     * @param slot 槽位名称
+     * @return 原槽位中的饰品名称（null表示空）
+     */
+    private String unequipSlot(String slot) {
+        String old = getEquippedInSlot(slot);
+        if (old != null) {
+            // 先移除属性
+            String lower = old.toLowerCase();
+            if (lower.contains("暗影披风")) {
+                this.dodge = Math.max(0, this.dodge - 15);
+                this.speed = Math.max(0, this.speed - 20);
+            } else if (lower.contains("生命戒指")) {
+                this.maxHp = Math.max(1, this.maxHp - 50);
+                this.hp = Math.min(this.hp, this.maxHp);
+            } else if (lower.contains("元素项链")) {
+                this.magicAttack = Math.max(0, this.magicAttack - 15);
+                this.magicResist = Math.max(0, this.magicResist - 20);
+            }
+        }
+        setEquippedSlot(slot, null);
+        return old;
+    }
+
+    private void setEquippedSlot(String slot, String itemName) {
+        switch (slot) {
+            case "cloak" -> this.equippedCloak = itemName;
+            case "ring" -> this.equippedRing = itemName;
+            case "amulet" -> this.equippedAmulet = itemName;
+        }
     }
 
     // -- 伤害计数器方法 --
@@ -159,6 +301,33 @@ public class Player {
     public int getEffectiveMagicResist() { return statusManager.getModifiedMagicResist(); }
     public int getEffectiveSpeed()       { return statusManager.getModifiedSpeed(); }
     public int getEffectiveDodge()       { return statusManager.getModifiedDodge(); }
+
+    // -- 饰品被动效果tick --
+
+    /** 生命戒指的回血计时器（毫秒时间戳），由 GameService 驱动 */
+    private long lastRingRegenTime = 0;
+    /** 生命戒指回血间隔：2秒恢复1点生命 */
+    public static final long RING_REGEN_INTERVAL = 2000L;
+
+    /**
+     * 驱动生命戒指的被动回血。
+     * 每2秒恢复1点生命值，仅在佩戴生命戒指时生效。
+     * @return 本次实际恢复的生命值
+     */
+    public int tickRingRegen() {
+        if (equippedRing == null || !equippedRing.contains("生命戒指")) {
+            lastRingRegenTime = System.currentTimeMillis();
+            return 0;
+        }
+        long now = System.currentTimeMillis();
+        if (now - lastRingRegenTime < RING_REGEN_INTERVAL) {
+            return 0;
+        }
+        lastRingRegenTime = now;
+        int before = hp;
+        restoreHp(1);
+        return hp - before;
+    }
 
     // -- 资源管理 --
 

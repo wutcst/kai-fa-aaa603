@@ -54,12 +54,20 @@ public class AttackCommand implements Command {
             current.removeMonster(m);
             sb.append("你击败了 ").append(m.getName()).append("！");
 
+            java.util.Random rnd = new java.util.Random();
+
+            // 普通怪 100%掉落稀有装备（暗影披风、生命戒指、元素项链中的一种）
+            if (m.getType() == Monster.TYPE_NORMAL) {
+                String[] equipNames = {"暗影披风", "生命戒指", "元素项链"};
+                String dropName = equipNames[rnd.nextInt(equipNames.length)];
+                DroppedItem drop = new DroppedItem(dropName, monsterX, monsterY);
+                current.addDroppedItem(drop);
+                sb.append("\n✨ " + m.getName() + "掉落了传说级装备——" + dropName + "！✨");
+            }
+
             // Boss 掉落药水（生命浆果或魔力浆果）
             if (m.getType() == Monster.TYPE_BOSS) {
-                java.util.Random rnd = new java.util.Random();
                 String dropName = rnd.nextBoolean() ? "生命浆果" : "魔力浆果";
-                // 掉落位置放在玩家附近的地面上
-                String playerRoomName = game.getPlayer().getCurrentRoom().getName();
                 DroppedItem drop = new DroppedItem(dropName, monsterX, monsterY);
                 current.addDroppedItem(drop);
                 sb.append("\n" + m.getName() + "掉落了 " + dropName + "！");

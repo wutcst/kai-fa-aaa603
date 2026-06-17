@@ -63,8 +63,10 @@
               <div v-else-if="getSlotItem(i - 1)" class="slot-icon">
                 {{ getSlotItem(i - 1).name.charAt(0) }}
               </div>
+              <!-- 已佩戴标记 -->
+              <span v-if="getSlotItem(i - 1) && getSlotItem(i - 1).equipped" class="slot-equipped-badge">已佩戴</span>
               <!-- 物品数量角标 -->
-              <span v-if="getSlotItem(i - 1)" class="slot-qty">x{{ getSlotItem(i - 1).quantity }}</span>
+              <span v-if="getSlotItem(i - 1) && !getSlotItem(i - 1).equipped" class="slot-qty">x{{ getSlotItem(i - 1).quantity }}</span>
             </div>
           </div>
 
@@ -111,7 +113,21 @@
 
             <!-- 操作按钮 -->
             <div class="detail-buttons">
+              <!-- 饰品已佩戴 → 显示"卸下"按钮 -->
               <button
+                  v-if="selectedItem && selectedItem.equipped"
+                  class="btn-unequip"
+                  @click="unequipItem"
+              >卸下</button>
+              <!-- 饰品未佩戴 → 显示"佩戴"按钮 -->
+              <button
+                  v-else-if="selectedItem && isAccessory(selectedItem)"
+                  class="btn-use"
+                  @click="useItem"
+              >佩戴</button>
+              <!-- 普通消耗品 → 显示"使用"按钮 -->
+              <button
+                  v-else
                   class="btn-use"
                   :disabled="!selectedItem"
                   @click="useItem"
@@ -194,7 +210,14 @@ async function refreshBackpack() {
   }
 }
 
-// 使用物品
+// 判断是否为饰品
+function isAccessory(item) {
+  if (!item || !item.name) return false
+  const name = item.name
+  return name.includes('暗影披风') || name.includes('生命戒指') || name.includes('元素项链')
+}
+
+// 使用物品（饰品则为佩戴）
 async function useItem() {
   if (!selectedItem.value) return
   try {
@@ -224,6 +247,34 @@ async function useItem() {
     }
   } catch (e) {
     console.warn('使用物品失败', e)
+  }
+}
+
+// 卸下饰品
+async function unequipItem() {
+  if (!selectedItem.value) return
+  try {
+    const res = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'bag unequip ' + selectedItem.value.name })
+    })
+    const j = await res.json()
+    emit('update', j)
+    if (j && j.data) {
+      if (j.data.backpack) backpackItems.value = j.data.backpack
+      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
+    }
+    if (selectedItem.value) {
+      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
+      if (stillExists) {
+        const idx = backpackItems.value.indexOf(stillExists)
+        selectedSlot.value = idx
+        selectedItem.value = stillExists
+      }
+    }
+  } catch (e) {
+    console.warn('卸下饰品失败', e)
   }
 }
 
@@ -3065,6 +3116,40 @@ onBeforeUnmount(() => {
 .btn-use:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* 已佩戴徽章 */
+.slot-equipped-badge {
+  position: absolute;
+  bottom: 3px;
+  left: 3px;
+  font-size: 9px;
+  color: #00ff88;
+  text-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
+  font-weight: bold;
+  background: rgba(0, 40, 20, 0.7);
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 255, 136, 0.4);
+  z-index: 5;
+}
+
+/* 卸下按钮 */
+.btn-unequip {
+  padding: 8px 28px;
+  font-size: 16px;
+  font-weight: bold;
+  background: linear-gradient(180deg, #ff8800 0%, #cc6600 100%);
+  color: #ffffff;
+  border: 1px solid #cc7700;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+.btn-unequip:hover {
+  background: linear-gradient(180deg, #ffaa33 0%, #dd7700 100%);
+  box-shadow: 0 0 12px rgba(255, 136, 0, 0.5);
 }
 
 .btn-discard {

@@ -14,8 +14,12 @@ import java.util.stream.Collectors;
 public class Bag {
     private List<Item> inventory;
 
+    /** 持有玩家引用，用于判断物品是否已佩戴 */
+    private Player owner;
+
     public Bag() {
         this.inventory = new ArrayList<>();
+        this.owner = null;
     }
 
     /**
@@ -33,7 +37,7 @@ public class Bag {
     }
 
     /**
-     * 根据名称在背包中查找物品
+     * 根据名称在背包中查找物品（返回第一个匹配的）
      */
     public Item getItem(String itemName) {
         for (Item item : inventory) {
@@ -45,22 +49,50 @@ public class Bag {
     }
 
     /**
-     * 获取背包物品列表（合并同类物品，带数量统计）
-     * 返回 InventoryItem 列表供前端背包UI使用
+     * 获取背包物品列表。
+     * 饰品（披风/戒指/项链）不合并，每个饰品单独占一个格子，数量始终为1；
+     * 非饰品物品按名称合并统计数量。
      */
     public List<InventoryItem> getBackpackItems() {
-        // 统计每种物品的数量
-        Map<String, List<Item>> grouped = inventory.stream()
-                .collect(Collectors.groupingBy(Item::getName));
-
         List<InventoryItem> result = new ArrayList<>();
         int idCounter = 1;
+
+        // 先处理所有饰品（不合并，每个单独占格子）
+        List<Item> accessories = new ArrayList<>();
+        List<Item> nonAccessories = new ArrayList<>();
+
+        for (Item item : inventory) {
+            if (Player.getItemSlot(item.getName()) != null) {
+                accessories.add(item);
+            } else {
+                nonAccessories.add(item);
+            }
+        }
+
+        // 饰品：每个单独占一格，同名饰品中仅第一个佩戴标志为true
+        Set<String> alreadyMarkedEquipped = new HashSet<>();
+        for (Item acc : accessories) {
+            boolean shouldShowEquipped = (owner != null)
+                && owner.isEquipped(acc.getName())
+                && !alreadyMarkedEquipped.contains(acc.getName());
+            if (shouldShowEquipped) {
+                alreadyMarkedEquipped.add(acc.getName());
+            }
+            InventoryItem invItem = InventoryItem.fromItem(acc, 1, idCounter++, shouldShowEquipped);
+            result.add(invItem);
+        }
+
+        // 非饰品物品：按名称合并
+        Map<String, List<Item>> grouped = nonAccessories.stream()
+                .collect(Collectors.groupingBy(Item::getName));
+
         for (Map.Entry<String, List<Item>> entry : grouped.entrySet()) {
             String name = entry.getKey();
             List<Item> items = entry.getValue();
-            InventoryItem invItem = InventoryItem.fromItem(items.get(0), items.size(), idCounter++);
+            InventoryItem invItem = InventoryItem.fromItem(items.get(0), items.size(), idCounter++, false);
             result.add(invItem);
         }
+
         return result;
     }
 

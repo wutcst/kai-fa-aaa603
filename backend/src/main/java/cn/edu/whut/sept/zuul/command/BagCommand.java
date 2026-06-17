@@ -6,12 +6,17 @@ import cn.edu.whut.sept.zuul.model.*;
 import java.util.*;
 
 /**
- * 背包/拾取命令：bag use <itemName> / bag discard <itemName> / take <itemName>
- * 用于背包UI中的使用/丢弃操作，以及从当前房间拾取物品
+ * 背包/拾取命令：bag use <itemName> / bag unequip <itemName> / bag discard <itemName> / take <itemName>
+ * 使用说明：
+ * - 药水/消耗品：bag use = 使用消耗
+ * - 饰品（披风/戒指/项链）：bag use = 佩戴（永久，同类只能佩戴一个）
+ * - 已佩戴的饰品：bag unequip = 卸下
+ * - bag discard = 丢弃
+ * - take = 拾取房间物品
  */
 public class BagCommand implements Command {
     private Game game;
-    private String subCommand; // "use", "discard", or "take"
+    private String subCommand; // "use", "unequip", "discard", or "take"
     private String itemName;
 
     public BagCommand(Game game) {
@@ -21,7 +26,7 @@ public class BagCommand implements Command {
     @Override
     public GameResponse execute() {
         if (subCommand == null || itemName == null) {
-            return buildInventoryResponse("请指定操作：bag use <物品名> / bag discard <物品名> / take <物品名>");
+            return buildInventoryResponse("请指定操作：bag use <物品名> / bag unequip <物品名> / bag discard <物品名> / take <物品名>");
         }
 
         Player player = game.getPlayer();
@@ -31,7 +36,7 @@ public class BagCommand implements Command {
             return executeTake(player);
         }
 
-        // use / discard 子命令：操作背包中的物品
+        // use / unequip / discard 子命令：操作背包中的物品
         Bag bag = player.getBag();
         Item item = bag.getItem(itemName);
 
@@ -42,6 +47,8 @@ public class BagCommand implements Command {
         switch (subCommand.toLowerCase()) {
             case "use":
                 return executeUse(player, bag, item);
+            case "unequip":
+                return executeUnequip(player, bag, item);
             case "discard":
                 return executeDiscard(bag, itemName);
             default:
@@ -66,13 +73,40 @@ public class BagCommand implements Command {
                 currentRoom.getFullInfo());
     }
 
+    /**
+     * 使用/佩戴物品
+     */
     private GameResponse executeUse(Player player, Bag bag, Item item) {
         String itemName = item.getName();
         String lowerName = itemName.toLowerCase();
 
-        // 使用物品效果
         StringBuilder effectMsg = new StringBuilder();
 
+        // ===== 饰品佩戴逻辑 =====
+        String slot = Player.getItemSlot(itemName);
+        if (slot != null) {
+            // 检查是否已佩戴
+            if (player.isEquipped(itemName)) {
+                return buildInventoryResponse(itemName + " 已佩戴，如需卸下请使用「卸下」操作。");
+            }
+
+            // 检查同类饰品是否已佩戴
+            String currentEquipped = player.getEquippedInSlot(slot);
+            if (currentEquipped != null) {
+                return buildInventoryResponse("同类饰品只能佩戴一个！当前已佩戴：" + currentEquipped + "，请先卸下。");
+            }
+
+            // 佩戴饰品（不消耗物品）
+            String oldItem = player.equipItem(itemName);
+            if (oldItem != null) {
+                effectMsg.append("已卸下 ").append(oldItem).append("。");
+            }
+            effectMsg.append("你佩戴了 ").append(itemName).append("！属性已生效！");
+
+            return buildInventoryResponse(effectMsg.toString());
+        }
+
+        // ===== 消耗品使用逻辑 =====
         if (lowerName.contains("生命浆果")) {
             player.restoreHp(25);
             effectMsg.append("你恢复了 25 点生命！");
@@ -98,13 +132,42 @@ public class BagCommand implements Command {
             effectMsg.append("你恢复了 10 点生命！");
         }
 
-        // 从背包中移除一个该物品
+        // 从背包中移除一个该消耗品
         bag.useItem(itemName);
 
         return buildInventoryResponse("使用了 " + itemName + "。" + effectMsg.toString());
     }
 
+    /**
+     * 卸下饰品
+     */
+    private GameResponse executeUnequip(Player player, Bag bag, Item item) {
+        String itemName = item.getName();
+
+        if (Player.getItemSlot(itemName) == null) {
+            return buildInventoryResponse(itemName + " 不是饰品，无法卸下。");
+        }
+
+        if (!player.isEquipped(itemName)) {
+            return buildInventoryResponse(itemName + " 当前未佩戴。");
+        }
+
+        player.unequipItem(itemName);
+        return buildInventoryResponse("已卸下 " + itemName + "，属性加成已移除。物品仍在背包中。");
+    }
+
+    /**
+     * 丢弃物品（饰品丢弃前会先卸下）
+     */
     private GameResponse executeDiscard(Bag bag, String itemName) {
+        // 如果是已佩戴的饰品，先卸下
+        if (bag.getOwner() != null) {
+            String slot = Player.getItemSlot(itemName);
+            if (slot != null && bag.getOwner().isEquipped(itemName)) {
+                bag.getOwner().unequipItem(itemName);
+            }
+        }
+
         int count = bag.discardAllItem(itemName);
         if (count > 0) {
             return buildInventoryResponse("丢弃了 " + count + " 个 " + itemName + "。");

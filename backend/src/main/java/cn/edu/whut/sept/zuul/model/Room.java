@@ -233,7 +233,8 @@ public class Room {
         String desc = "恐怖的" + base + "——最终挑战";
         int hp = 600 + rnd.nextInt(201);   // 600-800
         int attack = 30 + rnd.nextInt(6); // 30-35
-        addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_BOSS));
+        int bossSpeed = 150;              // Boss移速：普通怪物的150%
+        addMonster(new Monster(mname, desc, hp, attack, 0, 0, bossSpeed, Monster.TYPE_BOSS));
     }
 
     private void spawnEliteMonsters(Random rnd) {

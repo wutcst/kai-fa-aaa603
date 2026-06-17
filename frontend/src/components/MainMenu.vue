@@ -72,9 +72,9 @@
           <h2 class="about-title">关于 ZUUL</h2>
           <div class="about-divider"></div>
           <div class="about-content">
-            <p>在远古遗迹的深处，沉睡着一个被遗忘的世界。</p>
-            <p>你将扮演一位勇敢的探险者，穿越随机生成的迷宫，<br>与神秘的怪物战斗，收集强大的魔法物品，<br>揭示隐藏在废墟中的真相。</p>
-            <p class="about-motto">"勇气是黑暗中的唯一光亮。"</p>
+            <p>在远古遗迹的深处，沉睡着一个被遗忘的文明。</p>
+            <p>你——一位勇敢的探险者，穿越变幻莫测的迷宫，<br>与神秘的怪物战斗，收集强大的魔法物品，<br>揭示隐藏在废墟中的真相。</p>
+            <p class="about-motto">"勇气是人类最伟大的赞歌。"</p>
           </div>
           <div class="about-credits">
             <span>技术栈：Vue 3 + Phaser 3 + Spring Boot</span>
@@ -205,7 +205,7 @@ export default {
   position: relative;
   z-index: 2;
   text-align: center;
-  padding-top: 50px;
+  padding-top: 100px;
 }
 
 .title-subtitle {
@@ -220,25 +220,47 @@ export default {
 .game-title {
   font-size: 92px;
   font-weight: bold;
-  color: transparent;
-  background: linear-gradient(180deg, #f5d896 0%, #c89b4a 50%, #8a6a2e 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-shadow: none;
+  color: #f5d896;
   margin: 0;
   line-height: 1;
   letter-spacing: 14px;
-  filter: drop-shadow(0 4px 20px rgba(200, 150, 50, 0.35));
+  font-family: 'Georgia', 'Times New Roman', serif;
+  /* 多层文字阴影 — 打造浮雕石刻质感 */
+  text-shadow:
+    /* 外层光晕 */
+    0 0 30px rgba(200, 150, 50, 0.5),
+    0 0 60px rgba(200, 150, 50, 0.25),
+    /* 亮面高光 */
+    0 1px 0 rgba(255, 240, 200, 0.7),
+    0 2px 0 rgba(220, 180, 80, 0.5),
+    /* 暗部凹陷 */
+    0 -1px 0 rgba(60, 30, 5, 0.6),
+    0 -2px 0 rgba(40, 20, 0, 0.5),
+    1px 3px 4px rgba(0, 0, 0, 0.5),
+    2px 4px 8px rgba(0, 0, 0, 0.35),
+    3px 6px 12px rgba(0, 0, 0, 0.2);
+  /* 渐变叠加 */
+  background: linear-gradient(
+    180deg,
+    #fff8e0 0%,
+    #f5d896 15%,
+    #e8c860 40%,
+    #c89b4a 55%,
+    #a07030 75%,
+    #6a4020 100%
+  );
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
   animation: title-glow 3s ease-in-out infinite alternate;
 }
 
 @keyframes title-glow {
   0% {
-    filter: drop-shadow(0 4px 20px rgba(200, 150, 50, 0.30));
+    filter: drop-shadow(0 4px 18px rgba(200, 150, 50, 0.35));
   }
   100% {
-    filter: drop-shadow(0 4px 35px rgba(200, 150, 50, 0.55));
+    filter: drop-shadow(0 6px 30px rgba(220, 170, 60, 0.55));
   }
 }
 

@@ -1794,8 +1794,19 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        // 返回菜单暂停状态（防止销毁时视觉扭曲）
+        scene._menuPaused = false
         window.addEventListener('backpack:toggle', function(e) {
           scene._backpackPaused = e.detail.visible
+        })
+        window.addEventListener('game:pause', function() {
+          scene._menuPaused = true
+          // 暂停场景的 update 事件
+          scene.sys.events.pause()
+          // 停止所有 tween 动画
+          scene.tweens.killAll()
+          // 停止所有时间事件
+          scene.time.removeAllEvents()
         })
 
         // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条

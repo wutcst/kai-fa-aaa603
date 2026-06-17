@@ -109,13 +109,23 @@ export default {
       }
     }
 
-    // 返回主菜单
-    function backToMenu() {
+    // 返回主菜单（带过渡动画）
+    async function backToMenu() {
+      // 过渡动画
+      transitioning.value = true
+      await new Promise(r => setTimeout(r, 600))
+
+      // 在切换前停止 Phaser 游戏轮询，避免销毁时产生视觉错位
+      try {
+        window.dispatchEvent(new CustomEvent('game:pause'))
+      } catch (e) {}
+
       screen.value = 'menu'
       gameStatus.value = null
       message.value = ''
       data.value = null
       roomItems.value = []
+      transitioning.value = false
     }
 
     function onUpdate(payload) {
@@ -168,6 +178,7 @@ body {
   justify-content: center;
   align-items: flex-start;
   background: #0d0804;
+  padding-top: 60px;
 }
 
 /* 游戏视图 */
@@ -215,6 +226,21 @@ body {
 
 .game-enter-enter-to {
   opacity: 1;
+}
+
+/* ============ 游戏离开动画 ============ */
+.game-enter-leave-active {
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.game-enter-leave-from {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.game-enter-leave-to {
+  opacity: 0;
+  transform: scale(0.98);
 }
 
 /* ============ 过渡遮罩 ============ */

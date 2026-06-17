@@ -731,6 +731,13 @@ onMounted(() => {
         scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
         scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
 
+        // 中毒状态相关
+        scene._poisonIconGfx = null        // 中毒图标（💀）
+        scene._poisonLayersText = null     // 中毒层数文字
+        scene._poisonTimerText = null      // 中毒倒计时文字
+        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
+        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
+
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
         scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -857,15 +864,18 @@ onMounted(() => {
           const buffMidX = (buffLeft + buffRight) / 2
           const buffMidY = (buffTop + buffBottom) / 2
 
-          // 查找烧伤状态
+          // 查找烧伤状态和中毒状态
           let burnEffect = null
+          let poisonEffect = null
           for (const eff of scene._activeEffects) {
             if (eff && eff.type === 'BURN') {
               burnEffect = eff
-              break
+            } else if (eff && eff.type === 'POISON') {
+              poisonEffect = eff
             }
           }
 
+          // ---- 烧伤渲染 ----
           if (burnEffect && burnEffect.layers > 0) {
             const layers = burnEffect.layers || 0
             const nextTickIn = burnEffect.nextTickIn || 3000
@@ -877,11 +887,12 @@ onMounted(() => {
             const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
             const timerSec = nextTickIn / 1000
 
-            // 火焰置于 buff 栏中央偏左
-            const flameCX = buffMidX - 40
-            const flameCY = buffMidY + 6
+            // 火焰置于 buff 栏中央偏左（中毒存在时，烧伤再往左偏移，避免重叠）
+            const hasPoison = poisonEffect && poisonEffect.layers > 0
+            const burnCX = buffMidX - (hasPoison ? 90 : 40)
+            const burnCY = buffMidY + 6
 
-            scene.drawBurnFlame(flameCX, flameCY, flameSize, layers, timerSec)
+            scene.drawBurnFlame(burnCX, burnCY, flameSize, layers, timerSec)
           } else {
             // 无烧伤：清理火焰显示
             if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
@@ -889,6 +900,71 @@ onMounted(() => {
             if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
             scene._burnNextTickMs = 0
           }
+
+          // ---- 中毒渲染 ----
+          if (poisonEffect && poisonEffect.layers > 0) {
+            const layers = poisonEffect.layers || 0
+            const nextTickIn = poisonEffect.nextTickIn || 1000
+
+            // 记录用于实时倒计时
+            scene._poisonLastTickMs = Date.now()
+            scene._poisonNextTickMs = nextTickIn
+
+            const timerSec = nextTickIn / 1000
+
+            // 中毒图标置于 buff 栏中央偏右
+            const poisonCX = buffMidX + 50
+            const poisonCY = buffMidY + 6
+
+            scene.drawPoisonIcon(poisonCX, poisonCY, layers, timerSec)
+          } else {
+            // 无中毒：清理中毒显示
+            if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+            if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+            if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+            scene._poisonNextTickMs = 0
+          }
+        }
+
+        /**
+         * 绘制中毒状态图标与层数标注。
+         * @param {Phaser.Scene} scene
+         * @param {number} cx      图标中心X
+         * @param {number} cy      图标中心Y
+         * @param {number} layers  中毒层数
+         * @param {number} timerSec 距下次结算秒数
+         */
+        scene.drawPoisonIcon = function (cx, cy, layers, timerSec) {
+          // 清理旧的中毒显示
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+
+          if (layers <= 0) return
+
+          // 使用 💀 emoji 作为中毒图标
+          const iconText = scene.add.text(cx, cy, '💀', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._poisonIconGfx = iconText
+
+          // 层数标注（图标右侧）
+          const layersText = scene.add.text(cx + 10, cy, String(layers), {
+            font: 'bold 14px Arial',
+            fill: '#BB44FF',
+            stroke: '#000000',
+            strokeThickness: 3
+          }).setDepth(121).setOrigin(0, 0.5)
+          scene._poisonLayersText = layersText
+
+          // 倒计时标注（图标下方）
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#CC88FF',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._poisonTimerText = timerText
         }
 
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -1812,6 +1888,38 @@ onMounted(() => {
             if (remaining <= 0) {
               // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
               scene._burnNextTickMs = 0
+            }
+          }
+
+          // ---------- 中毒倒计时实时更新 ----------
+          if (scene._poisonNextTickMs > 0) {
+            const nowPoison = Date.now()
+            const elapsed = nowPoison - scene._poisonLastTickMs
+            const remaining = Math.max(0, scene._poisonNextTickMs - elapsed)
+            scene._poisonNextTickMs = remaining
+            scene._poisonLastTickMs = nowPoison
+            // 更新倒计时文字
+            if (scene._poisonTimerText && scene._poisonTimerText.active) {
+              const timerSec = remaining / 1000
+              scene._poisonTimerText.setText(Math.ceil(timerSec) + 's')
+              // 小于1秒时变红色闪烁
+              if (timerSec < 1) {
+                const flash = Math.sin(nowPoison * 0.02) * 0.3 + 0.7
+                scene._poisonTimerText.setAlpha(flash)
+                scene._poisonTimerText.setColor('#FF4444')
+              } else {
+                scene._poisonTimerText.setAlpha(1)
+                scene._poisonTimerText.setColor('#CC88FF')
+              }
+            }
+            // 中毒图标呼吸闪烁效果
+            if (scene._poisonIconGfx && scene._poisonIconGfx.active) {
+              const pulse = 0.7 + Math.sin(nowPoison * 0.003) * 0.3
+              scene._poisonIconGfx.setAlpha(pulse)
+            }
+            if (remaining <= 0) {
+              // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
+              scene._poisonNextTickMs = 0
             }
           }
 

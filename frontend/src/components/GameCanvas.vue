@@ -1941,7 +1941,7 @@ onMounted(() => {
          * @param {string[]} blacksmithItems - 铁匠可选物品列表（可能为null）
          */
         scene.showEncounterDialog = function (message, eventType, blacksmithItems) {
-          if (scene.encounterOverlay) { try { scene.encounterOverlay.destroy() } catch (e) {} }
+          if (scene.encounterOverlay) { scene._closeEncounterDialog() }
 
           // 根据事件类型决定NPC头像和颜色
           let npcEmoji = '📦'
@@ -1965,13 +1965,29 @@ onMounted(() => {
             bgColor = 0x2a1a0a
           }
 
+          // 关闭对话框的通用函数（清除timer/ref）
+          scene._closeEncounterDialog = function () {
+            if (scene._encounterTimer) {
+              scene.time.removeEvent(scene._encounterTimer)
+              scene._encounterTimer = null
+            }
+            if (scene.encounterOverlay) {
+              try { scene.encounterOverlay.destroy() } catch (e) {}
+              scene.encounterOverlay = null
+            }
+            if (scene._encounterDialogRenderData) {
+              scene.renderRoom(scene._encounterDialogRenderData)
+              scene._encounterDialogRenderData = null
+            }
+          }
+
           const overlay = scene.add.container(0, 0).setDepth(200)
           // 半透明背景遮罩
           const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.55)
           bg.setInteractive()
           overlay.add(bg)
 
-          // 对话框面板 - 居中 500x400
+          // 对话框面板 - 居中 500x420
           const panelX = 400
           const panelY = 290
           const panelW = 500
@@ -2021,13 +2037,12 @@ onMounted(() => {
 
           // 铁匠特殊：显示可点击的物品选择按钮
           if (eventType === 'BLACKSMITH' && blacksmithItems && blacksmithItems.length > 0) {
-            const btnStartY = panelTop + panelH - 110
             const btnW = 140
             const btnGap = 12
 
             blacksmithItems.forEach((itemName, idx) => {
               const bx = panelX + (idx - (blacksmithItems.length - 1) / 2) * (btnW + btnGap)
-              const by = btnStartY
+              const by = panelTop + panelH - 110
 
               const btnBg = scene.add.rectangle(bx, by, btnW, 36, 0x443322, 0.9)
                 .setStrokeStyle(1, 0xcc8844)
@@ -2067,29 +2082,32 @@ onMounted(() => {
             })
           }
 
-          // 关闭按钮
-          const closeY = eventType === 'BLACKSMITH' && blacksmithItems && blacksmithItems.length > 0
+          // 倒计时 + 按SPACE关闭提示
+          const closeHintY = eventType === 'BLACKSMITH' && blacksmithItems && blacksmithItems.length > 0
             ? panelTop + panelH - 40
-            : panelTop + panelH - 35
-          const closeBtn = scene.add.text(panelX, closeY, '关闭', {
-            font: 'bold 16px Arial',
-            fill: '#aaaaaa',
-            backgroundColor: '#333333',
-            padding: { x: 24, y: 6 }
-          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-          closeBtn.on('pointerover', () => closeBtn.setStyle({ fill: '#ffffff', backgroundColor: '#555555' }))
-          closeBtn.on('pointerout', () => closeBtn.setStyle({ fill: '#aaaaaa', backgroundColor: '#333333' }))
-          closeBtn.on('pointerdown', () => {
-            try { scene.encounterOverlay.destroy() } catch (e) {}
-            scene.encounterOverlay = null
-            if (scene._encounterDialogRenderData) {
-              scene.renderRoom(scene._encounterDialogRenderData)
-              scene._encounterDialogRenderData = null
-            }
-          })
-          overlay.add(closeBtn)
+            : panelTop + panelH - 30
+          const countdownText = scene.add.text(panelX, closeHintY, '10秒后自动关闭 · 按 SPACE 关闭', {
+            font: 'bold 14px Arial', fill: accentColor
+          }).setOrigin(0.5)
+          overlay.add(countdownText)
 
           scene.encounterOverlay = overlay
+
+          // 启动10秒自动关闭倒计时（每秒更新文字）
+          let secondsLeft = 10
+          scene._encounterTimer = scene.time.addEvent({
+            delay: 1000,
+            repeat: 9,
+            callback: () => {
+              secondsLeft--
+              if (secondsLeft > 0) {
+                countdownText.setText(secondsLeft + '秒后自动关闭 · 按 SPACE 关闭')
+              } else {
+                countdownText.setText('即将关闭...')
+                scene._closeEncounterDialog()
+              }
+            }
+          })
         }
 
         // 键盘控制
@@ -2381,9 +2399,9 @@ onMounted(() => {
             }
           }
           // 如果背包未打开且响应包含房间数据，正常渲染房间
-          // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
-          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
-          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+          // 注意：如果有商店菜单、购物界面、博学祭坛浮层或奇遇对话框打开，不调用 renderRoom()
+          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单/对话框闪退
+          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay && !scene.encounterOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
@@ -3505,6 +3523,11 @@ onMounted(() => {
           // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
+              // 如果奇遇对话框已打开，按SPACE关闭（不触发任何交互）
+              if (scene.encounterOverlay) {
+                scene._closeEncounterDialog()
+                return
+              }
               if (scene._closestDropItem) {
                 // 拾取掉落物
                 const dropItem = scene._closestDropItem

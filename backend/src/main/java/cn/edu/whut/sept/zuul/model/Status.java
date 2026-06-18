@@ -16,10 +16,11 @@ import java.util.*;
  *
  * 中毒机制：
  * - 可叠加数层，每次施加中毒会在现有层数上累加。
- * - 每1秒触发一次：受到等同于当前中毒层数的真实伤害（无视防御和魔抗，直接扣除血量），
- *   然后将中毒层数减1。
- * - 玩家不会因中毒状态导致血量降低至1以下，即当玩家血量不大于中毒层数时，
- *   中毒结算仅扣除层数而不造成实际伤害（不触发伤害计数器）。
+ * - 每1秒触发一次：受到等同于 min(当前层数, 玩家血量-1) 的真实伤害
+ *   （无视防御和魔抗，直接扣除血量），然后将中毒层数减1。
+ * - 玩家不会因中毒状态导致血量降低至1以下，
+ *   即当玩家血量不高于中毒层数时，最多扣至1血并触发伤害计数器。
+ *   例如：玩家血量15，中毒20层 → 伤害=14，HP降至1，层数降至19。
  * - 层数降至0时中毒状态自动移除。
  *
  * 使用方式：Player 持有一个 StatusManager 实例，
@@ -315,13 +316,14 @@ public class Status {
          * 应由 GameService 在每次命令执行和状态查询时调用，确保中毒持续生效。
          *
          * 每次触发时：
-         * 1. 真实伤害 = 当前层数（无视防御和魔抗）
-         * 2. 若玩家血量 > 中毒层数，扣除血量并记录伤害
-         * 3. 若玩家血量 <= 中毒层数，仅扣除层数而不造成实际伤害（HP最低保持1）
-         * 4. 中毒层数减1
-         * 5. 若层数降至 0，移除中毒状态
+         * 1. 真实伤害 = min(当前层数, 玩家血量 - 1)，即中毒无法将血量降至1以下
+         * 2. 扣除血量并记录伤害（无视防御和魔抗）
+         * 3. 中毒层数减1
+         * 4. 若层数降至 0，移除中毒状态
          *
-         * @return 本次结算造成的实际伤害（未触发或免伤时返回 0）
+         * 例如：玩家血量 15，拥有 20 层中毒 → 伤害 = 14，HP 降至 1，层数降至 19
+         *
+         * @return 本次结算造成的实际伤害（未触发或无伤害时返回 0）
          */
         public int tickPoison() {
             if (poisonEffect == null || poisonEffect.isExpired()) {
@@ -340,18 +342,16 @@ public class Status {
                 return 0;
             }
 
-            // 真实伤害 = 层数，无视防御和魔抗
-            int rawDamage = layers;
             int currentHp = player.getHp();
 
+            // HP 最低保持 1，伤害 = min(层数, 当前血量 - 1)
             int actualDamage = 0;
-            // 仅当玩家血量 > 中毒层数时才造成实际伤害，否则HP最低保持1
-            if (currentHp > rawDamage) {
-                actualDamage = rawDamage;
+            if (currentHp > 1) {
+                actualDamage = Math.min(layers, currentHp - 1);
                 player.setHp(currentHp - actualDamage);
                 player.recordDamage(actualDamage);
             }
-            // 若 currentHp <= rawDamage，不扣血也不记录伤害
+            // 若 currentHp <= 1，已经是最低血量，不造成伤害也不记录
 
             // 层数减1
             int newLayers = layers - 1;

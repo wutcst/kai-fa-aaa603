@@ -912,68 +912,65 @@ onMounted(() => {
           const buffBottom = roomTop - 4
           const buffLeft = barX - 105        // HP/MP label 左边缘
           const buffRight = barX + barW       // HP/MP 条右边缘
-          const buffMidX = (buffLeft + buffRight) / 2
           const buffMidY = (buffTop + buffBottom) / 2
 
-          // 查找烧伤状态和中毒状态
-          let burnEffect = null
-          let poisonEffect = null
-          for (const eff of scene._activeEffects) {
-            if (eff && eff.type === 'BURN') {
-              burnEffect = eff
-            } else if (eff && eff.type === 'POISON') {
-              poisonEffect = eff
+          // ---- 先清理所有旧的状态显示 ----
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+          scene._burnNextTickMs = 0
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+          scene._poisonNextTickMs = 0
+
+          // ---- 收集所有活跃状态，按固定顺序排列 ----
+          // 排序规则：先减益后增益，同类型按名称排序
+          const typeOrder = { 'BURN': 0, 'POISON': 1 }
+          const orderedEffects = scene._activeEffects
+            .filter(eff => eff && eff.layers > 0)
+            .sort((a, b) => {
+              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
+              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
+              if (orderA !== orderB) return orderA - orderB
+              return (a.name || a.type).localeCompare(b.name || b.type)
+            })
+
+          if (orderedEffects.length === 0) return
+
+          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
+          const cellWidth = 40    // 每个状态格子的宽度
+          const startX = 580      // 第一个格子中心X（固定）
+
+          for (let i = 0; i < orderedEffects.length; i++) {
+            const eff = orderedEffects[i]
+            const cellCX = startX + i * cellWidth
+            const cellCY = buffMidY + 6
+
+            if (eff.type === 'BURN') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 3000
+
+              // 记录用于实时倒计时
+              scene._burnLastTickMs = Date.now()
+              scene._burnNextTickMs = nextTickIn
+
+              const flameSize = Math.min(3, 1 + layers * 0.5)
+              const timerSec = nextTickIn / 1000
+
+              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
+            } else if (eff.type === 'POISON') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 1000
+
+              // 记录用于实时倒计时
+              scene._poisonLastTickMs = Date.now()
+              scene._poisonNextTickMs = nextTickIn
+
+              const timerSec = nextTickIn / 1000
+
+              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
             }
-          }
-
-          // ---- 烧伤渲染 ----
-          if (burnEffect && burnEffect.layers > 0) {
-            const layers = burnEffect.layers || 0
-            const nextTickIn = burnEffect.nextTickIn || 3000
-
-            // 记录用于实时倒计时
-            scene._burnLastTickMs = Date.now()
-            scene._burnNextTickMs = nextTickIn
-
-            const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
-            const timerSec = nextTickIn / 1000
-
-            // 火焰置于 buff 栏中央偏左（中毒存在时，烧伤再往左偏移，避免重叠）
-            const hasPoison = poisonEffect && poisonEffect.layers > 0
-            const burnCX = buffMidX - (hasPoison ? 90 : 40)
-            const burnCY = buffMidY + 6
-
-            scene.drawBurnFlame(burnCX, burnCY, flameSize, layers, timerSec)
-          } else {
-            // 无烧伤：清理火焰显示
-            if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
-            if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
-            if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
-            scene._burnNextTickMs = 0
-          }
-
-          // ---- 中毒渲染 ----
-          if (poisonEffect && poisonEffect.layers > 0) {
-            const layers = poisonEffect.layers || 0
-            const nextTickIn = poisonEffect.nextTickIn || 1000
-
-            // 记录用于实时倒计时
-            scene._poisonLastTickMs = Date.now()
-            scene._poisonNextTickMs = nextTickIn
-
-            const timerSec = nextTickIn / 1000
-
-            // 中毒图标置于 buff 栏中央偏右
-            const poisonCX = buffMidX + 50
-            const poisonCY = buffMidY + 6
-
-            scene.drawPoisonIcon(poisonCX, poisonCY, layers, timerSec)
-          } else {
-            // 无中毒：清理中毒显示
-            if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
-            if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
-            if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
-            scene._poisonNextTickMs = 0
           }
         }
 
@@ -1000,7 +997,7 @@ onMounted(() => {
           scene._poisonIconGfx = iconText
 
           // 层数标注（图标右侧）
-          const layersText = scene.add.text(cx + 10, cy, String(layers), {
+          const layersText = scene.add.text(cx + 11, cy, String(layers), {
             font: 'bold 14px Arial',
             fill: '#BB44FF',
             stroke: '#000000',
@@ -1750,7 +1747,7 @@ onMounted(() => {
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 110,
+          radius: 120,
           angleDeg: 135,
           segments: 96,
           sweepDuration: 140,
@@ -1766,6 +1763,7 @@ onMounted(() => {
           pierceFade: 180,
           pierceWidth: 14
         }
+        scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -1989,6 +1987,7 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
         window.addEventListener('backpack:toggle', function(e) {
@@ -2378,7 +2377,8 @@ onMounted(() => {
           // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
           // Also detect monsters in range and send damage commands to backend
           try {
-            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active) {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active && !scene._attackOnCooldown) {
+              scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
 
               // helper: send attack command to backend for a specific monster
@@ -2429,28 +2429,11 @@ onMounted(() => {
               // determine attack type
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
 
-              // detect hit monsters before any visual effect
-              const hitMonsters = []
-              if (isShiftMove) {
-                const startX = scene.player.x
-                const startY = scene.player.y
-                const dx = Math.cos(scene.facingAngle)
-                const dy = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
-                    hitMonsters.push(mon.name)
-                  }
-                }
-              } else {
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInSweep(mon)) {
-                    hitMonsters.push(mon.name)
-                  }
+              // 收集当前房间所有存活怪物的位置快照，发往后端做命中判定
+              const monsterPositions = []
+              for (const mon of scene.monstersData) {
+                if (mon && mon.name && !mon.exploding) {
+                  monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
                 }
               }
 
@@ -2466,6 +2449,21 @@ onMounted(() => {
                 const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
 
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+
+                // ---- 突刺击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                const PIERCE_KNOCKBACK = 40
+                const pierceKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - startX
+                  const mdy = mon.y - startY
+                  const along = mdx * dx + mdy * dy
+                  if (along < 0 || along > 120) continue
+                  const perp = Math.abs(mdx * (-dy) + mdy * dx)
+                  if (perp > 24) continue
+                  pierceKnockbacks.push({ name: mon.name, pushX: dx * PIERCE_KNOCKBACK, pushY: dy * PIERCE_KNOCKBACK })
+                }
+                scene._pendingKnockbacks = pierceKnockbacks
                 try {
                   const g2 = scene.add.graphics()
                   const extra = cfg.pierceDistanceExpand || 1.0
@@ -2482,7 +2480,7 @@ onMounted(() => {
                     { x: startX, y: startY },
                     { x: mx - hx, y: my - hy }
                   ], true)
-                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
+                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
                 } catch (e) {}
               } else {
                 // === SWEEP ATTACK (enhanced visuals) ===
@@ -2498,6 +2496,32 @@ onMounted(() => {
                 if (scene.cameras && scene.cameras.main) {
                   scene.cameras.main.shake(120, 0.005)
                 }
+
+                // ---- 横扫击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                // 根据怪物类型分级击退：普通35px，精英25px，领袖15px
+                const SWEEP_KB_NORMAL = 35
+                const SWEEP_KB_ELITE  = 25
+                const SWEEP_KB_BOSS   = 15
+                const sweepKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - scene.player.x
+                  const mdy = mon.y - scene.player.y
+                  const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
+                  if (mdist > 120 || mdist < 0.01) continue
+                  const angleToMon = Math.atan2(mdy, mdx)
+                  let diff = angleToMon - scene.facingAngle
+                  while (diff > Math.PI) diff -= 2 * Math.PI
+                  while (diff < -Math.PI) diff += 2 * Math.PI
+                  if (Math.abs(diff) > Math.PI * 67.5 / 180) continue
+                  const nx = mdx / mdist
+                  const ny = mdy / mdist
+                  let kbDist = SWEEP_KB_NORMAL
+                  if (mon.type === 1) kbDist = SWEEP_KB_ELITE
+                  else if (mon.type === 2) kbDist = SWEEP_KB_BOSS
+                  sweepKnockbacks.push({ name: mon.name, pushX: nx * kbDist, pushY: ny * kbDist })
+                }
+                scene._pendingKnockbacks = sweepKnockbacks
 
                 scene.tweens.add({
                   targets: progress,
@@ -2520,15 +2544,58 @@ onMounted(() => {
                   onComplete: () => {
                     scene.spawnAttackParticles(1, 15)
                     scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
-                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => fireGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
                   }
                 })
               }
 
-              // send attack commands for all monsters hit
-              for (const monName of hitMonsters) {
-                attackMonster(monName)
-              }
+              // 单次调用后端，由后端统一做命中判定
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/attack', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      attackType: isShiftMove ? 'pierce' : 'sweep',
+                      playerX: scene.player.x,
+                      playerY: scene.player.y,
+                      facingAngle: scene.facingAngle,
+                      monsters: monsterPositions
+                    })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) {
+                    scene.renderRoom(j.data)
+                    // ---- 在 renderRoom 重建怪物后执行击退动画 ----
+                    if (scene._pendingKnockbacks && scene._pendingKnockbacks.length > 0) {
+                      const kbs = scene._pendingKnockbacks
+                      scene._pendingKnockbacks = null
+                      const knockPr = scene.playerRadius || 14
+                      for (const kb of kbs) {
+                        const mon = scene.monstersData.find(m => m && m.name === kb.name)
+                        if (!mon || !mon.circ || mon.exploding) continue
+                        const pushX = Phaser.Math.Clamp(mon.x + kb.pushX, rb.left + knockPr, rb.right - knockPr)
+                        const pushY = Phaser.Math.Clamp(mon.y + kb.pushY, rb.top + knockPr, rb.bottom - knockPr)
+                        scene.tweens.add({
+                          targets: { x: mon.x, y: mon.y },
+                          x: pushX, y: pushY, duration: 150, ease: 'Cubic.easeOut',
+                          onUpdate: function (tween) {
+                            const t = tween.targets[0]
+                            mon.x = t.x; mon.y = t.y
+                            try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                            try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                          }
+                        })
+                      }
+                    }
+                  }
+                  if (j && j.message && j.message.includes('游戏结束')) {
+                    scene.showGameOver()
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
             }
           } catch (e) { /* ignore input issues */ }
 
@@ -2842,9 +2909,28 @@ onMounted(() => {
           }
 
           // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
-          // ---- Q 键测试：施加一层烧伤 ----
+          // ---- Q 键测试：施加一层中毒 ----
           try {
             if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test poison' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) scene.renderRoom(j.data)
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
+          // ---- E 键测试：施加一层烧伤 ----
+          try {
+            if (scene.keys.E && Phaser.Input.Keyboard.JustDown(scene.keys.E) && !scene._waveCharging.active) {
               ;(async () => {
                 try {
                   const res = await fetch('/api/command', {

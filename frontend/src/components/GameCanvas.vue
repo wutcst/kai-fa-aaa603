@@ -1035,6 +1035,9 @@ onMounted(() => {
         // ---------- 天使金光效果 ----------
         scene.angelGlowGfx = null      // 天使金光Graphics
         scene._hasAngelGlow = false
+        // ---------- 中毒雾气效果 ----------
+        scene.poisonFogGfx = null      // 中毒雾气Graphics
+        scene._hasPoisonFog = false
 
         scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
@@ -3693,10 +3696,13 @@ onMounted(() => {
           // 检查玩家是否有天使祝福效果
           const activeEffects = scene._activeEffects || []
           let hasAngelBuff = false
+          let poisonLayers = 0
           for (const eff of activeEffects) {
             if (eff && eff.type === 'ANGEL_BUFF') {
               hasAngelBuff = true
-              break
+            }
+            if (eff && eff.type === 'POISON') {
+              poisonLayers = eff.layers || 0
             }
           }
           if (hasAngelBuff && !scene._hasAngelGlow) {
@@ -3725,6 +3731,50 @@ onMounted(() => {
             if (scene.angelGlowGfx) {
               try { scene.angelGlowGfx.destroy() } catch (e) {}
               scene.angelGlowGfx = null
+            }
+          }
+
+          // ---------- 中毒雾气效果 ----------
+          // 检查玩家是否有中毒效果，显示紫色毒雾飘散
+          if (poisonLayers > 0 && !scene._hasPoisonFog) {
+            scene._hasPoisonFog = true
+            scene.poisonFogGfx = scene.add.graphics().setDepth(49)
+            const drawFog = () => {
+              if (!scene.poisonFogGfx || !scene.poisonFogGfx.scene || !scene._hasPoisonFog) return
+              scene.poisonFogGfx.clear()
+              const cx = scene.player.x
+              const cy = scene.player.y
+              const now = Date.now()
+              const pulse = Math.sin(now * 0.002) * 0.2 + 0.5
+              // 根据层数决定毒雾大小和密度
+              const fogRadius = 16 + Math.min(poisonLayers, 8) * 2 + Math.sin(now * 0.001) * 3
+              const alpha = Math.min(0.35, 0.1 + poisonLayers * 0.03) * pulse
+              // 外层毒雾（淡紫色弥散圈）
+              scene.poisonFogGfx.fillStyle(0x9933CC, alpha * 0.4)
+              scene.poisonFogGfx.fillCircle(cx, cy, fogRadius + 8)
+              // 内层毒雾（深紫色核心）
+              scene.poisonFogGfx.fillStyle(0x660099, alpha * 0.5)
+              scene.poisonFogGfx.fillCircle(cx, cy, fogRadius * 0.6)
+              // 毒雾飘散微粒
+              for (let i = 0; i < Math.min(6, poisonLayers); i++) {
+                const angle = (now * 0.0005) + i * Math.PI * 2 / 6
+                const dist = fogRadius * (0.5 + Math.sin(now * 0.0015 + i * 2) * 0.3)
+                const px = cx + Math.cos(angle) * dist
+                const py = cy + Math.sin(angle) * dist
+                const dotSize = 2 + Math.sin(now * 0.001 + i * 3) * 1
+                scene.poisonFogGfx.fillStyle(0xCC66FF, alpha * 0.6)
+                scene.poisonFogGfx.fillCircle(px, py, dotSize)
+              }
+              if (scene._hasPoisonFog) {
+                requestAnimationFrame(drawFog)
+              }
+            }
+            drawFog()
+          } else if (poisonLayers <= 0 && scene._hasPoisonFog) {
+            scene._hasPoisonFog = false
+            if (scene.poisonFogGfx) {
+              try { scene.poisonFogGfx.destroy() } catch (e) {}
+              scene.poisonFogGfx = null
             }
           }
 

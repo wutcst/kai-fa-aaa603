@@ -2727,9 +2727,9 @@ onMounted(() => {
             } catch (e) {}
           }
 
-          // 旧版 JustDown 攻击已禁用，短按横扫/突刺现在由蓄力状态机的松手路径统一处理
+          // 短按 J 攻击：横扫/突刺
           try {
-            if (false) {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active && !scene._attackOnCooldown) {
               scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
 
@@ -2895,8 +2895,10 @@ onMounted(() => {
                   },
                   onComplete: () => {
                     scene.spawnAttackParticles(1, 15)
-                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
-                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
+                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => { mainGfx.destroy() } })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy() } })
+                    // 横扫动画结束后释放攻击冷却
+                    scene._attackOnCooldown = false
                   }
                 })
               }
@@ -2917,8 +2919,31 @@ onMounted(() => {
                   const j = await res.json()
                   emit('update', j)
                   if (j && j.data) {
-                    scene.renderRoom(j.data)
-                    // ---- 在 renderRoom 重建怪物后执行击退动画 ----
+                    // 更新玩家 HP/MP 条（不需要 renderRoom）
+                    const hp = j.data.playerHp !== undefined ? j.data.playerHp : scene.playerStats.hp
+                    const maxHp = j.data.playerMaxHp !== undefined ? j.data.playerMaxHp : scene.playerStats.maxHp
+                    const mp = j.data.playerMp !== undefined ? j.data.playerMp : scene.playerStats.mp
+                    const maxMp = j.data.playerMaxMp !== undefined ? j.data.playerMaxMp : scene.playerStats.maxMp
+                    const money = j.data.playerMoney !== undefined ? j.data.playerMoney : scene.playerStats.money
+                    try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
+                    // 更新怪物 HP（从后端响应中读取 monsters）
+                    const backendMonsters = j.data.monsters || []
+                    for (const bm of backendMonsters) {
+                      const localMon = scene.monstersData.find(m => m && m.name === bm.name)
+                      if (localMon) {
+                        localMon.hp = bm.hp
+                        // 如果怪物死亡，从场景移除
+                        if (bm.hp <= 0) {
+                          try { localMon.circ.destroy() } catch (e) {}
+                          try { localMon.label.destroy() } catch (e) {}
+                          try { localMon.hpBarBg.destroy() } catch (e) {}
+                          try { localMon.hpBarFill.destroy() } catch (e) {}
+                          try { localMon.hpNumText.destroy() } catch (e) {}
+                        }
+                      }
+                    }
+                    scene.monstersData = scene.monstersData.filter(m => m && m.hp > 0)
+                    // 直接执行击退动画（renderRoom 不调用，怪物位置不变）
                     if (scene._pendingKnockbacks && scene._pendingKnockbacks.length > 0) {
                       const kbs = scene._pendingKnockbacks
                       scene._pendingKnockbacks = null
@@ -2939,6 +2964,10 @@ onMounted(() => {
                           }
                         })
                       }
+                    }
+                    // 更新 Buff/Debuff
+                    if (j.data.activeEffects) {
+                      try { scene.updateBuffDisplay(j.data.activeEffects) } catch (e) {}
                     }
                   }
                   if (j && j.message && j.message.includes('游戏结束')) {

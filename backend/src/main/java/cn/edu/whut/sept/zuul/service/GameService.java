@@ -54,6 +54,12 @@ public class GameService {
                 data.put("gameOver", true);
             }
 
+            // ---- 驱动生命戒指被动回血 ----
+            int regen = player.tickRingRegen();
+            if (regen > 0) {
+                data.put("ringRegen", regen);
+            }
+
             data.put("playerHp", player.getHp());
             data.put("playerMaxHp", player.getMaxHp());
             data.put("playerMp", player.getMp());

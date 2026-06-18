@@ -24,6 +24,7 @@ public class Game {
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
             player.getBag().addItem(new Item("生命浆果", "回复生命的红色浆果"));
@@ -113,6 +114,7 @@ public class Game {
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
             player.getBag().addItem(new Item("生命浆果", "回复生命的红色浆果"));

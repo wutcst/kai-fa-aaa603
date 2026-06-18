@@ -1212,10 +1212,13 @@ onMounted(() => {
           scene.titleText.setText(roomInfo.name || '未知房间')
           scene.descText.setText(roomInfo.description || '')
           // 只在房间真正切换时才更换背景，避免攻击等操作导致背景闪变
-          if (roomInfo.name && roomInfo.name !== scene._currentRoomName) {
+          // 同时保存房间变更标记，供后续 _lastMoveDir 定位逻辑使用
+          const roomChanged = roomInfo.name && roomInfo.name !== scene._currentRoomName
+          if (roomChanged) {
             try { scene.setBgForRoom && scene.setBgForRoom(roomInfo) } catch (e) {}
             scene._currentRoomName = roomInfo.name
           }
+          scene._lastRoomChanged = roomChanged
 
           const exitsStr = roomInfo.exits || ''
           const exits = exitsStr.split(/\s+/).filter(s => s)
@@ -1278,7 +1281,7 @@ onMounted(() => {
           try { scene.updateBuffDisplay(roomInfo.activeEffects) } catch (e) {}
 
           const opposite = { north: 'south', south: 'north', east: 'west', west: 'east' }
-          if (scene._lastMoveDir) {
+          if (scene._lastMoveDir && scene._lastRoomChanged) {
             const from = scene._lastMoveDir
             const to = opposite[from]
             if (to && exits.includes(to)) {
@@ -1869,6 +1872,7 @@ onMounted(() => {
           pierceWidth: 14
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
+        scene._piercing = false          // 突刺移动中：禁止WASD移动输入
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -2399,7 +2403,7 @@ onMounted(() => {
           // movement by WASD
           const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
           const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
-          if (!isWaveCharging) {
+          if (!isWaveCharging && !scene._piercing) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2536,24 +2540,122 @@ onMounted(() => {
               for (const mon of scene.monstersData) {
                 if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
               }
+
+              // 突刺起点/终点变量（提升到块外，供异步 fetch 回调访问）
+              let pierceStartX = scene.player.x, pierceStartY = scene.player.y
+              let pierceEndX = scene.player.x, pierceEndY = scene.player.y
+
               if (isShiftMove) {
                 // 突刺特效
                 const startX = scene.player.x, startY = scene.player.y
                 const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
                 const dist = cfg.pierceDistance || 120
                 const pr_ = scene.playerRadius || 10
-                const targetX = Phaser.Math.Clamp(startX + dx_ * dist, rb.left + pr_, rb.right - pr_)
-                const targetY = Phaser.Math.Clamp(startY + dy_ * dist, rb.top + pr_, rb.bottom - pr_)
+
+                // ---- 路径碰撞检测：收集沿路径的所有障碍物 ----
+                let nearestT = 1.0  // 0=起点, 1=终点；找到最近的碰撞 t
+                const playerRadius = pr_
+
+                // 辅助函数：射线与圆的交点，返回 t∈[0,1] 或 null
+                const rayCircleHit = (sx, sy, ex, ey, cx, cy, cr) => {
+                  const rdx = ex - sx, rdy = ey - sy
+                  const lenSq = rdx * rdx + rdy * rdy
+                  if (lenSq < 0.001) return null
+                  const fcx = cx - sx, fcy = cy - sy
+                  const tProj = Math.max(0, Math.min(1, (fcx * rdx + fcy * rdy) / lenSq))
+                  const nearX = sx + tProj * rdx, nearY = sy + tProj * rdy
+                  const dSq = (nearX - cx) * (nearX - cx) + (nearY - cy) * (nearY - cy)
+                  const effR = cr + playerRadius
+                  if (dSq > effR * effR) return null
+                  // 从圆心沿法向反推到射线起点，求真正的进入 t
+                  const d = Math.sqrt(dSq)
+                  const pen = Math.sqrt(effR * effR - dSq)  // 弦半长
+                  const tEnter = tProj - pen / Math.sqrt(lenSq)
+                  return Math.max(0, tEnter)  // 夹到 [0, 1]
+                }
+
+                // 检查路径上的怪物：不阻挡，但在突刺结束后推开
+                const pushedMonsters = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.name || mon.exploding) continue
+                  const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                    mon.x, mon.y, 20) // 怪物碰撞半径 ≈20
+                  if (t !== null) {
+                    pushedMonsters.push(mon)
+                  }
+                }
+
+                // 检查祭坛障碍（阻挡）
+                if (scene.altarsData) {
+                  for (const altar of scene.altarsData) {
+                    // 祭坛是矩形，用其外接圆近似（halfSize * sqrt(2)）
+                    const halfDiag = (altar.size / 2) * Math.sqrt(2)
+                    const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                      altar.x, altar.y, halfDiag)
+                    if (t !== null && t < nearestT) nearestT = t
+                  }
+                }
+
+                // 检查 NPC 商人障碍
+                if (scene.shopNpcData) {
+                  const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                    scene.shopNpcData.x, scene.shopNpcData.y, scene.shopNpcData.radius)
+                  if (t !== null && t < nearestT) nearestT = t
+                }
+
+                // 根据碰撞结果计算实际终点：在碰撞点前留 2px 间隙
+                let actualDist = dist * nearestT
+                if (nearestT < 1.0) actualDist = Math.max(0, actualDist - 2)
+                else actualDist = dist
+
+                const targetX = Phaser.Math.Clamp(startX + dx_ * actualDist, rb.left + pr_, rb.right - pr_)
+                const targetY = Phaser.Math.Clamp(startY + dy_ * actualDist, rb.top + pr_, rb.bottom - pr_)
+
+                // 赋值外层变量，供异步 fetch 回调访问
+                pierceStartX = startX; pierceStartY = startY
+                pierceEndX = targetX; pierceEndY = targetY
+
+                // 锁定移动
+                scene._piercing = true
+
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
                 const g2 = scene.add.graphics()
                 const extra = cfg.pierceDistanceExpand || 1.0
-                const effTX = Phaser.Math.Clamp(startX + dx_ * dist * extra, rb.left + pr_, rb.right - pr_)
-                const effTY = Phaser.Math.Clamp(startY + dy_ * dist * extra, rb.top + pr_, rb.bottom - pr_)
+                const effTX = Phaser.Math.Clamp(startX + dx_ * actualDist * extra, rb.left + pr_, rb.right - pr_)
+                const effTY = Phaser.Math.Clamp(startY + dy_ * actualDist * extra, rb.top + pr_, rb.bottom - pr_)
                 const mx_ = (startX + effTX) / 2, my_ = (startY + effTY) / 2
                 const w_ = cfg.pierceWidth || 12
                 g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
                 g2.fillPoints([{x:effTX,y:effTY},{x:mx_+(-dy_)*(w_/2),y:my_+dx_*(w_/2)},{x:startX,y:startY},{x:mx_-(-dy_)*(w_/2),y:my_-dx_*(w_/2)}], true)
-                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
+                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => {
+                  try { g2.destroy() } catch (e) {}
+                  scene._attackOnCooldown = false
+                  scene._piercing = false
+                }})
+
+                // ---- 推开路径上的怪物：沿突刺方向击退 ----
+                if (pushedMonsters.length > 0) {
+                  const PUSH_DISTANCE = 55     // 击退距离
+                  const PUSH_DURATION = 130    // 击退动画时长
+                  for (const mon of pushedMonsters) {
+                    const pushX = mon.x + dx_ * PUSH_DISTANCE
+                    const pushY = mon.y + dy_ * PUSH_DISTANCE
+                    const clampedX = Phaser.Math.Clamp(pushX, rb.left + 10, rb.right - 10)
+                    const clampedY = Phaser.Math.Clamp(pushY, rb.top + 10, rb.bottom - 10)
+                    scene.tweens.add({
+                      targets: { x: mon.x, y: mon.y },
+                      x: clampedX, y: clampedY,
+                      duration: PUSH_DURATION,
+                      ease: 'Cubic.easeOut',
+                      onUpdate: function (tween) {
+                        const t = tween.targets[0]
+                        mon.x = t.x; mon.y = t.y
+                        try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                        try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                      }
+                    })
+                  }
+                }
               } else {
                 // 横扫特效
                 const mainGfx = scene.add.graphics(), fireGfx = scene.add.graphics()
@@ -2574,8 +2676,27 @@ onMounted(() => {
               // 发送攻击请求到后端
               ;(async () => {
                 try {
+                  let requestBody
+                  if (isShiftMove) {
+                    // 突刺：发送起点/终点供后端做线段命中判定
+                    requestBody = {
+                      attackType: 'pierce',
+                      playerX: pierceStartX, playerY: pierceStartY,
+                      facingAngle: scene.facingAngle,
+                      startX: pierceStartX, startY: pierceStartY,
+                      endX: pierceEndX, endY: pierceEndY,
+                      monsters: monsterPositions
+                    }
+                  } else {
+                    requestBody = {
+                      attackType: 'sweep',
+                      playerX: scene.player.x, playerY: scene.player.y,
+                      facingAngle: scene.facingAngle,
+                      monsters: monsterPositions
+                    }
+                  }
                   const res = await fetch('/api/attack', { method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ attackType: isShiftMove ? 'pierce' : 'sweep', playerX: scene.player.x, playerY: scene.player.y, facingAngle: scene.facingAngle, monsters: monsterPositions }) })
+                    body: JSON.stringify(requestBody) })
                   const j = await res.json(); emit('update', j)
                   if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) scene.renderRoom(j.data)
                   if (j && j.message && j.message.includes('游戏结束')) scene.showGameOver()

@@ -155,6 +155,28 @@ public class Game {
             sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
         }
 
+        // ---- 普通怪物 30% 概率掉落药水 ----
+        if (m.getType() == Monster.TYPE_NORMAL && DROP_RND.nextInt(100) < 30) {
+            DroppedItem drop = new DroppedItem("药水", dropX, dropY);
+            Room room = getCurrentRoom();
+            if (room != null) {
+                room.addDroppedItem(drop);
+            }
+            sb.append("\n").append(m.getName()).append("掉落了药水！");
+        }
+
+        // ---- 精英怪物 50% 概率掉落装备或饰品 ----
+        if (m.getType() == Monster.TYPE_ELITE && DROP_RND.nextInt(100) < 50) {
+            String[] eliteDrops = {"铁剑", "铁盾", "暗影披风", "生命戒指", "元素项链"};
+            String dropName = eliteDrops[DROP_RND.nextInt(eliteDrops.length)];
+            DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
+            Room room = getCurrentRoom();
+            if (room != null) {
+                room.addDroppedItem(drop);
+            }
+            sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
+        }
+
         // ---- 货币奖励 ----
         int reward = switch (m.getType()) {
             case Monster.TYPE_NORMAL -> REWARD_NORMAL;

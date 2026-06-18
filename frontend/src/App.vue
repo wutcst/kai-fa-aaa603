@@ -11,30 +11,12 @@
 
     <!-- 游戏界面 -->
     <Transition name="game-enter">
-      <div v-if="screen === 'game'" class="game-view" :class="{ 'game-view-visible': screen === 'game' }">
-        <div class="game-container" style="padding:20px;font-family:Arial, sans-serif;display:flex;gap:20px;">
-          <div>
-            <h1 style="color:#e8d8b0;margin:0 0 10px;font-size:20px;letter-spacing:2px;">Zuul 游戏 Demo（起始场景）</h1>
-            <GameCanvas @update="onUpdate" />
-          </div>
-
-          <aside style="width:320px;">
-            <h3 style="color:#d4c4a0;">信息</h3>
-            <div style="color:#ccc;"><strong style="color:#d4c4a0;">状态：</strong> {{ gameStatus }}</div>
-            <div style="margin-top:8px;color:#ccc;"><strong style="color:#d4c4a0;">消息：</strong> {{ message }}</div>
-
-            <h3 style="margin-top:16px;color:#d4c4a0;">房间物品</h3>
-            <ul style="color:#bbb;">
-              <li v-for="it in roomItems" :key="it.name">{{ it.name }} ({{ it.weight }} kg)</li>
-              <li v-if="roomItems.length===0" style="color:#666;">（无）</li>
-            </ul>
-
-            <div style="margin-top:16px;display:flex;gap:8px;">
-              <button @click="resetGame" style="background:#3a2a18;color:#d4c4a0;border:1px solid rgba(200,160,80,0.3);padding:6px 12px;border-radius:4px;cursor:pointer;">重置游戏</button>
-              <button @click="backToMenu" style="background:#2a1a0e;color:#d4c4a0;border:1px solid rgba(200,160,80,0.2);padding:6px 12px;border-radius:4px;cursor:pointer;">返回菜单</button>
-            </div>
-          </aside>
-        </div>
+      <div v-if="screen === 'game'" class="game-view">
+        <GameCanvas
+          @update="onUpdate"
+          @reset-game="resetGame"
+          @back-to-menu="backToMenu"
+        />
       </div>
     </Transition>
 
@@ -46,9 +28,15 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import GameCanvas from './components/GameCanvas.vue'
 import MainMenu from './components/MainMenu.vue'
+
+// 过渡动画时长常量（毫秒）
+const TRANSITION_MASK_IN = 800
+const TRANSITION_MASK_PAUSE = 400
+const TRANSITION_PHASER_MOUNT = 400
+const TRANSITION_MENU_RENDER = 800
 
 export default {
   components: { GameCanvas, MainMenu },
@@ -56,44 +44,55 @@ export default {
     const screen = ref('menu')
     const gameStatus = ref(null)
     const message = ref('')
-    const data = ref(null)
     const roomItems = ref([])
     const transitioning = ref(false)
 
-    // 启动游戏（新游戏）
-    async function startNewGame() {
-      // 过渡动画
-      transitioning.value = true
-      await new Promise(r => setTimeout(r, 600))
+    // 将后端响应统一应用到组件状态
+    function applyGameResponse(j) {
+      if (!j) return
+      gameStatus.value = j.status ?? null
+      message.value = j.message ?? ''
+      roomItems.value = (j.data && j.data.items) ? j.data.items : []
+    }
 
-      // 重置后端
-      try {
-        await fetch('/api/reset', { method: 'POST' })
-      } catch (e) {
-        // ignore
+    // 通知 GameCanvas 组件更新
+    function notifyGameCanvas(j) {
+      try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
+    }
+
+    // 场景过渡：封装从遮罩到游戏画面完整呈现的流程
+    async function transitionToGame(fnBeforeEnter) {
+      transitioning.value = true
+      await new Promise(r => setTimeout(r, TRANSITION_MASK_IN))
+
+      if (fnBeforeEnter) {
+        await fnBeforeEnter()
       }
 
       // 切换到游戏界面（遮罩仍在覆盖）
       screen.value = 'game'
 
       // 等待 Phaser 挂载 + 首次渲染完成后再移除遮罩
-      await new Promise(r => setTimeout(r, 200))
+      await new Promise(r => setTimeout(r, TRANSITION_PHASER_MOUNT))
       await loadGameData()
       await new Promise(r => requestAnimationFrame(r))
       transitioning.value = false
     }
 
-    // 继续冒险（读取存档，当前直接加载游戏）
+    // 启动游戏（新游戏）
+    async function startNewGame() {
+      await transitionToGame(async () => {
+        try {
+          await fetch('/api/reset', { method: 'POST' })
+        } catch (e) {
+          // ignore
+        }
+      })
+    }
+
+    // 继续冒险（读取存档，当前未实现数据库，直接加载游戏）
     async function loadGame() {
-      transitioning.value = true
-      await new Promise(r => setTimeout(r, 600))
-
-      screen.value = 'game'
-
-      await new Promise(r => setTimeout(r, 200))
-      await loadGameData()
-      await new Promise(r => requestAnimationFrame(r))
-      transitioning.value = false
+      await transitionToGame(null)
     }
 
     // 加载后端数据
@@ -101,13 +100,8 @@ export default {
       try {
         const res = await fetch('/api/game')
         const j = await res.json()
-        gameStatus.value = j.status
-        message.value = j.message
-        data.value = j.data
-        if (j.data && j.data.items) {
-          roomItems.value = j.data.items
-        }
-        try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
+        applyGameResponse(j)
+        notifyGameCanvas(j)
       } catch (e) {
         message.value = '无法连接后端: ' + e.message
       }
@@ -115,49 +109,41 @@ export default {
 
     // 返回主菜单（带过渡动画）
     async function backToMenu() {
-      // 过渡动画：先显示遮罩覆盖当前画面
       transitioning.value = true
-      await new Promise(r => setTimeout(r, 400))
+      await new Promise(r => setTimeout(r, TRANSITION_MASK_PAUSE))
 
-      // 在切换前停止 Phaser 游戏轮询，避免销毁时产生视觉错位
       try {
         window.dispatchEvent(new CustomEvent('game:pause'))
       } catch (e) {}
 
-      // 切换界面并清空状态
       screen.value = 'menu'
       gameStatus.value = null
       message.value = ''
-      data.value = null
       roomItems.value = []
 
-      // 等待菜单完整渲染后再移去遮罩
-      await new Promise(r => setTimeout(r, 800))
+      await new Promise(r => setTimeout(r, TRANSITION_MENU_RENDER))
       transitioning.value = false
     }
 
     function onUpdate(payload) {
-      if (!payload) return
-      message.value = payload.message || ''
-      gameStatus.value = payload.status || ''
-      data.value = payload.data || null
-      if (payload.data && payload.data.items) {
-        roomItems.value = payload.data.items
-      }
+      applyGameResponse(payload)
     }
 
     const resetGame = async () => {
       const res = await fetch('/api/reset', { method: 'POST' })
       const j = await res.json()
-      onUpdate(j)
-      try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
+      // 先通知小地图清空旧数据（initMinimap 中 mapLayout = null），再渲染房间
+      // 这样 renderRoom → minimap:update → drawMinimap 会因 !mapLayout 提前返回
+      // initMinimap 异步完成后会用新地图数据绘制
+      try { window.dispatchEvent(new CustomEvent('game:reset')) } catch (e) {}
+      applyGameResponse(j)
+      notifyGameCanvas(j)
     }
 
     return {
       screen,
       gameStatus,
       message,
-      data,
       onUpdate,
       roomItems,
       resetGame,
@@ -189,23 +175,11 @@ body {
   padding-top: 60px;
 }
 
-/* 游戏视图 */
+/* ============ 游戏视图 ============ */
 .game-view {
-  opacity: 0;
-  transition: opacity 0.8s ease;
-}
-
-.game-view-visible {
-  opacity: 1;
-}
-
-.game-container h1 {
-  color: #e8d8b0;
-  margin: 0 0 10px;
-  font-size: 20px;
-  letter-spacing: 2px;
-  border-bottom: 1px solid rgba(200, 160, 80, 0.15);
-  padding-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
 /* ============ 菜单离开动画 ============ */

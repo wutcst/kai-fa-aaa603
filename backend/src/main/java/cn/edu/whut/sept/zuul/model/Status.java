@@ -6,7 +6,7 @@ import java.util.*;
 
 /**
  * 状态效果系统：管理玩家的增益(Buff)和减益(Debuff)状态。
- * 当前包含烧伤(BURN)和中毒(POISON)两种状态。
+ * 当前包含烧伤(BURN)、中毒(POISON)和流血(BLEED)三种状态。
  *
  * 烧伤机制：
  * - 可叠加数层，每次施加烧伤会在现有层数上累加。
@@ -23,9 +23,16 @@ import java.util.*;
  *   例如：玩家血量15，中毒20层 → 伤害=14，HP降至1，层数降至19。
  * - 层数降至0时中毒状态自动移除。
  *
+ * 流血机制：
+ * - 可叠加数层，每次施加流血会在现有层数上累加。
+ * - 每次玩家进行普通攻击（横扫、蓄力横扫、突刺）时，若身上有流血状态，
+ *   受到2点真实伤害（无视防御和魔抗，直接扣除血量），然后将流血层数减1。
+ * - 层数降至0时流血状态自动移除。
+ *
  * 使用方式：Player 持有一个 StatusManager 实例，
- * 通过 statusManager.applyBurn(n) / applyPoison(n) 施加状态，
- * 通过 statusManager.tickBurn() / tickPoison() 驱动计时结算。
+ * 通过 statusManager.applyBurn(n) / applyPoison(n) / applyBleed(n) 施加状态，
+ * 通过 statusManager.tickBurn() / tickPoison() 驱动计时结算，
+ * 通过 statusManager.tickBleedOnAttack() 在玩家攻击时触发流血。
  */
 public class Status {
 
@@ -36,7 +43,9 @@ public class Status {
         /** 烧伤：可叠加数层，每3秒受到等同于层数的法术伤害，然后层数减半 */
         BURN("烧伤", true),
         /** 中毒：可叠加数层，每1秒受到等同于层数的真实伤害，然后层数减1 */
-        POISON("中毒", true);
+        POISON("中毒", true),
+        /** 流血：可叠加数层，每次玩家攻击时受到1点真实伤害，然后层数减1 */
+        BLEED("流血", true);
 
         private final String displayName;
         private final boolean debuff;
@@ -68,9 +77,9 @@ public class Status {
     public static class StatusEffect {
         /** 状态类型 */
         private StatusType type;
-        /** 当前层数（烧伤可叠加） */
+        /** 当前层数（可叠加） */
         private int layers;
-        /** 上次烧伤结算的时间戳（毫秒） */
+        /** 上次结算的时间戳（毫秒） */
         private long lastTickTime;
 
         /**
@@ -100,8 +109,7 @@ public class Status {
     // ======================== StatusManager ========================
 
     /**
-     * 状态管理器：组合进 Player，负责烧伤状态的增删、计时结算和属性修正。
-     * 由于当前仅有烧伤一种状态，使用单一 StatusEffect 实例管理，
+     * 状态管理器：组合进 Player，负责状态效果的增删、计时结算和属性修正。
      * 保留 StatusEffect 抽象以便后续扩展更多状态类型。
      */
     @Getter
@@ -112,6 +120,8 @@ public class Status {
         private StatusEffect burnEffect;
         /** 中毒状态实例（null 表示无中毒） */
         private StatusEffect poisonEffect;
+        /** 流血状态实例（null 表示无流血） */
+        private StatusEffect bleedEffect;
 
         /** 烧伤触发间隔（毫秒）：3秒 */
         public static final long BURN_TICK_INTERVAL = 3000L;
@@ -122,6 +132,7 @@ public class Status {
             this.player = player;
             this.burnEffect = null;
             this.poisonEffect = null;
+            this.bleedEffect = null;
         }
 
         // ---- 状态管理 ----
@@ -173,11 +184,33 @@ public class Status {
         }
 
         /**
-         * 清除所有状态（烧伤和中毒）。
+         * 施加流血层数。若已有流血状态则在现有层数上累加，否则新建。
+         *
+         * @param layers 要增加的流血层数（必须 > 0）
+         */
+        public void applyBleed(int layers) {
+            if (layers <= 0) return;
+            if (bleedEffect == null || bleedEffect.isExpired()) {
+                bleedEffect = new StatusEffect(StatusType.BLEED, layers);
+            } else {
+                bleedEffect.setLayers(bleedEffect.getLayers() + layers);
+            }
+        }
+
+        /**
+         * 移除流血状态。
+         */
+        public void removeBleed() {
+            bleedEffect = null;
+        }
+
+        /**
+         * 清除所有状态（烧伤、中毒和流血）。
          */
         public void clear() {
             burnEffect = null;
             poisonEffect = null;
+            bleedEffect = null;
         }
 
         /**
@@ -206,6 +239,20 @@ public class Status {
          */
         public int getPoisonLayers() {
             return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
+        }
+
+        /**
+         * 是否拥有流血状态。
+         */
+        public boolean hasBleed() {
+            return bleedEffect != null && !bleedEffect.isExpired();
+        }
+
+        /**
+         * 获取当前流血层数。
+         */
+        public int getBleedLayers() {
+            return (bleedEffect != null && !bleedEffect.isExpired()) ? bleedEffect.getLayers() : 0;
         }
 
         // ---- 属性修正方法 ----
@@ -257,6 +304,56 @@ public class Status {
          */
         public int onBeforeDealDamage(int damage) {
             return damage;
+        }
+
+        // ---- 核心：流血攻击触发 ----
+
+        /**
+         * 在玩家进行普通攻击（横扫/蓄力横扫/突刺）时触发流血效果。
+         * 应由 GameService.performAttack() 和 AttackCommand 在攻击流程中调用。
+         *
+         * 每次触发时：
+         * 1. 若玩家身上有流血状态，受到 2 点真实伤害（无视防御和魔抗，直接扣除血量）
+         * 2. 流血层数减 1
+         * 3. 若层数降至 0，移除流血状态
+         *
+         * @return 本次结算造成的实际伤害（2），无流血状态或血量已为 1 时返回 0
+         */
+        public int tickBleedOnAttack() {
+            if (bleedEffect == null || bleedEffect.isExpired()) {
+                bleedEffect = null;
+                return 0;
+            }
+    
+            int layers = bleedEffect.getLayers();
+            if (layers <= 0) {
+                bleedEffect = null;
+                return 0;
+            }
+    
+            // 真实伤害：直接扣除 2 点血量，无视防御和魔抗
+            int actualDamage = 2;
+            int currentHp = player.getHp();
+
+            // 防御：HP 最低保持 1（流血不会杀死玩家）
+            if (currentHp > 1) {
+                player.setHp(currentHp - actualDamage);
+                player.recordDamage(actualDamage);
+            } else {
+                // 血量已为 1，不造成伤害（但仍扣除层数）
+                actualDamage = 0;
+            }
+
+            // 层数减 1
+            int newLayers = layers - 1;
+            bleedEffect.setLayers(newLayers);
+
+            // 层数归零则移除
+            if (newLayers <= 0) {
+                bleedEffect = null;
+            }
+
+            return actualDamage;
         }
 
         // ---- 核心：烧伤计时结算 ----
@@ -391,6 +488,16 @@ public class Status {
                 map.put("layers", poisonEffect.getLayers());
                 long elapsed = System.currentTimeMillis() - poisonEffect.getLastTickTime();
                 map.put("nextTickIn", Math.max(0, POISON_TICK_INTERVAL - elapsed));
+                info.add(map);
+            }
+            if (bleedEffect != null && !bleedEffect.isExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.BLEED.name());
+                map.put("name", StatusType.BLEED.getDisplayName());
+                map.put("isDebuff", true);
+                map.put("layers", bleedEffect.getLayers());
+                // 流血不受计时驱动，nextTickIn 设为 -1 表示"攻击时触发"
+                map.put("nextTickIn", -1L);
                 info.add(map);
             }
             return info;

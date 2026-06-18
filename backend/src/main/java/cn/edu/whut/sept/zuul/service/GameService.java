@@ -46,6 +46,10 @@ public class GameService {
                     data.put("poisonDamage", poisonDmg);
                     data.put("poisonLayers", player.getStatusManager().getPoisonLayers());
                 }
+                // ---- 注入流血层数信息（供前端展示） ----
+                if (player.getStatusManager().hasBleed()) {
+                    data.put("bleedLayers", player.getStatusManager().getBleedLayers());
+                }
             }
 
             // ---- 检查玩家是否因烧伤死亡 ----
@@ -155,6 +159,18 @@ public class GameService {
             }
             return GameResponse.error("施加烧伤失败");
         }
+
+        // ---- 测试命令：test bleed - 施加一层流血 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "bleed".equalsIgnoreCase(parts[1])) {
+            Player player = game.getPlayer();
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applyBleed(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加 1 层流血", data);
+            }
+            return GameResponse.error("施加流血失败");
+        }
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
         // 创建并执行命令
@@ -222,8 +238,23 @@ public class GameService {
         StringBuilder sb = new StringBuilder();
         int hitCount = 0;
 
+        // ---- 流血：每次主动攻击触发一次（在怪物命中判定之前，支持空挥） ----
+        Player player = game.getPlayer();
+        if (player != null && player.getStatusManager() != null) {
+            int bleedDmg = player.getStatusManager().tickBleedOnAttack();
+            if (bleedDmg > 0) {
+                sb.append("流血状态触发，受到 ").append(bleedDmg).append(" 点真实伤害！\n");
+            }
+        }
+
         List<AttackRequest.MonsterPosition> monsters = req.getMonsters();
         if (monsters == null || monsters.isEmpty()) {
+            Map<String, Object> data = new HashMap<>(current.getFullInfo());
+            data.put("hitCount", 0);
+            injectPlayerStatus(data);
+            if (sb.length() > 0) {
+                return GameResponse.success(sb.toString().trim(), data);
+            }
             return GameResponse.error("攻击请求中没有怪物数据");
         }
 

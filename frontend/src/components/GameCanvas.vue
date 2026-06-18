@@ -789,6 +789,10 @@ onMounted(() => {
         scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
         scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
 
+        // 流血状态相关
+        scene._bleedIconGfx = null         // 流血图标（🩸）
+        scene._bleedLayersText = null      // 流血层数文字
+
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
         scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -923,10 +927,12 @@ onMounted(() => {
           if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
           if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
           scene._poisonNextTickMs = 0
+          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
+          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
 
           // ---- 收集所有活跃状态，按固定顺序排列 ----
           // 排序规则：先减益后增益，同类型按名称排序
-          const typeOrder = { 'BURN': 0, 'POISON': 1 }
+          const typeOrder = { 'BURN': 0, 'POISON': 1, 'BLEED': 2 }
           const orderedEffects = scene._activeEffects
             .filter(eff => eff && eff.layers > 0)
             .sort((a, b) => {
@@ -970,6 +976,9 @@ onMounted(() => {
               const timerSec = nextTickIn / 1000
 
               scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
+            } else if (eff.type === 'BLEED') {
+              const layers = eff.layers || 0
+              scene.drawBleedIcon(cellCX, cellCY, layers)
             }
           }
         }
@@ -1013,6 +1022,37 @@ onMounted(() => {
             strokeThickness: 2
           }).setDepth(121).setOrigin(0.5, 0)
           scene._poisonTimerText = timerText
+        }
+
+        /**
+         * 绘制流血状态图标与层数标注。
+         * 流血不由计时驱动，仅在攻击时触发，因此不显示倒计时。
+         * @param {Phaser.Scene} scene
+         * @param {number} cx      图标中心X
+         * @param {number} cy      图标中心Y
+         * @param {number} layers  流血层数
+         */
+        scene.drawBleedIcon = function (cx, cy, layers) {
+          // 清理旧的流血显示
+          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
+          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
+
+          if (layers <= 0) return
+
+          // 使用 🩸 emoji 作为流血图标
+          const iconText = scene.add.text(cx, cy, '🩸', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._bleedIconGfx = iconText
+
+          // 层数标注（图标右侧）
+          const layersText = scene.add.text(cx + 11, cy, String(layers), {
+            font: 'bold 14px Arial',
+            fill: '#FF2222',
+            stroke: '#000000',
+            strokeThickness: 3
+          }).setDepth(121).setOrigin(0, 0.5)
+          scene._bleedLayersText = layersText
         }
 
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -2002,7 +2042,7 @@ onMounted(() => {
         }
 
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H,Q')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -3593,9 +3633,9 @@ onMounted(() => {
 
           // SPACE 键交互（关闭对话框 > 拾取 > 偶遇NPC > 商店 > 祭坛, skip if charging）
           // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
-          // ---- Q 键测试：施加一层中毒 ----
+          // ---- 1 键测试：施加一层中毒 ----
           try {
-            if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
+            if (scene.keys.ONE && Phaser.Input.Keyboard.JustDown(scene.keys.ONE) && !scene._waveCharging.active) {
               ;(async () => {
                 try {
                   const res = await fetch('/api/command', {
@@ -3612,9 +3652,9 @@ onMounted(() => {
             }
           } catch (e) {}
 
-          // ---- E 键测试：施加一层烧伤 ----
+          // ---- 2 键测试：施加一层烧伤 ----
           try {
-            if (scene.keys.E && Phaser.Input.Keyboard.JustDown(scene.keys.E) && !scene._waveCharging.active) {
+            if (scene.keys.TWO && Phaser.Input.Keyboard.JustDown(scene.keys.TWO) && !scene._waveCharging.active) {
               ;(async () => {
                 try {
                   const res = await fetch('/api/command', {
@@ -3632,6 +3672,27 @@ onMounted(() => {
               })()
             }
           } catch (e) {}
+          // ---- 3 键测试：施加一层流血 ----
+          try {
+            if (scene.keys.THREE && Phaser.Input.Keyboard.JustDown(scene.keys.THREE) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test bleed' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
           // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {

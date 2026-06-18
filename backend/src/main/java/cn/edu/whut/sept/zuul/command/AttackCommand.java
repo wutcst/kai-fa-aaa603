@@ -20,16 +20,27 @@ public class AttackCommand implements Command {
 
     @Override
     public GameResponse execute() {
+        // ---- 流血：每次主动攻击触发一次（命令行兼容） ----
+        StringBuilder fullResult = new StringBuilder();
+        if (game.getPlayer() != null && game.getPlayer().getStatusManager() != null) {
+            int bleedDmg = game.getPlayer().getStatusManager().tickBleedOnAttack();
+            if (bleedDmg > 0) {
+                fullResult.append("流血状态触发，受到 ").append(bleedDmg).append(" 点真实伤害！\n");
+            }
+        }
+
         String result = game.attackMonster(targetName, 300, 160);
+        fullResult.append(result);
+
         Room current = game.getCurrentRoom();
         if (current == null) {
             return GameResponse.error("当前不在任何房间");
         }
         // attackMonster 返回纯文本；若以"要攻击谁"/"这里没有"/"正在自爆"开头则为错误
         if (result.startsWith("要攻击谁") || result.startsWith("这里没有") || result.contains("无法被攻击")) {
-            return GameResponse.error(result);
+            return GameResponse.error(fullResult.toString().trim());
         }
-        return GameResponse.success(result, current.getFullInfo());
+        return GameResponse.success(fullResult.toString().trim(), current.getFullInfo());
     }
 
     @Override

@@ -214,9 +214,10 @@ public class Game {
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
         if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
+        StringBuilder sb = new StringBuilder();
+
         int dmg = Math.max(1, p.getEffectiveAttack());
         m.takeDamage(dmg);
-        StringBuilder sb = new StringBuilder();
         sb.append("你对 ").append(m.getName()).append(" 造成了 ").append(dmg).append(" 点伤害。");
 
         if (!m.isAlive()) {
@@ -248,10 +249,11 @@ public class Game {
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
         if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
+        StringBuilder sb = new StringBuilder();
+
         // 150% 物攻，两次伤害
         int baseDmg = Math.max(1, p.getEffectiveAttack());
         int chargedDmg = Math.max(1, (int) Math.round(baseDmg * 1.5));
-        StringBuilder sb = new StringBuilder();
 
         for (int hit = 1; hit <= 2; hit++) {
             m.takeDamage(chargedDmg);

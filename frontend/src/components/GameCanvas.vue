@@ -3744,9 +3744,15 @@ onBeforeUnmount(() => {
 /* 保存游戏 */
 .control-btn-save {
   background: #1a2418;
-  color: #667766;
-  border-color: rgba(100, 130, 100, 0.15);
-  cursor: not-allowed;
+  color: #aaccaa;
+  border-color: rgba(100, 180, 100, 0.35);
+  cursor: pointer;
+}
+.control-btn-save:hover {
+  background: #2a3a28;
+  color: #ccddcc;
+  border-color: rgba(120, 200, 120, 0.5);
+  box-shadow: 0 0 12px rgba(80, 160, 80, 0.3);
 }
 
 /* 返回菜单 */

@@ -68,7 +68,7 @@ import GameCanvas from './components/GameCanvas.vue'
 import MainMenu from './components/MainMenu.vue'
 
 // 过渡动画时长常量（毫秒）
-const TRANSITION_MASK_IN = 800
+const TRANSITION_MASK_IN = 1000
 const TRANSITION_MASK_PAUSE = 400
 const TRANSITION_PHASER_MOUNT = 400
 const TRANSITION_MENU_RENDER = 800
@@ -79,7 +79,6 @@ export default {
     const screen = ref('menu')
     const gameStatus = ref(null)
     const message = ref('')
-    const data = ref(null)
     const roomItems = ref([])
     const transitioning = ref(false)
 
@@ -139,7 +138,7 @@ export default {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ saveId: slotNum })
           })
-          const saved = await res.json()
+          await res.json()
           alert('游戏已保存到 存档 ' + slotNum + '！')
         } catch (e) {
           alert('保存失败: ' + e.message)
@@ -175,7 +174,6 @@ export default {
           // 注入加载后的数据
           gameStatus.value = 'success'
           message.value = '已加载 存档 ' + slotNum
-          data.value = j
           if (j.items) roomItems.value = j.items
           // 切换背景屏幕后 dispatch 游戏状态
           await new Promise(r => requestAnimationFrame(r))
@@ -195,14 +193,14 @@ export default {
         try {
           await fetch('/api/reset', { method: 'POST' })
         } catch (e) {
-          // ignore
+          console.error('重置游戏失败:', e)
         }
       })
     }
 
-    // 继续冒险（读取存档，当前未实现数据库，直接加载游戏）
+    // 继续冒险 — 弹出存档选择弹窗
     async function loadGame() {
-      await transitionToGame(null)
+      await showLoadSlots()
     }
 
     // 加载后端数据
@@ -239,6 +237,34 @@ export default {
       applyGameResponse(payload)
     }
 
+    // 将后端响应数据应用到本地状态
+    function applyGameResponse(j) {
+      if (!j) return
+      gameStatus.value = j.status ?? 'success'
+      message.value = j.message ?? ''
+      if (j.items !== undefined) roomItems.value = j.items
+    }
+
+    // 通知 GameCanvas 组件更新游戏状态
+    function notifyGameCanvas(j) {
+      try {
+        window.dispatchEvent(new CustomEvent('game:update', {
+          detail: { status: gameStatus.value, message: message.value, data: j }
+        }))
+      } catch (e) { /* ignore */ }
+    }
+
+    // 统一的游戏过渡动画
+    async function transitionToGame(preloadFn) {
+      transitioning.value = true
+      if (preloadFn) await preloadFn()
+      await new Promise(r => setTimeout(r, TRANSITION_MASK_PAUSE))
+      screen.value = 'game'
+      await new Promise(r => setTimeout(r, TRANSITION_PHASER_MOUNT))
+      await loadGameData()
+      transitioning.value = false
+    }
+
     const resetGame = async () => {
       const res = await fetch('/api/reset', { method: 'POST' })
       const j = await res.json()
@@ -261,6 +287,11 @@ export default {
       loadGame,
       backToMenu,
       transitioning,
+      slotDialog,
+      closeSlotDialog,
+      deleteSlot,
+      showSaveSlots,
+      showLoadSlots,
     }
   }
 }
@@ -290,6 +321,168 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.game-view-visible {
+  opacity: 1;
+}
+
+/* ============ 存档槽位弹窗 ============ */
+.slot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.slot-panel {
+  width: 560px;
+  background: linear-gradient(135deg, #1a1208 0%, #2a1c0e 100%);
+  border: 1px solid rgba(200, 160, 80, 0.3);
+  border-radius: 8px;
+  padding: 28px 32px 24px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+}
+
+.slot-title {
+  color: #e8d8b0;
+  font-size: 20px;
+  text-align: center;
+  margin: 0 0 20px;
+  letter-spacing: 2px;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.slot-card {
+  padding: 14px 18px;
+  border: 1px solid rgba(200, 160, 80, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.slot-card:hover {
+  border-color: rgba(200, 160, 80, 0.55);
+  background: rgba(200, 160, 80, 0.08);
+  transform: translateX(4px);
+}
+
+.slot-has-data {
+  background: rgba(200, 160, 80, 0.04);
+}
+
+.slot-empty {
+  opacity: 0.55;
+}
+
+.slot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.slot-id {
+  font-size: 16px;
+  font-weight: bold;
+  color: #c89b4a;
+}
+
+.slot-delete-btn {
+  background: rgba(200, 60, 40, 0.15);
+  border: 1px solid rgba(200, 60, 40, 0.3);
+  border-radius: 3px;
+  color: #cc8877;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slot-delete-btn:hover {
+  background: rgba(200, 60, 40, 0.35);
+  color: #ff9999;
+}
+
+.slot-info,
+.slot-info2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.slot-player {
+  color: #e8d8b0;
+  font-size: 14px;
+}
+
+.slot-hp {
+  color: #ff6666;
+  font-size: 13px;
+}
+
+.slot-room {
+  color: #aaaacc;
+  font-size: 12px;
+}
+
+.slot-money {
+  color: #ffdd88;
+  font-size: 13px;
+}
+
+.slot-time {
+  color: #888;
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+.slot-empty-text {
+  color: #666;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.slot-cancel-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: rgba(200, 80, 60, 0.15);
+  border: 1px solid rgba(200, 80, 60, 0.3);
+  border-radius: 4px;
+  color: #cc8877;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slot-cancel-btn:hover {
+  background: rgba(200, 80, 60, 0.25);
+  color: #ee6666;
+}
+
+/* ============ 淡入淡出动画 ============ */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 /* ============ 菜单离开动画 ============ */

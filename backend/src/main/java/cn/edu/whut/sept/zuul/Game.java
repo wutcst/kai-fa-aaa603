@@ -118,6 +118,7 @@ public class Game {
 
     public void reset() {
         gameOver = false;
+        this.mapSeed = new Random().nextLong();
         createRooms();
         player = new Player("冒险者", currentRoom);
         player.getBag().setOwner(player);

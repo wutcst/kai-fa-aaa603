@@ -132,6 +132,10 @@ export default {
     const resetGame = async () => {
       const res = await fetch('/api/reset', { method: 'POST' })
       const j = await res.json()
+      // 先通知小地图清空旧数据（initMinimap 中 mapLayout = null），再渲染房间
+      // 这样 renderRoom → minimap:update → drawMinimap 会因 !mapLayout 提前返回
+      // initMinimap 异步完成后会用新地图数据绘制
+      try { window.dispatchEvent(new CustomEvent('game:reset')) } catch (e) {}
       applyGameResponse(j)
       notifyGameCanvas(j)
     }

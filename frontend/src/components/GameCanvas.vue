@@ -562,6 +562,8 @@ function drawMinimap(highlightRoomName) {
 }
 
 async function initMinimap() {
+  // 立即清空旧地图布局，防止并发的 drawMinimap 调用使用过期数据绘制
+  mapLayout = null
   try {
     const res = await fetch('/api/map')
     const data = await res.json()
@@ -1144,6 +1146,8 @@ onMounted(() => {
               const j = await res.json()
               scene.gameOver = false
               if (scene.gameOverOverlay) { try { scene.gameOverOverlay.destroy() } catch (e) {}; scene.gameOverOverlay = null }
+              // 先通知小地图清空旧数据，再渲染房间
+              try { window.dispatchEvent(new CustomEvent('game:reset')) } catch (e) {}
               try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
               if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                 scene.renderRoom(j.data)
@@ -3273,6 +3277,9 @@ onMounted(() => {
   initMinimap()
   window.addEventListener('minimap:update', onMinimapUpdate)
 
+  // 监听游戏重置事件，重新获取地图数据实现小地图同步更新
+  window.addEventListener('game:reset', initMinimap)
+
   // 注册 B 键背包全局监听
   window.addEventListener('keydown', onKeyDown, true)
 })
@@ -3283,6 +3290,7 @@ onBeforeUnmount(() => {
     game = null
   }
   window.removeEventListener('minimap:update', onMinimapUpdate)
+  window.removeEventListener('game:reset', initMinimap)
   window.removeEventListener('keydown', onKeyDown, true)
   // 清理其他全局事件
   try {

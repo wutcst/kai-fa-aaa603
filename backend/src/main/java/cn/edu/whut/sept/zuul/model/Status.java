@@ -115,6 +115,7 @@ public class Status {
      * 保留 StatusEffect 抽象以便后续扩展更多状态类型。
      */
     @Getter
+    @Setter
     public static class StatusManager {
         /** 所属玩家引用，用于直接操作玩家生命值 */
         private final Player player;
@@ -282,13 +283,20 @@ public class Status {
         }
 
         /**
-         * 清除所有状态。
+         * 是否拥有中毒状态。
          */
-        public void clear() {
-            burnEffect = null;
-            angelBuffEffect = null;
-            poisonEffect = null;
+        public boolean hasPoison() {
+            return poisonEffect != null && !poisonEffect.isExpired();
         }
+
+        /**
+         * 获取当前中毒层数。
+         */
+        public int getPoisonLayers() {
+            return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
+        }
+
+
 
         /**
          * 是否拥有流血状态。

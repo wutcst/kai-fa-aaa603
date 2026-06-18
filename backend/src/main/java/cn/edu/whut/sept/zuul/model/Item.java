@@ -15,7 +15,7 @@ public class Item {
     private String name;           // 物品名称
     private String description;    // 物品描述
     private int price;             // 物品价格（0 表示不可购买/无价格）
-    private String rarity;         // 稀有度（common/rare/epic/legendary/lifeBerry/manaBerry）
+    private String rarity;         // 稀有度（common/rare/epic/legendary）
     private String functionDesc;   // 功能描述
     private String loreDesc;       // 背景描述
 
@@ -61,11 +61,11 @@ public class Item {
         }
 
         if (name.contains("生命浆果")) {
-            this.rarity = "lifeBerry";
+            this.rarity = "rare";
             this.functionDesc = "使用后，回复25点血量。";
             this.loreDesc = "红彤彤的浆果，看上去很好吃......";
         } else if (name.contains("魔力浆果")) {
-            this.rarity = "manaBerry";
+            this.rarity = "rare";
             this.functionDesc = "使用后，回复25点魔力。";
             this.loreDesc = "比较罕见的浆果，散发着浅浅的魔力波动。";
         } else if (name.contains("cookie") || name.contains("饼干")) {

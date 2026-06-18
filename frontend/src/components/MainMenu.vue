@@ -86,7 +86,7 @@
 </template>
 
 <script>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 
 export default {
   emits: ['start-game', 'load-game'],
@@ -111,20 +111,8 @@ export default {
       particles.value = arr
     }
 
-    // 按键监听：Enter 开始游戏
-    function onKeyDown(e) {
-      if (e.key === 'Enter') {
-        // 由父组件处理
-      }
-    }
-
     onMounted(() => {
       generateParticles()
-      window.addEventListener('keydown', onKeyDown)
-    })
-
-    onBeforeUnmount(() => {
-      window.removeEventListener('keydown', onKeyDown)
     })
 
     return { showAbout, particles }

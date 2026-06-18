@@ -23,10 +23,13 @@ public class GenerateRoom {
             "west",  new int[]{-1, 0}
     );
 
-    public static GeneratedMap generate(int minRooms, int maxRooms) {
+    /**
+     * 使用指定种子生成地图（存档恢复用）
+     */
+    public static GeneratedMap generate(int minRooms, int maxRooms, long seed) {
         if (minRooms < 1) minRooms = 1;
         if (maxRooms < minRooms) maxRooms = minRooms;
-        Random rnd = new Random();
+        Random rnd = new Random(seed);
         int total = minRooms + rnd.nextInt(maxRooms - minRooms + 1);
 
         // grid: coordinate key -> Room

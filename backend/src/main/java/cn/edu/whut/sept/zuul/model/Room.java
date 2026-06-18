@@ -266,7 +266,8 @@ public class Room {
         if (this.monstersCleared) return;
         if (monsters != null && !monsters.isEmpty()) return;
         if (roomType == null) return;
-        Random rnd = new Random();
+        // 用房间名hash做种子，保证同一房间每次生成相同的怪物（存档恢复关键）
+        Random rnd = new Random(this.name.hashCode());
         switch (roomType) {
             case BOSS -> spawnBossMonster(rnd);
             case ELITE_MONSTER -> spawnEliteMonsters(rnd);

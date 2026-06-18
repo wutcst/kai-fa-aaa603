@@ -5,35 +5,52 @@
       <MainMenu
         v-if="screen === 'menu'"
         @start-game="startNewGame"
-        @load-game="loadGame"
+        @load-game="showLoadSlots"
       />
     </Transition>
 
     <!-- 游戏界面 -->
     <Transition name="game-enter">
       <div v-if="screen === 'game'" class="game-view" :class="{ 'game-view-visible': screen === 'game' }">
-        <div class="game-container" style="padding:20px;font-family:Arial, sans-serif;display:flex;gap:20px;">
-          <div>
-            <h1 style="color:#e8d8b0;margin:0 0 10px;font-size:20px;letter-spacing:2px;">Zuul 游戏 Demo（起始场景）</h1>
-            <GameCanvas @update="onUpdate" />
-          </div>
+        <GameCanvas @update="onUpdate" @reset-game="resetGame" @back-to-menu="backToMenu" @show-save-slots="showSaveSlots" />
+      </div>
+    </Transition>
 
-          <aside style="width:320px;">
-            <h3 style="color:#d4c4a0;">信息</h3>
-            <div style="color:#ccc;"><strong style="color:#d4c4a0;">状态：</strong> {{ gameStatus }}</div>
-            <div style="margin-top:8px;color:#ccc;"><strong style="color:#d4c4a0;">消息：</strong> {{ message }}</div>
-
-            <h3 style="margin-top:16px;color:#d4c4a0;">房间物品</h3>
-            <ul style="color:#bbb;">
-              <li v-for="it in roomItems" :key="it.name">{{ it.name }} ({{ it.weight }} kg)</li>
-              <li v-if="roomItems.length===0" style="color:#666;">（无）</li>
-            </ul>
-
-            <div style="margin-top:16px;display:flex;gap:8px;">
-              <button @click="resetGame" style="background:#3a2a18;color:#d4c4a0;border:1px solid rgba(200,160,80,0.3);padding:6px 12px;border-radius:4px;cursor:pointer;">重置游戏</button>
-              <button @click="backToMenu" style="background:#2a1a0e;color:#d4c4a0;border:1px solid rgba(200,160,80,0.2);padding:6px 12px;border-radius:4px;cursor:pointer;">返回菜单</button>
+    <!-- ========== 存档槽位选择弹窗 ========== -->
+    <Transition name="fade">
+      <div v-if="slotDialog.visible" class="slot-overlay" @click.self="closeSlotDialog">
+        <div class="slot-panel">
+          <h2 class="slot-title">{{ slotDialog.title }}</h2>
+          <div class="slot-list">
+            <div
+              v-for="i in 3"
+              :key="'slot-' + i"
+              class="slot-card"
+              :class="{ 'slot-has-data': slotDialog.saves[i], 'slot-empty': !slotDialog.saves[i] }"
+              @click="slotDialog.callback(i)"
+            >
+              <template v-if="slotDialog.saves[i]">
+                <div class="slot-row">
+                  <div class="slot-id">存档 {{ i }}</div>
+                  <button class="slot-delete-btn" @click.stop="deleteSlot(i)">🗑 删除</button>
+                </div>
+                <div class="slot-info">
+                  <span class="slot-player">{{ slotDialog.saves[i].playerName }}</span>
+                  <span class="slot-hp">❤ {{ slotDialog.saves[i].hp }}/{{ slotDialog.saves[i].maxHp }}</span>
+                </div>
+                <div class="slot-info2">
+                  <span class="slot-room">📍 {{ slotDialog.saves[i].currentRoom }}</span>
+                  <span class="slot-money">${{ slotDialog.saves[i].money }}</span>
+                </div>
+                <div class="slot-time">{{ slotDialog.saves[i].updatedAt }}</div>
+              </template>
+              <template v-else>
+                <div class="slot-id">存档 {{ i }}</div>
+                <div class="slot-empty-text">— 空 —</div>
+              </template>
             </div>
-          </aside>
+          </div>
+          <button class="slot-cancel-btn" @click="closeSlotDialog">取消</button>
         </div>
       </div>
     </Transition>
@@ -46,7 +63,7 @@
 </template>
 
 <script>
-import { ref, onMounted } from 'vue'
+import { ref, reactive } from 'vue'
 import GameCanvas from './components/GameCanvas.vue'
 import MainMenu from './components/MainMenu.vue'
 
@@ -60,33 +77,120 @@ export default {
     const roomItems = ref([])
     const transitioning = ref(false)
 
-    // 启动游戏（新游戏）
-    async function startNewGame() {
-      // 过渡动画
-      transitioning.value = true
-      await new Promise(r => setTimeout(r, 600))
+    // 槽位弹窗状态
+    const slotDialog = reactive({
+      visible: false,
+      title: '',
+      saves: {},      // { 1: {...}, 2: {...}, 3: {...} }
+      callback: null, // (slotNumber) => {}
+    })
 
-      // 重置后端
-      try {
-        await fetch('/api/reset', { method: 'POST' })
-      } catch (e) {
-        // ignore
-      }
-
-      // 切换到游戏界面（遮罩仍在覆盖）
-      screen.value = 'game'
-
-      // 等待 Phaser 挂载 + 首次渲染完成后再移除遮罩
-      await new Promise(r => setTimeout(r, 200))
-      await loadGameData()
-      await new Promise(r => requestAnimationFrame(r))
-      transitioning.value = false
+    // 关闭槽位弹窗
+    function closeSlotDialog() {
+      slotDialog.visible = false
     }
 
-    // 继续冒险（读取存档，当前直接加载游戏）
-    async function loadGame() {
+    // 删除指定槽位的存档
+    async function deleteSlot(slotNum) {
+      if (!confirm('确定要删除 存档 ' + slotNum + ' 吗？此操作不可恢复！')) return
+      try {
+        await fetch('/api/deleteSave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ saveId: slotNum })
+        })
+        // 刷新槽位列表
+        slotDialog.saves = await fetchSaves()
+      } catch (e) {
+        alert('删除失败: ' + e.message)
+      }
+    }
+
+    // 从后端拉取存档列表，填充到 slotDialog.saves
+    async function fetchSaves() {
+      try {
+        const res = await fetch('/api/saves')
+        const list = await res.json()
+        const map = {}
+        for (const s of list) {
+          map[s.id] = s
+        }
+        return map
+      } catch (e) {
+        return {}
+      }
+    }
+
+    // 显示保存槽位弹窗（确定后保存到该槽位）
+    async function showSaveSlots() {
+      slotDialog.saves = await fetchSaves()
+      slotDialog.title = '💾 选择一个槽位保存'
+      slotDialog.callback = async (slotNum) => {
+        closeSlotDialog()
+        try {
+          const res = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ saveId: slotNum })
+          })
+          const saved = await res.json()
+          alert('游戏已保存到 存档 ' + slotNum + '！')
+        } catch (e) {
+          alert('保存失败: ' + e.message)
+        }
+      }
+      slotDialog.visible = true
+    }
+
+    // 显示读档槽位弹窗（确定后从该槽位加载）
+    async function showLoadSlots() {
+      slotDialog.saves = await fetchSaves()
+      slotDialog.title = '📂 选择一个存档读取'
+      slotDialog.callback = async (slotNum) => {
+        if (!slotDialog.saves[slotNum]) {
+          alert('该存档为空！')
+          return
+        }
+        closeSlotDialog()
+
+        transitioning.value = true
+        await new Promise(r => setTimeout(r, 600))
+
+        // 从后端加载存档
+        try {
+          const res = await fetch('/api/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ saveId: slotNum })
+          })
+          const j = await res.json()
+          screen.value = 'game'
+          await new Promise(r => setTimeout(r, 200))
+          // 注入加载后的数据
+          gameStatus.value = 'success'
+          message.value = '已加载 存档 ' + slotNum
+          data.value = j
+          if (j.items) roomItems.value = j.items
+          // 切换背景屏幕后 dispatch 游戏状态
+          await new Promise(r => requestAnimationFrame(r))
+          try { window.dispatchEvent(new CustomEvent('game:update', { detail: { status: 'success', message: '存档已加载', data: j } })) } catch (e) {}
+          transitioning.value = false
+        } catch (e) {
+          transitioning.value = false
+          alert('加载失败: ' + e.message)
+        }
+      }
+      slotDialog.visible = true
+    }
+
+    // 启动游戏（新游戏）
+    async function startNewGame() {
       transitioning.value = true
       await new Promise(r => setTimeout(r, 600))
+
+      try {
+        await fetch('/api/reset', { method: 'POST' })
+      } catch (e) { /* ignore */ }
 
       screen.value = 'game'
 
@@ -113,25 +217,21 @@ export default {
       }
     }
 
-    // 返回主菜单（带过渡动画）
+    // 返回主菜单
     async function backToMenu() {
-      // 过渡动画：先显示遮罩覆盖当前画面
       transitioning.value = true
       await new Promise(r => setTimeout(r, 400))
 
-      // 在切换前停止 Phaser 游戏轮询，避免销毁时产生视觉错位
       try {
         window.dispatchEvent(new CustomEvent('game:pause'))
       } catch (e) {}
 
-      // 切换界面并清空状态
       screen.value = 'menu'
       gameStatus.value = null
       message.value = ''
       data.value = null
       roomItems.value = []
 
-      // 等待菜单完整渲染后再移去遮罩
       await new Promise(r => setTimeout(r, 800))
       transitioning.value = false
     }
@@ -161,17 +261,21 @@ export default {
       onUpdate,
       roomItems,
       resetGame,
+      showSaveSlots,
+      showLoadSlots,
       startNewGame,
-      loadGame,
+      loadGameData,
       backToMenu,
       transitioning,
+      slotDialog,
+      closeSlotDialog,
+      deleteSlot,
     }
   }
 }
 </script>
 
 <style>
-/* 全局样式调整 */
 body {
   margin: 0;
   padding: 0;
@@ -189,7 +293,6 @@ body {
   padding-top: 60px;
 }
 
-/* 游戏视图 */
 .game-view {
   opacity: 0;
   transition: opacity 0.8s ease;
@@ -208,50 +311,167 @@ body {
   padding-bottom: 8px;
 }
 
-/* ============ 菜单离开动画 ============ */
+/* ============ 存档槽位弹窗 ============ */
+.slot-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+}
+
+.slot-panel {
+  width: 560px;
+  background: linear-gradient(135deg, #1a1208 0%, #2a1c0e 100%);
+  border: 1px solid rgba(200, 160, 80, 0.3);
+  border-radius: 8px;
+  padding: 28px 32px 24px;
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+}
+
+.slot-title {
+  color: #e8d8b0;
+  font-size: 20px;
+  text-align: center;
+  margin: 0 0 20px;
+  letter-spacing: 2px;
+}
+
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.slot-card {
+  padding: 14px 18px;
+  border: 1px solid rgba(200, 160, 80, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.slot-card:hover {
+  border-color: rgba(200, 160, 80, 0.55);
+  background: rgba(200, 160, 80, 0.08);
+  transform: translateX(4px);
+}
+
+.slot-empty {
+  opacity: 0.55;
+}
+
+.slot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.slot-id {
+  font-size: 16px;
+  font-weight: bold;
+  color: #c89b4a;
+}
+
+.slot-delete-btn {
+  background: rgba(200, 60, 40, 0.15);
+  border: 1px solid rgba(200, 60, 40, 0.3);
+  border-radius: 3px;
+  color: #cc8877;
+  font-size: 11px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.slot-delete-btn:hover {
+  background: rgba(200, 60, 40, 0.35);
+  color: #ff9999;
+}
+
+.slot-info, .slot-info2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.slot-player { color: #e8d8b0; font-size: 14px; }
+.slot-hp { color: #ff6666; font-size: 13px; }
+.slot-room { color: #aaaacc; font-size: 12px; }
+.slot-money { color: #ffdd88; font-size: 13px; }
+.slot-time { color: #888; font-size: 11px; margin-top: 4px; }
+
+.slot-empty-text {
+  color: #666;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.slot-cancel-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: rgba(200, 80, 60, 0.15);
+  border: 1px solid rgba(200, 80, 60, 0.3);
+  border-radius: 4px;
+  color: #cc8877;
+  font-size: 15px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.slot-cancel-btn:hover {
+  background: rgba(200, 80, 60, 0.25);
+  color: #ee6666;
+}
+
+/* ============ 动画 ============ */
+.fade-enter-active, .fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.fade-enter-from, .fade-leave-to {
+  opacity: 0;
+}
+
 .menu-leave-leave-active {
   transition: opacity 0.6s ease, transform 0.6s ease;
 }
-
 .menu-leave-leave-from {
   opacity: 1;
   transform: scale(1);
 }
-
 .menu-leave-leave-to {
   opacity: 0;
   transform: scale(1.05);
 }
 
-/* ============ 游戏进入动画 ============ */
 .game-enter-enter-active {
   transition: opacity 0.8s ease 0.2s;
 }
-
 .game-enter-enter-from {
   opacity: 0;
 }
-
 .game-enter-enter-to {
   opacity: 1;
 }
 
-/* ============ 游戏离开动画 ============ */
 .game-enter-leave-active {
   transition: opacity 0.5s ease, transform 0.5s ease;
 }
-
 .game-enter-leave-from {
   opacity: 1;
   transform: scale(1);
 }
-
 .game-enter-leave-to {
   opacity: 0;
   transform: scale(0.98);
 }
 
-/* ============ 过渡遮罩 ============ */
 .transition-overlay {
   position: fixed;
   inset: 0;
@@ -263,16 +483,13 @@ body {
 .transition-flash-enter-active {
   transition: opacity 0.4s ease;
 }
-
 .transition-flash-leave-active {
   transition: opacity 0.8s ease 0.2s;
 }
-
 .transition-flash-enter-from,
 .transition-flash-leave-to {
   opacity: 0;
 }
-
 .transition-flash-enter-to,
 .transition-flash-leave-from {
   opacity: 1;

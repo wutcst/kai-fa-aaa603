@@ -31,13 +31,17 @@ public class Player {
     private int speed;
     private int dodge;         // 0-100
 
-    // -- 饰品槽位（已装备的饰品名称，null表示空） --
+    // -- 装备/饰品槽位（已装备的物品名称，null表示空） --
     /** 披风槽位 */
     private String equippedCloak;
     /** 戒指槽位 */
     private String equippedRing;
     /** 项链槽位 */
     private String equippedAmulet;
+    /** 武器槽位（铁剑等） */
+    private String equippedWeapon;
+    /** 护甲槽位（铁盾等） */
+    private String equippedArmor;
 
     // -- 伤害计数器 --
     /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
@@ -81,18 +85,22 @@ public class Player {
         equippedCloak = null;
         equippedRing = null;
         equippedAmulet = null;
+        equippedWeapon = null;
+        equippedArmor = null;
     }
 
     // -- 饰品系统 --
 
     /**
-     * 获取指定物品对应的饰品槽位。
+     * 获取指定物品对应的装备/饰品槽位。
      * @param itemName 物品名称
-     * @return "cloak" / "ring" / "amulet" / null（不是饰品）
+     * @return "weapon" / "armor" / "cloak" / "ring" / "amulet" / null（不是装备或饰品）
      */
     public static String getItemSlot(String itemName) {
         if (itemName == null) return null;
         String lower = itemName.toLowerCase();
+        if (lower.contains("剑")) return "weapon";
+        if (lower.contains("盾")) return "armor";
         if (lower.contains("暗影披风")) return "cloak";
         if (lower.contains("生命戒指")) return "ring";
         if (lower.contains("元素项链")) return "amulet";
@@ -114,6 +122,8 @@ public class Player {
      */
     public String getEquippedInSlot(String slot) {
         return switch (slot) {
+            case "weapon" -> equippedWeapon;
+            case "armor" -> equippedArmor;
             case "cloak" -> equippedCloak;
             case "ring" -> equippedRing;
             case "amulet" -> equippedAmulet;
@@ -122,26 +132,30 @@ public class Player {
     }
 
     /**
-     * 佩戴饰品：应用属性加成，记录到槽位。
-     * 如果该槽位已有饰品，先卸下旧的。
-     * @param itemName 饰品名称
-     * @return 被替换下的旧饰品名称（null表示无替换）
+     * 佩戴装备/饰品：应用属性加成，记录到槽位。
+     * 如果该槽位已有物品，先卸下旧的。
+     * @param itemName 装备/饰品名称
+     * @return 被替换下的旧物品名称（null表示无替换）
      */
     public String equipItem(String itemName) {
         String slot = getItemSlot(itemName);
         if (slot == null) return null;
 
-        // 如果槽位已有饰品，先卸下
+        // 如果槽位已有物品，先卸下
         String oldItem = unequipSlot(slot);
 
-        // 应用新饰品的属性加成
+        // 应用新物品的属性加成
         String lower = itemName.toLowerCase();
-        if (lower.contains("暗影披风")) {
+        if (lower.contains("剑")) {
+            this.attack += 15;
+        } else if (lower.contains("盾")) {
+            this.defense += 10;
+        } else if (lower.contains("暗影披风")) {
             this.dodge += 15;
             this.speed += 20;
         } else if (lower.contains("生命戒指")) {
             this.maxHp += 50;
-            this.hp = Math.min(this.hp + 50, this.maxHp); // 同时回血
+            this.hp = Math.min(this.hp + 50, this.maxHp);
         } else if (lower.contains("元素项链")) {
             this.magicAttack += 15;
             this.magicResist += 20;
@@ -153,8 +167,8 @@ public class Player {
     }
 
     /**
-     * 卸下饰品：移除属性加成，清空槽位。
-     * @param itemName 饰品名称
+     * 卸下装备/饰品：移除属性加成，清空槽位。
+     * @param itemName 装备/饰品名称
      * @return true表示卸下成功
      */
     public boolean unequipItem(String itemName) {
@@ -164,12 +178,16 @@ public class Player {
 
         // 移除属性加成
         String lower = itemName.toLowerCase();
-        if (lower.contains("暗影披风")) {
+        if (lower.contains("剑")) {
+            this.attack = Math.max(0, this.attack - 15);
+        } else if (lower.contains("盾")) {
+            this.defense = Math.max(0, this.defense - 10);
+        } else if (lower.contains("暗影披风")) {
             this.dodge = Math.max(0, this.dodge - 15);
             this.speed = Math.max(0, this.speed - 20);
         } else if (lower.contains("生命戒指")) {
             this.maxHp = Math.max(1, this.maxHp - 50);
-            this.hp = Math.min(this.hp, this.maxHp); // 当前生命不超过最大生命
+            this.hp = Math.min(this.hp, this.maxHp);
         } else if (lower.contains("元素项链")) {
             this.magicAttack = Math.max(0, this.magicAttack - 15);
             this.magicResist = Math.max(0, this.magicResist - 20);
@@ -183,14 +201,18 @@ public class Player {
     /**
      * 清空指定槽位（内部方法，不处理属性加减）。
      * @param slot 槽位名称
-     * @return 原槽位中的饰品名称（null表示空）
+     * @return 原槽位中的物品名称（null表示空）
      */
     private String unequipSlot(String slot) {
         String old = getEquippedInSlot(slot);
         if (old != null) {
             // 先移除属性
             String lower = old.toLowerCase();
-            if (lower.contains("暗影披风")) {
+            if (lower.contains("剑")) {
+                this.attack = Math.max(0, this.attack - 15);
+            } else if (lower.contains("盾")) {
+                this.defense = Math.max(0, this.defense - 10);
+            } else if (lower.contains("暗影披风")) {
                 this.dodge = Math.max(0, this.dodge - 15);
                 this.speed = Math.max(0, this.speed - 20);
             } else if (lower.contains("生命戒指")) {
@@ -207,6 +229,8 @@ public class Player {
 
     private void setEquippedSlot(String slot, String itemName) {
         switch (slot) {
+            case "weapon" -> this.equippedWeapon = itemName;
+            case "armor" -> this.equippedArmor = itemName;
             case "cloak" -> this.equippedCloak = itemName;
             case "ring" -> this.equippedRing = itemName;
             case "amulet" -> this.equippedAmulet = itemName;

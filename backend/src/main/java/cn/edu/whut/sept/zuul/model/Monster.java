@@ -21,6 +21,7 @@ public class Monster {
     private String name;
     private String description;
     private int hp;
+    private int maxHp;
     private int attack;
     /** 物理防御 */
     private int defense;
@@ -59,6 +60,7 @@ public class Monster {
         this.name = name;
         this.description = description;
         this.hp = hp;
+        this.maxHp = hp;
         this.attack = attack;
         this.defense = defense;
         this.magicResist = magicResist;

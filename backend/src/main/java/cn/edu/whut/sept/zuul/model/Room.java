@@ -241,20 +241,19 @@ public class Room {
 
     /**
      * 初始化商店商品（仅商店房间调用，幂等操作）
-     * 从 50 个随机数中选取 6 个作为商品，价格在 10-200 随机
+     * 从物品注册表 ItemRegistry 中随机选取 6 种真实物品作为商品
      */
     public void initShopItems() {
         if (this.shopInitialized) return;
         if (this.shopItems == null) this.shopItems = new ArrayList<>();
-        Random rnd = new Random();
-        // 先用房间 name 的 hashCode 作为种子保证同一房间每次生成相同结果
-        long seed = this.name.hashCode();
-        rnd.setSeed(seed);
-        for (int i = 0; i < 6; i++) {
-            int itemNum = rnd.nextInt(50) + 1;
-            int price = rnd.nextInt(191) + 10; // 10-200
-            ShopItem si = new ShopItem("商品" + itemNum, price, false);
-            this.shopItems.add(si);
+
+        // 使用房间 name 的 hashCode 作为种子保证同一房间每次生成相同结果
+        Random rnd = new Random(this.name.hashCode());
+
+        // 从注册表中随机选取最多 6 个物品名称
+        List<String> selected = ItemRegistry.pickRandom(6, rnd);
+        for (String itemName : selected) {
+            this.shopItems.add(new ShopItem(itemName));
         }
         this.shopInitialized = true;
     }

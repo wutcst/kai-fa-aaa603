@@ -73,12 +73,14 @@ export default {
         // ignore
       }
 
-      // 切换到游戏
+      // 切换到游戏界面（遮罩仍在覆盖）
       screen.value = 'game'
-      transitioning.value = false
 
-      // 加载游戏数据
+      // 等待 Phaser 挂载 + 首次渲染完成后再移除遮罩
+      await new Promise(r => setTimeout(r, 200))
       await loadGameData()
+      await new Promise(r => requestAnimationFrame(r))
+      transitioning.value = false
     }
 
     // 继续冒险（读取存档，当前直接加载游戏）
@@ -87,9 +89,11 @@ export default {
       await new Promise(r => setTimeout(r, 600))
 
       screen.value = 'game'
-      transitioning.value = false
 
+      await new Promise(r => setTimeout(r, 200))
       await loadGameData()
+      await new Promise(r => requestAnimationFrame(r))
+      transitioning.value = false
     }
 
     // 加载后端数据

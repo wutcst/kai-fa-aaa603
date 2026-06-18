@@ -782,6 +782,13 @@ onMounted(() => {
         scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
         scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
 
+        // 中毒状态相关
+        scene._poisonIconGfx = null        // 中毒图标（💀）
+        scene._poisonLayersText = null     // 中毒层数文字
+        scene._poisonTimerText = null      // 中毒倒计时文字
+        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
+        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
+
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
         scene.moneyText = scene.add.text(475, 24, '50', { font: 'bold 15px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -856,68 +863,14 @@ onMounted(() => {
 
           if (layers <= 0) return  // 无烧伤则不绘制
 
-          const gfx = scene.add.graphics().setDepth(120)
-          scene._burnFlameGfx = gfx
+          // 使用 🔥 emoji 作为烧伤图标，固定大小不随层数变化
+          const flameText = scene.add.text(cx, cy, '🔥', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._burnFlameGfx = flameText
 
-          const baseY = cy
-          const flameH = 28 + size * 10
-          const flameW = 14 + size * 5
-
-          // 火焰主体：三层从内到外的渐变填充
-          // 内层（白色/亮黄）
-          gfx.fillStyle(0xFFFF88, 0.85)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.85,
-            cx - flameW * 0.15, baseY - flameH * 0.20,
-            cx + flameW * 0.15, baseY - flameH * 0.20
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.55,
-            cx - flameW * 0.22, baseY - flameH * 0.05,
-            cx + flameW * 0.22, baseY - flameH * 0.05
-          )
-
-          // 中层（橙色）
-          gfx.fillStyle(0xFF8800, 0.75)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.95,
-            cx - flameW * 0.32, baseY,
-            cx + flameW * 0.32, baseY
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.65,
-            cx - flameW * 0.38, baseY + 2,
-            cx + flameW * 0.38, baseY + 2
-          )
-
-          // 外层（红色）
-          gfx.fillStyle(0xFF3300, 0.55)
-          gfx.fillTriangle(
-            cx, baseY - flameH * 1.05,
-            cx - flameW * 0.55, baseY + 4,
-            cx + flameW * 0.55, baseY + 4
-          )
-          gfx.fillTriangle(
-            cx, baseY - flameH * 0.45,
-            cx - flameW * 0.6, baseY + 6,
-            cx + flameW * 0.6, baseY + 6
-          )
-
-          // 外焰光晕
-          gfx.fillStyle(0xFF6600, 0.2)
-          gfx.fillEllipse(cx, baseY - flameH * 0.5, flameW * 1.3, flameH * 1.1)
-
-          // 火星粒子点缀
-          const rng = () => (Math.sin(Date.now() * 0.003 + cx) * 0.5 + 0.5)  // 伪随机用于静态点缀
-          for (let i = 0; i < 5; i++) {
-            const px = cx - flameW * 0.4 + (i / 4) * flameW * 0.8 + (Math.sin(i * 2.3 + cx * 0.7) * flameW * 0.15)
-            const py = baseY - flameH * 0.1 - (i % 3) * flameH * 0.25 - Math.random() * flameH * 0.15
-            gfx.fillStyle(0xFFDD44, 0.5 + Math.random() * 0.3)
-            gfx.fillCircle(px, py, 1.2 + Math.random() * 1.5)
-          }
-
-          // 层数标注（火焰右下角）
-          const layersText = scene.add.text(cx + flameW * 0.8, baseY + 2, String(layers), {
+          // 层数标注（火焰右侧）
+          const layersText = scene.add.text(cx + 10, cy, String(layers), {
             font: 'bold 14px Arial',
             fill: '#FF6644',
             stroke: '#000000',
@@ -926,7 +879,7 @@ onMounted(() => {
           scene._burnLayersText = layersText
 
           // 倒计时标注（火焰下方）
-          const timerText = scene.add.text(cx, baseY + 8, Math.ceil(timerSec) + 's', {
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
             font: '10px Arial',
             fill: '#FFAA66',
             stroke: '#000000',
@@ -955,45 +908,111 @@ onMounted(() => {
           const barW = 210
 
           // buff 栏范围：mpY + barH + 4 到 roomTop - 4
-          const buffTop = mpY + barH + 10   // MP条下缘 + 间距
+          const buffTop = mpY + barH - 7      // MP条下缘
           const buffBottom = roomTop - 4
-          const buffLeft = barX - 30         // HP/MP label 左边缘
+          const buffLeft = barX - 105        // HP/MP label 左边缘
           const buffRight = barX + barW       // HP/MP 条右边缘
-          const buffMidX = (buffLeft + buffRight) / 2
           const buffMidY = (buffTop + buffBottom) / 2
 
-          // 查找烧伤状态
-          let burnEffect = null
-          for (const eff of scene._activeEffects) {
-            if (eff && eff.type === 'BURN') {
-              burnEffect = eff
-              break
+          // ---- 先清理所有旧的状态显示 ----
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+          scene._burnNextTickMs = 0
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+          scene._poisonNextTickMs = 0
+
+          // ---- 收集所有活跃状态，按固定顺序排列 ----
+          // 排序规则：先减益后增益，同类型按名称排序
+          const typeOrder = { 'BURN': 0, 'POISON': 1 }
+          const orderedEffects = scene._activeEffects
+            .filter(eff => eff && eff.layers > 0)
+            .sort((a, b) => {
+              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
+              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
+              if (orderA !== orderB) return orderA - orderB
+              return (a.name || a.type).localeCompare(b.name || b.type)
+            })
+
+          if (orderedEffects.length === 0) return
+
+          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
+          const cellWidth = 40    // 每个状态格子的宽度
+          const startX = 580      // 第一个格子中心X（固定）
+
+          for (let i = 0; i < orderedEffects.length; i++) {
+            const eff = orderedEffects[i]
+            const cellCX = startX + i * cellWidth
+            const cellCY = buffMidY + 6
+
+            if (eff.type === 'BURN') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 3000
+
+              // 记录用于实时倒计时
+              scene._burnLastTickMs = Date.now()
+              scene._burnNextTickMs = nextTickIn
+
+              const flameSize = Math.min(3, 1 + layers * 0.5)
+              const timerSec = nextTickIn / 1000
+
+              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
+            } else if (eff.type === 'POISON') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 1000
+
+              // 记录用于实时倒计时
+              scene._poisonLastTickMs = Date.now()
+              scene._poisonNextTickMs = nextTickIn
+
+              const timerSec = nextTickIn / 1000
+
+              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
             }
           }
+        }
 
-          if (burnEffect && burnEffect.layers > 0) {
-            const layers = burnEffect.layers || 0
-            const nextTickIn = burnEffect.nextTickIn || 3000
+        /**
+         * 绘制中毒状态图标与层数标注。
+         * @param {Phaser.Scene} scene
+         * @param {number} cx      图标中心X
+         * @param {number} cy      图标中心Y
+         * @param {number} layers  中毒层数
+         * @param {number} timerSec 距下次结算秒数
+         */
+        scene.drawPoisonIcon = function (cx, cy, layers, timerSec) {
+          // 清理旧的中毒显示
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
 
-            // 记录用于实时倒计时
-            scene._burnLastTickMs = Date.now()
-            scene._burnNextTickMs = nextTickIn
+          if (layers <= 0) return
 
-            const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
-            const timerSec = nextTickIn / 1000
+          // 使用 💀 emoji 作为中毒图标
+          const iconText = scene.add.text(cx, cy, '💀', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._poisonIconGfx = iconText
 
-            // 火焰置于 buff 栏中央偏左
-            const flameCX = buffMidX - 40
-            const flameCY = buffMidY + 6
+          // 层数标注（图标右侧）
+          const layersText = scene.add.text(cx + 11, cy, String(layers), {
+            font: 'bold 14px Arial',
+            fill: '#BB44FF',
+            stroke: '#000000',
+            strokeThickness: 3
+          }).setDepth(121).setOrigin(0, 0.5)
+          scene._poisonLayersText = layersText
 
-            scene.drawBurnFlame(flameCX, flameCY, flameSize, layers, timerSec)
-          } else {
-            // 无烧伤：清理火焰显示
-            if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
-            if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
-            if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
-            scene._burnNextTickMs = 0
-          }
+          // 倒计时标注（图标下方）
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#CC88FF',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._poisonTimerText = timerText
         }
 
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
@@ -1017,7 +1036,7 @@ onMounted(() => {
         scene.angelGlowGfx = null      // 天使金光Graphics
         scene._hasAngelGlow = false
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
         scene.sendCommand = async function (cmd, fromDir = null) {
           scene._lastMoveDir = fromDir
@@ -1029,8 +1048,8 @@ onMounted(() => {
             })
             const j = await res.json()
             emit('update', j)
-            // if response contains room data, re-render
-            if (j && j.data) {
+            // if response contains room data, re-render (跳过商店/祭坛浮层)
+            if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
               scene.renderRoom(j.data)
             }
             // check for game over from backend response
@@ -1062,7 +1081,9 @@ onMounted(() => {
               scene.gameOver = false
               if (scene.gameOverOverlay) { try { scene.gameOverOverlay.destroy() } catch (e) {}; scene.gameOverOverlay = null }
               try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
-              if (j && j.data) scene.renderRoom(j.data)
+              if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                scene.renderRoom(j.data)
+              }
             } catch (e) { /* ignore */ }
           })
           overlay.add([bg, title, hint, resetBtn])
@@ -1104,6 +1125,7 @@ onMounted(() => {
           // 清理商店覆盖层和NPC状态
           if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {}; scene.shopMenuOverlay = null }
           if (scene.shopBuyOverlay) { try { scene.shopBuyOverlay.destroy() } catch (e) {}; scene.shopBuyOverlay = null }
+          if (scene.shopSellOverlay) { try { scene.shopSellOverlay.destroy() } catch (e) {}; scene.shopSellOverlay = null }
           if (scene.shopNpcCircle) { try { scene.shopNpcCircle.destroy() } catch (e) {}; scene.shopNpcCircle = null }
           if (scene.shopNpcLabel) { try { scene.shopNpcLabel.destroy() } catch (e) {}; scene.shopNpcLabel = null }
           scene.shopNpcData = null
@@ -1238,15 +1260,38 @@ onMounted(() => {
             }
             const circleColor = 0xaa0000
             const circ = scene.add.circle(x, y, 20, circleColor).setStrokeStyle(2, 0x000000)
-            const labelText = mon.name + ' (HP:' + (mon.hp || 0) + ')'
+            const labelText = mon.name
             const label = scene.add.text(x - 32, y + 24, labelText, { font: '14px Arial', fill: '#fff' })
+
+            // 血条背景（深色）— 放在怪物圆点上方
+            const hpBarW = 54, hpBarH = 8
+            const hpBarX = x - hpBarW / 2
+            const hpBarY = y - 20 - hpBarH - 32
+            const hpBg = scene.add.rectangle(hpBarX + hpBarW / 2, hpBarY + hpBarH / 2, hpBarW, hpBarH, 0x333333).setStrokeStyle(1, 0x666666)
+            // 血条填充
+            const monMaxHp = mon.maxHp || mon.hp || 100
+            const hpRatio = Math.max(0, Math.min(1, (mon.hp || 0) / monMaxHp))
+            let hpColor = 0x44cc44
+            if (hpRatio < 0.3) hpColor = 0xcc2222
+            else if (hpRatio < 0.6) hpColor = 0xccaa22
+            const hpFill = scene.add.rectangle(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH, hpColor).setOrigin(0, 0)
+            // HP 数字文字（血条内部居中，加粗白字带描边）
+            const hpNumText = scene.add.text(hpBarX + hpBarW / 2, hpBarY + hpBarH / 2, mon.hp + '/' + monMaxHp, {
+              font: 'bold 11px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+            }).setOrigin(0.5, 0.5)
+
             if (!scene.monstersGroup) scene.monstersGroup = scene.add.group()
             if (!scene.monstersData) scene.monstersData = []
             scene.monstersGroup.add(circ)
             scene.monstersGroup.add(label)
+            scene.monstersGroup.add(hpBg)
+            scene.monstersGroup.add(hpFill)
+            scene.monstersGroup.add(hpNumText)
             scene.monstersData.push({
               name: mon.name, x, y, circ, label,
-              hp: mon.hp, type: mon.type,
+              hp: mon.hp, maxHp: monMaxHp, type: mon.type,
+              hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
+              hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
               specialType: mon.specialType || null,
               exploding: false,
@@ -1691,7 +1736,7 @@ onMounted(() => {
           sellBtn.on('pointerdown', () => {
             try { scene.shopMenuOverlay.destroy() } catch (e) {}
             scene.shopMenuOverlay = null
-            // 售卖功能仅显示，不做任何操作
+            scene.showShopSell()
           })
 
           // 关闭按钮
@@ -1835,12 +1880,130 @@ onMounted(() => {
           scene.shopBuyOverlay = overlay
         }
 
+        // ---------- 商店售卖界面浮层 ----------
+        scene.showShopSell = function () {
+          if (scene.shopSellOverlay) { try { scene.shopSellOverlay.destroy() } catch (e) {} }
+          const overlay = scene.add.container(0, 0).setDepth(200)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.6)
+          bg.setInteractive()
+          const title = scene.add.text(400, 80, '售卖 — 点击物品出售', {
+            font: 'bold 22px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+
+          // 获取玩家当前货币
+          const currentMoney = scene.playerStats.money || 0
+          const moneyText = scene.add.text(400, 110, '当前金币：$' + currentMoney, {
+            font: '16px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+
+          // 获取背包物品列表（从后端或本地数据）
+          async function loadAndShowSellItems() {
+            try {
+              const res = await fetch('/api/backpack')
+              const j = await res.json()
+              const items = (j && j.data && j.data.backpack) ? j.data.backpack : []
+
+              // 构建物品列表
+              const itemElements = []
+              const startY = 150
+              const rowH = 45
+
+              for (let i = 0; i < items.length; i++) {
+                const invItem = items[i]
+                const y = startY + i * rowH
+
+                // 物品名称
+                const nameText = scene.add.text(120, y, invItem.name, {
+                  font: '16px Arial', fill: '#ffffff'
+                }).setOrigin(0, 0.5)
+
+                // 数量
+                const qtyText = scene.add.text(300, y, 'x' + invItem.quantity, {
+                  font: '14px Arial', fill: '#aaaaaa'
+                }).setOrigin(0, 0.5)
+
+                // 售价（买价的一半）
+                const price = Math.max(1, Math.floor((invItem.price || 0) / 2))
+                const priceText = scene.add.text(380, y, '$' + price, {
+                  font: 'bold 16px Arial', fill: '#FFD700'
+                }).setOrigin(0, 0.5)
+
+                // 出售按钮
+                const sellBtn = scene.add.text(500, y, '[ 出售 ]', {
+                  font: '15px Arial', fill: '#44cc44', backgroundColor: '#222222',
+                  padding: { x: 8, y: 4 }
+                }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+                sellBtn.on('pointerover', () => sellBtn.setStyle({ fill: '#ffffff', backgroundColor: '#445544' }))
+                sellBtn.on('pointerout', () => sellBtn.setStyle({ fill: '#44cc44', backgroundColor: '#222222' }))
+
+                // 已装备标记（不可出售）
+                if (invItem.equipped) {
+                  const equippedTag = scene.add.text(580, y, '已装备', {
+                    font: '13px Arial', fill: '#ff8800'
+                  }).setOrigin(0, 0.5)
+                  itemElements.push(nameText, qtyText, priceText, sellBtn, equippedTag)
+                } else {
+                  sellBtn.on('pointerdown', async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'shop sell ' + invItem.name })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      // 刷新售卖界面
+                      try { scene.shopSellOverlay.destroy() } catch (e) {}
+                      scene.shopSellOverlay = null
+                      scene.showShopSell()
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                  })
+                  itemElements.push(nameText, qtyText, priceText, sellBtn)
+                }
+              }
+
+              // 如果没有物品
+              if (items.length === 0) {
+                const emptyText = scene.add.text(400, 300, '背包中没有可出售的物品', {
+                  font: '18px Arial', fill: '#888888'
+                }).setOrigin(0.5)
+                itemElements.push(emptyText)
+              }
+
+              overlay.add([bg, title, moneyText, ...itemElements, endBtn])
+
+              // 更新货币显示
+              if (j && j.data && j.data.playerMoney !== undefined) {
+                moneyText.setText('当前金币：$' + j.data.playerMoney)
+              }
+            } catch (e) {
+              emit('update', { status: 'error', message: '无法获取背包数据: ' + e.message, data: null })
+            }
+          }
+
+          // "结束售卖"按钮
+          const endBtn = scene.add.text(400, 540, '结束售卖', {
+            font: 'bold 20px Arial', fill: '#ff6666', backgroundColor: '#222222',
+            padding: { x: 24, y: 8 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          endBtn.on('pointerover', () => endBtn.setStyle({ fill: '#ffffff', backgroundColor: '#664444' }))
+          endBtn.on('pointerout', () => endBtn.setStyle({ fill: '#ff6666', backgroundColor: '#222222' }))
+          endBtn.on('pointerdown', () => {
+            try { scene.shopSellOverlay.destroy() } catch (e) {}
+            scene.shopSellOverlay = null
+          })
+
+          scene.shopSellOverlay = overlay
+          loadAndShowSellItems()
+        }
+
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,E,SHIFT,J,SPACE,H,Q')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 110,
+          radius: 120,
           angleDeg: 135,
           segments: 96,
           sweepDuration: 140,
@@ -1856,6 +2019,7 @@ onMounted(() => {
           pierceFade: 180,
           pierceWidth: 14
         }
+        scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -1976,6 +2140,11 @@ onMounted(() => {
         scene._waveProjectiles = []
         scene._wavePendingSend = false  // prevent duplicate sends
 
+        // 蓄力攻击状态（长按J键）
+        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
+        scene._chargeAttackPendingSend = false
+        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
+
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
           const speed = 420  // pixels per second
@@ -2069,6 +2238,7 @@ onMounted(() => {
         scene.shopIndicators = []        // 商店白色倒三角指示器
         scene.shopMenuOverlay = null     // 购物/售卖选项浮层
         scene.shopBuyOverlay = null      // 购买界面浮层
+        scene.shopSellOverlay = null     // 售卖界面浮层
         // dropped items state
         scene.droppedItemsGroup = scene.add.group()
         scene.droppedItemsData = []       // [{ itemName, x, y, icon, label, nearPlayer }]
@@ -2078,6 +2248,7 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
         window.addEventListener('backpack:toggle', function(e) {
@@ -2109,7 +2280,9 @@ onMounted(() => {
             }
           }
           // 如果背包未打开且响应包含房间数据，正常渲染房间
-          if (!scene._backpackPaused && j && j.data && j.data.name) {
+          // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
+          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
+          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
@@ -2153,6 +2326,38 @@ onMounted(() => {
             }
           }
 
+          // ---------- 中毒倒计时实时更新 ----------
+          if (scene._poisonNextTickMs > 0) {
+            const nowPoison = Date.now()
+            const elapsed = nowPoison - scene._poisonLastTickMs
+            const remaining = Math.max(0, scene._poisonNextTickMs - elapsed)
+            scene._poisonNextTickMs = remaining
+            scene._poisonLastTickMs = nowPoison
+            // 更新倒计时文字
+            if (scene._poisonTimerText && scene._poisonTimerText.active) {
+              const timerSec = remaining / 1000
+              scene._poisonTimerText.setText(Math.ceil(timerSec) + 's')
+              // 小于1秒时变红色闪烁
+              if (timerSec < 1) {
+                const flash = Math.sin(nowPoison * 0.02) * 0.3 + 0.7
+                scene._poisonTimerText.setAlpha(flash)
+                scene._poisonTimerText.setColor('#FF4444')
+              } else {
+                scene._poisonTimerText.setAlpha(1)
+                scene._poisonTimerText.setColor('#CC88FF')
+              }
+            }
+            // 中毒图标呼吸闪烁效果
+            if (scene._poisonIconGfx && scene._poisonIconGfx.active) {
+              const pulse = 0.7 + Math.sin(nowPoison * 0.003) * 0.3
+              scene._poisonIconGfx.setAlpha(pulse)
+            }
+            if (remaining <= 0) {
+              // 倒计时归零：清理显示（下次后端数据到达时会重新评估）
+              scene._poisonNextTickMs = 0
+            }
+          }
+
           // ---------- 定期轮询后端驱动爆炸计时与全局状态更新 ----------
           // 每500ms轮询一次GET /api/game，驱动tickExplosions（自爆倒计时）、烧伤结算等
           if (!scene._nextPollTime) scene._nextPollTime = 0
@@ -2176,7 +2381,9 @@ onMounted(() => {
                     try { scene.updateBuffDisplay(j.data.activeEffects) } catch (e) {}
                   }
                   // 只要有房间数据就渲染房间，确保爆炸结算后怪物从画面消失
-                  if (j.data && j.data.name) {
+                  // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
+                  // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
+                  if (j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                     try { scene.renderRoom(j.data) } catch (e) {}
                   }
                   // 检查游戏结束
@@ -2207,7 +2414,7 @@ onMounted(() => {
 
           // ---- 开始蓄力 ----
           try {
-            if (scene.keys.H && scene.keys.H.isDown && hasEnoughMp && !scene._waveCharging.active && !scene._wavePendingSend && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.wisdomOverlay) {
+            if (scene.keys.H && scene.keys.H.isDown && hasEnoughMp && !scene._waveCharging.active && !scene._wavePendingSend && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
               scene._waveCharging.active = true
               scene._waveCharging.startTime = nowMs
               scene._waveCharging.charged = false
@@ -2238,7 +2445,9 @@ onMounted(() => {
                 })
                 const j = await res.json()
                 emit('update', j)
-                if (j && j.data) scene.renderRoom(j.data)
+                if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                  scene.renderRoom(j.data)
+                }
               } catch (e) {
                 emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
               }
@@ -2339,9 +2548,9 @@ onMounted(() => {
           }
 
           // movement by WASD
-          const isCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 蓄力中（未满）禁止移动
-          const isAiming = scene._waveCharging.active && scene._waveCharging.charged      // 满蓄力瞄准中：允许转向
-          if (!isCharging) {
+          const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
+          const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
+          if (!isWaveCharging) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2352,8 +2561,10 @@ onMounted(() => {
             vx = vx / len
             vy = vy / len
             try { scene.facingAngle = Math.atan2(vy, vx) } catch (e) {}
-            if (!isAiming) {
+            if (!isWaveAiming) {
               let speed = scene.baseMoveSpeed
+              // 蓄力攻击期间移速减半
+              if (scene._chargeAttack.active) speed = speed * 0.5
               try {
                 if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
               } catch (e) {}
@@ -2397,7 +2608,9 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) scene.renderRoom(j.data)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
                     if (j && j.message && j.message.includes('游戏结束')) {
                       scene.showGameOver()
                     }
@@ -2424,10 +2637,333 @@ onMounted(() => {
             }
           }
 
+          // ---------- 绘制怪物攻击范围圈（半透明圆环） ----------
+          // 使用持久 Graphics 对象，每帧清空重绘
+          if (!scene._monsterRangeGfx) {
+            scene._monsterRangeGfx = scene.add.graphics().setDepth(3)
+          }
+          const rangeGfx = scene._monsterRangeGfx
+          rangeGfx.clear()
+          for (const mon of scene.monstersData) {
+            if (!mon || !mon.circ) continue
+            // 爆炸中的怪物不显示攻击范围
+            if (mon.exploding) continue
+            const isBoss = (mon.type === 2)
+            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
+            // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
+            const dx = scene.player.x - mon.x
+            const dy = scene.player.y - mon.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist <= MONSTER_DETECT_RANGE || isBoss) {
+              // Boss 全图显示，普通怪物在索敌范围内才显示
+              rangeGfx.lineStyle(1, 0xff4444, 0.25)
+              rangeGfx.strokeCircle(mon.x, mon.y, attackRange)
+              // 填充色（极淡）
+              rangeGfx.fillStyle(0xff2222, 0.05)
+              rangeGfx.fillCircle(mon.x, mon.y, attackRange)
+            }
+          }
+
           // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
           // Also detect monsters in range and send damage commands to backend
+          // ---------- 蓄力攻击（长按J键）状态机 ----------
+          const CHARGE_ATTACK_DURATION = 1000  // 1秒蓄力
+          const CHARGE_ENTRY_THRESHOLD = 200   // 按住200ms后才进入蓄力，短按留给横扫/突刺
+          const chargeNowMs = Date.now()
+
+          // 记录J键首次按下的时间，松开时根据时长决定横扫/突刺还是蓄力
+          if (!scene._jHeldSince && scene.keys.J && scene.keys.J.isDown && !scene._attackOnCooldown
+              && !scene._waveCharging.active && !scene._chargeAttack.active) {
+            scene._jHeldSince = chargeNowMs
+          }
+          if (scene._jHeldSince && !(scene.keys.J && scene.keys.J.isDown)) {
+            const heldDuration = chargeNowMs - scene._jHeldSince
+            if (heldDuration < CHARGE_ENTRY_THRESHOLD && !scene._attackOnCooldown && !scene._chargeAttack.active) {
+              // 短按（<200ms）→ 触发横扫或突刺
+              scene._attackOnCooldown = true
+              const cfg = scene.attackConfig || {}
+              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              const monsterPositions = []
+              for (const mon of scene.monstersData) {
+                if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
+              }
+              if (isShiftMove) {
+                // 突刺特效
+                const startX = scene.player.x, startY = scene.player.y
+                const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
+                const dist = cfg.pierceDistance || 120
+                const pr_ = scene.playerRadius || 10
+                const targetX = Phaser.Math.Clamp(startX + dx_ * dist, rb.left + pr_, rb.right - pr_)
+                const targetY = Phaser.Math.Clamp(startY + dy_ * dist, rb.top + pr_, rb.bottom - pr_)
+                scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+                const g2 = scene.add.graphics()
+                const extra = cfg.pierceDistanceExpand || 1.0
+                const effTX = Phaser.Math.Clamp(startX + dx_ * dist * extra, rb.left + pr_, rb.right - pr_)
+                const effTY = Phaser.Math.Clamp(startY + dy_ * dist * extra, rb.top + pr_, rb.bottom - pr_)
+                const mx_ = (startX + effTX) / 2, my_ = (startY + effTY) / 2
+                const w_ = cfg.pierceWidth || 12
+                g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
+                g2.fillPoints([{x:effTX,y:effTY},{x:mx_+(-dy_)*(w_/2),y:my_+dx_*(w_/2)},{x:startX,y:startY},{x:mx_-(-dy_)*(w_/2),y:my_-dx_*(w_/2)}], true)
+                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
+              } else {
+                // 横扫特效
+                const mainGfx = scene.add.graphics(), fireGfx = scene.add.graphics()
+                const progress_ = { t: 0 }
+                scene.drawArcSlash(mainGfx, 0); scene.drawFireDistortion(fireGfx, 0)
+                scene.spawnAttackParticles(0, 20); scene.spawnShockwave()
+                if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(120, 0.005)
+                scene.tweens.add({
+                  targets: progress_, t: 1, duration: scene.attackConfig.sweepDuration || 160, ease: 'Cubic.easeOut',
+                  onUpdate: () => { scene.drawArcSlash(mainGfx, progress_.t, 0.95); scene.drawFireDistortion(fireGfx, progress_.t) },
+                  onComplete: () => {
+                    scene.spawnAttackParticles(1, 15)
+                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, onComplete: () => mainGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
+                  }
+                })
+              }
+              // 发送攻击请求到后端
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/attack', { method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ attackType: isShiftMove ? 'pierce' : 'sweep', playerX: scene.player.x, playerY: scene.player.y, facingAngle: scene.facingAngle, monsters: monsterPositions }) })
+                  const j = await res.json(); emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) scene.renderRoom(j.data)
+                  if (j && j.message && j.message.includes('游戏结束')) scene.showGameOver()
+                } catch (e) { emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null }) }
+              })()
+            }
+            scene._jHeldSince = null
+          }
+
+          // 开始蓄力：J键持续按住超过阈值后才进入蓄力状态
           try {
-            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active) {
+            if (scene.keys.J && scene.keys.J.isDown && !scene._chargeAttack.active && !scene._attackOnCooldown
+                && !scene._waveCharging.active && !scene._chargeAttackPendingSend
+                && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay
+                && scene._jHeldSince && (chargeNowMs - scene._jHeldSince) >= CHARGE_ENTRY_THRESHOLD) {
+              scene._chargeAttack.active = true
+              scene._chargeAttack.startTime = chargeNowMs
+              scene._chargeAttack.charged = false
+              scene._jHeldSince = null  // 清空，避免干扰
+            }
+          } catch (e) {}
+
+          // 蓄力中处理
+          if (scene._chargeAttack.active) {
+            try {
+              const jDown = scene.keys.J && scene.keys.J.isDown
+              const elapsed = chargeNowMs - scene._chargeAttack.startTime
+              const progress = Math.min(1, elapsed / CHARGE_ATTACK_DURATION)
+
+              if (!jDown) {
+                // J松开
+                if (scene._chargeAttack.charged) {
+                  // 满蓄力松开 → 发射蓄力攻击
+                  if (!scene._chargeAttackPendingSend) {
+                    scene._chargeAttackPendingSend = true
+                    // 清理蓄力UI
+                    try {
+                      if (scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx.destroy(); scene._chargeAttack.chargeBarGfx = null }
+                      if (scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx.destroy(); scene._chargeAttack.circleGfx = null }
+                    } catch (e) {}
+
+                    const CHARGE_VFX_RADIUS = 150
+                    const vfxGfx = scene.add.graphics().setDepth(15)
+
+                    const drawChargeCircle = (gfx, alpha) => {
+                      gfx.clear()
+                      gfx.lineStyle(4, 0xFFD700, alpha)
+                      gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                      const segs = 96
+                      const outer = [], inner = []
+                      for (let s = 0; s <= segs; s++) {
+                        const a = (s / segs) * Math.PI * 2
+                        outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                      }
+                      for (let s = segs; s >= 0; s--) {
+                        const a = (s / segs) * Math.PI * 2
+                        inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                      }
+                      gfx.fillStyle(0xFF6600, alpha * 0.55)
+                      gfx.fillPoints(outer.concat(inner), true)
+                    }
+
+                    drawChargeCircle(vfxGfx, 1)
+                    const shockwave1 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                    shockwave1.setStrokeStyle(3, 0xFF8800)
+                    scene.tweens.add({
+                      targets: shockwave1, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                      onUpdate: () => { shockwave1.setStrokeStyle(3, 0xFF8800, shockwave1.alpha) },
+                      onComplete: () => { shockwave1.destroy() }
+                    })
+
+                    // 60ms后第二圈
+                    scene.time.delayedCall(60, () => {
+                      const vfxGfx2 = scene.add.graphics().setDepth(15)
+                      const drawChargeCircle2 = (gfx, alpha) => {
+                        gfx.clear()
+                        gfx.lineStyle(3, 0xFFAA00, alpha)
+                        gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                        const segs = 96
+                        const outer = [], inner = []
+                        for (let s = 0; s <= segs; s++) {
+                          const a = (s / segs) * Math.PI * 2
+                          outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                        }
+                        for (let s = segs; s >= 0; s--) {
+                          const a = (s / segs) * Math.PI * 2
+                          inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                        }
+                        gfx.fillStyle(0xFF4400, alpha * 0.45)
+                        gfx.fillPoints(outer.concat(inner), true)
+                      }
+                      drawChargeCircle2(vfxGfx2, 1)
+                      const shockwave2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                      shockwave2.setStrokeStyle(3, 0xFF6600)
+                      scene.tweens.add({
+                        targets: shockwave2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                        onUpdate: () => { shockwave2.setStrokeStyle(3, 0xFF6600, shockwave2.alpha) },
+                        onComplete: () => { shockwave2.destroy() }
+                      })
+                      scene.tweens.add({
+                        targets: vfxGfx2, alpha: 0, duration: 350, delay: 100,
+                        onComplete: () => { try { vfxGfx2.destroy() } catch (e) {} }
+                      })
+                    })
+
+                    scene.tweens.add({
+                      targets: vfxGfx, alpha: 0, duration: 500, delay: 50,
+                      onComplete: () => { try { vfxGfx.destroy() } catch (e) {} }
+                    })
+
+                    if (scene.cameras && scene.cameras.main) {
+                      scene.cameras.main.shake(200, 0.01)
+                    }
+
+                    // 火花粒子
+                    for (let i = 0; i < 25; i++) {
+                      const ang = Math.random() * Math.PI * 2
+                      const dist = CHARGE_VFX_RADIUS * (0.3 + Math.random() * 0.7)
+                      const px = scene.player.x + Math.cos(ang) * dist
+                      const py = scene.player.y + Math.sin(ang) * dist
+                      const spark = scene.add.circle(px, py, 1.5 + Math.random() * 3, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
+                      scene.tweens.add({
+                        targets: spark, x: px + Math.cos(ang) * (60 + Math.random() * 60),
+                        y: py + Math.sin(ang) * (60 + Math.random() * 60),
+                        alpha: 0, scale: 0.1, duration: 200 + Math.random() * 300,
+                        ease: 'Cubic.easeOut',
+                        onComplete: () => { try { spark.destroy() } catch (e) {} }
+                      })
+                    }
+
+                    // 发送蓄力攻击请求到后端
+                    const monsterPositions = []
+                    for (const mon of scene.monstersData) {
+                      if (mon && mon.name && !mon.exploding) {
+                        monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
+                      }
+                    }
+                    ;(async () => {
+                      try {
+                        const res = await fetch('/api/attack', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ attackType: 'charged',
+                            playerX: scene.player.x, playerY: scene.player.y,
+                            facingAngle: scene.facingAngle, monsters: monsterPositions })
+                        })
+                        const j = await res.json()
+                        emit('update', j)
+                        if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                          scene.renderRoom(j.data)
+                        }
+                        if (j && j.message && j.message.includes('游戏结束')) { scene.showGameOver() }
+                      } catch (e) {
+                        emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                      }
+                      scene._chargeAttackPendingSend = false
+                    })()
+                  }
+                } else {
+                  // 未满蓄力松开 → 取消
+                  try {
+                    if (scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx.destroy(); scene._chargeAttack.chargeBarGfx = null }
+                    if (scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx.destroy(); scene._chargeAttack.circleGfx = null }
+                  } catch (e) {}
+                }
+                scene._chargeAttack.active = false
+                scene._chargeAttack.charged = false
+              } else if (!scene._chargeAttack.charged) {
+                // 蓄力中（未满）→ 绘制进度条和蓄力圈
+                if (!scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx = scene.add.graphics().setDepth(150) }
+                if (!scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx = scene.add.graphics().setDepth(14) }
+                const barGfx = scene._chargeAttack.chargeBarGfx
+                const circleGfx = scene._chargeAttack.circleGfx
+
+                barGfx.clear()
+                const barW2 = 50, barH2 = 8
+                const barX2 = scene.player.x - barW2 / 2
+                const barY2 = scene.player.y + 30
+                barGfx.fillStyle(0x222222, 0.8)
+                barGfx.fillRect(barX2, barY2, barW2, barH2)
+                barGfx.lineStyle(1, 0xaa6600, 0.9)
+                barGfx.strokeRect(barX2, barY2, barW2, barH2)
+                const fR = Math.floor(180 + progress * 75), fG = Math.floor(80 + progress * 100), fB = 20
+                barGfx.fillStyle((fR << 16) | (fG << 8) | fB, 0.9)
+                barGfx.fillRect(barX2, barY2, barW2 * progress, barH2)
+
+                circleGfx.clear()
+                const ca = 0.15 + progress * 0.4
+                circleGfx.fillStyle(0xFF6600, ca * 0.3)
+                circleGfx.fillCircle(scene.player.x, scene.player.y, 150)
+                circleGfx.lineStyle(1.5, 0xFF8800, ca)
+                circleGfx.strokeCircle(scene.player.x, scene.player.y, 150)
+                for (let d = 0; d < 24; d++) {
+                  circleGfx.beginPath()
+                  circleGfx.arc(scene.player.x, scene.player.y, 150 * (0.5 + progress * 0.5),
+                    (d / 24) * Math.PI * 2, ((d + 0.4) / 24) * Math.PI * 2, false)
+                  circleGfx.strokePath()
+                }
+                if (progress >= 1) { scene._chargeAttack.charged = true }
+              } else {
+                // 已满蓄力 → 保持满蓄力UI脉冲
+                if (!scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx = scene.add.graphics().setDepth(150) }
+                if (!scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx = scene.add.graphics().setDepth(14) }
+                const barGfx = scene._chargeAttack.chargeBarGfx
+                const circleGfx = scene._chargeAttack.circleGfx
+
+                barGfx.clear()
+                const barW3 = 50, barH3 = 8
+                const barX3 = scene.player.x - barW3 / 2
+                const barY3 = scene.player.y + 30
+                barGfx.fillStyle(0x222222, 0.8)
+                barGfx.fillRect(barX3, barY3, barW3, barH3)
+                barGfx.lineStyle(2, 0xFF4400, 1.0)
+                barGfx.strokeRect(barX3, barY3, barW3, barH3)
+                barGfx.fillStyle(0xFF4400, 0.5 + 0.5 * Math.sin(chargeNowMs * 0.01))
+                barGfx.fillRect(barX3, barY3, barW3, barH3)
+
+                circleGfx.clear()
+                const pa = 0.5 + 0.3 * Math.sin(chargeNowMs * 0.008)
+                circleGfx.fillStyle(0xFF6600, pa * 0.35)
+                circleGfx.fillCircle(scene.player.x, scene.player.y, 150)
+                circleGfx.lineStyle(2.5, 0xFFD700, pa)
+                circleGfx.strokeCircle(scene.player.x, scene.player.y, 150)
+                for (let d = 0; d < 24; d++) {
+                  circleGfx.beginPath()
+                  circleGfx.arc(scene.player.x, scene.player.y, 150,
+                    (d / 24 + chargeNowMs * 0.0005) * Math.PI * 2,
+                    ((d + 0.4) / 24 + chargeNowMs * 0.0005) * Math.PI * 2, false)
+                  circleGfx.strokePath()
+                }
+              }
+            } catch (e) {}
+          }
+
+          // 旧版 JustDown 攻击已禁用，短按横扫/突刺现在由蓄力状态机的松手路径统一处理
+          try {
+            if (false) {
+              scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
 
               // helper: send attack command to backend for a specific monster
@@ -2439,7 +2975,7 @@ onMounted(() => {
                   })
                   const j = await res.json()
                   emit('update', j)
-                  if (j && j.data) {
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                     scene.renderRoom(j.data)
                   }
                   if (j && j.message && j.message.includes('游戏结束')) {
@@ -2478,28 +3014,11 @@ onMounted(() => {
               // determine attack type
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
 
-              // detect hit monsters before any visual effect
-              const hitMonsters = []
-              if (isShiftMove) {
-                const startX = scene.player.x
-                const startY = scene.player.y
-                const dx = Math.cos(scene.facingAngle)
-                const dy = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
-                    hitMonsters.push(mon.name)
-                  }
-                }
-              } else {
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInSweep(mon)) {
-                    hitMonsters.push(mon.name)
-                  }
+              // 收集当前房间所有存活怪物的位置快照，发往后端做命中判定
+              const monsterPositions = []
+              for (const mon of scene.monstersData) {
+                if (mon && mon.name && !mon.exploding) {
+                  monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
                 }
               }
 
@@ -2515,6 +3034,21 @@ onMounted(() => {
                 const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
 
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+
+                // ---- 突刺击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                const PIERCE_KNOCKBACK = 40
+                const pierceKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - startX
+                  const mdy = mon.y - startY
+                  const along = mdx * dx + mdy * dy
+                  if (along < 0 || along > 120) continue
+                  const perp = Math.abs(mdx * (-dy) + mdy * dx)
+                  if (perp > 24) continue
+                  pierceKnockbacks.push({ name: mon.name, pushX: dx * PIERCE_KNOCKBACK, pushY: dy * PIERCE_KNOCKBACK })
+                }
+                scene._pendingKnockbacks = pierceKnockbacks
                 try {
                   const g2 = scene.add.graphics()
                   const extra = cfg.pierceDistanceExpand || 1.0
@@ -2531,7 +3065,7 @@ onMounted(() => {
                     { x: startX, y: startY },
                     { x: mx - hx, y: my - hy }
                   ], true)
-                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
+                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
                 } catch (e) {}
               } else {
                 // === SWEEP ATTACK (enhanced visuals) ===
@@ -2547,6 +3081,32 @@ onMounted(() => {
                 if (scene.cameras && scene.cameras.main) {
                   scene.cameras.main.shake(120, 0.005)
                 }
+
+                // ---- 横扫击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                // 根据怪物类型分级击退：普通35px，精英25px，领袖15px
+                const SWEEP_KB_NORMAL = 35
+                const SWEEP_KB_ELITE  = 25
+                const SWEEP_KB_BOSS   = 15
+                const sweepKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - scene.player.x
+                  const mdy = mon.y - scene.player.y
+                  const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
+                  if (mdist > 120 || mdist < 0.01) continue
+                  const angleToMon = Math.atan2(mdy, mdx)
+                  let diff = angleToMon - scene.facingAngle
+                  while (diff > Math.PI) diff -= 2 * Math.PI
+                  while (diff < -Math.PI) diff += 2 * Math.PI
+                  if (Math.abs(diff) > Math.PI * 67.5 / 180) continue
+                  const nx = mdx / mdist
+                  const ny = mdy / mdist
+                  let kbDist = SWEEP_KB_NORMAL
+                  if (mon.type === 1) kbDist = SWEEP_KB_ELITE
+                  else if (mon.type === 2) kbDist = SWEEP_KB_BOSS
+                  sweepKnockbacks.push({ name: mon.name, pushX: nx * kbDist, pushY: ny * kbDist })
+                }
+                scene._pendingKnockbacks = sweepKnockbacks
 
                 scene.tweens.add({
                   targets: progress,
@@ -2569,15 +3129,58 @@ onMounted(() => {
                   onComplete: () => {
                     scene.spawnAttackParticles(1, 15)
                     scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
-                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => fireGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
                   }
                 })
               }
 
-              // send attack commands for all monsters hit
-              for (const monName of hitMonsters) {
-                attackMonster(monName)
-              }
+              // 单次调用后端，由后端统一做命中判定
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/attack', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      attackType: isShiftMove ? 'pierce' : 'sweep',
+                      playerX: scene.player.x,
+                      playerY: scene.player.y,
+                      facingAngle: scene.facingAngle,
+                      monsters: monsterPositions
+                    })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) {
+                    scene.renderRoom(j.data)
+                    // ---- 在 renderRoom 重建怪物后执行击退动画 ----
+                    if (scene._pendingKnockbacks && scene._pendingKnockbacks.length > 0) {
+                      const kbs = scene._pendingKnockbacks
+                      scene._pendingKnockbacks = null
+                      const knockPr = scene.playerRadius || 14
+                      for (const kb of kbs) {
+                        const mon = scene.monstersData.find(m => m && m.name === kb.name)
+                        if (!mon || !mon.circ || mon.exploding) continue
+                        const pushX = Phaser.Math.Clamp(mon.x + kb.pushX, rb.left + knockPr, rb.right - knockPr)
+                        const pushY = Phaser.Math.Clamp(mon.y + kb.pushY, rb.top + knockPr, rb.bottom - knockPr)
+                        scene.tweens.add({
+                          targets: { x: mon.x, y: mon.y },
+                          x: pushX, y: pushY, duration: 150, ease: 'Cubic.easeOut',
+                          onUpdate: function (tween) {
+                            const t = tween.targets[0]
+                            mon.x = t.x; mon.y = t.y
+                            try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                            try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                          }
+                        })
+                      }
+                    }
+                  }
+                  if (j && j.message && j.message.includes('游戏结束')) {
+                    scene.showGameOver()
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
             }
           } catch (e) { /* ignore input issues */ }
 
@@ -2585,6 +3188,26 @@ onMounted(() => {
           const pr2 = scene.playerRadius || 14
           scene.player.x = Phaser.Math.Clamp(scene.player.x, rb.left + pr2, rb.right - pr2)
           scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
+
+          // ---------- 更新怪物血条位置 ----------
+          for (const mon of scene.monstersData) {
+            if (!mon || !mon.hpBarBg) continue
+            const hpBarX = mon.x - mon.hpBarW / 2
+            const hpBarY = mon.y - 20 - mon.hpBarH - 30
+            const ratio = Math.max(0, Math.min(1, (mon.hp || 0) / Math.max(1, mon.maxHp || 1)))
+            mon.hpBarBg.setPosition(hpBarX + mon.hpBarW / 2, hpBarY + mon.hpBarH / 2)
+            let color = 0x44cc44
+            if (ratio < 0.3) color = 0xcc2222
+            else if (ratio < 0.6) color = 0xccaa22
+            mon.hpBarFill.setFillStyle(color)
+            mon.hpBarFill.setPosition(hpBarX, hpBarY)
+            mon.hpBarFill.setDisplaySize(mon.hpBarW * ratio, mon.hpBarH)
+            if (mon.hpNumText) {
+              mon.hpNumText.setPosition(hpBarX + mon.hpBarW / 2, hpBarY + mon.hpBarH / 2)
+              mon.hpNumText.setText((mon.hp || 0) + '/' + (mon.maxHp || 0))
+            }
+          }
+
           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
           // ---------- 月光波弹射运动 ----------
@@ -2672,7 +3295,9 @@ onMounted(() => {
                       })
                       const j = await res.json()
                       emit('update', j)
-                      if (j && j.data) scene.renderRoom(j.data)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
+                      }
                       if (j && j.message && j.message.includes('游戏结束')) {
                         scene.showGameOver()
                       }
@@ -2935,6 +3560,47 @@ onMounted(() => {
           }
 
           // SPACE 键交互（关闭对话框 > 拾取 > 偶遇NPC > 商店 > 祭坛, skip if charging）
+          // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
+          // ---- Q 键测试：施加一层中毒 ----
+          try {
+            if (scene.keys.Q && Phaser.Input.Keyboard.JustDown(scene.keys.Q) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test poison' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) scene.renderRoom(j.data)
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
+          // ---- E 键测试：施加一层烧伤 ----
+          try {
+            if (scene.keys.E && Phaser.Input.Keyboard.JustDown(scene.keys.E) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test burn' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+          // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
               // 如果对话框打开，按空格关闭
@@ -2951,7 +3617,9 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) scene.renderRoom(j.data)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
                   } catch (e) {
                     emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
                   }
@@ -3002,7 +3670,7 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) {
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                       scene.renderRoom(j.data)
                       if (altarType === 'heal') {
                         scene.spawnAltarGlow(closestAltar.x, closestAltar.y, closestAltar.size, 0x44cc44, 5000)
@@ -3067,7 +3735,9 @@ onMounted(() => {
           const res = await fetch('/api/game')
           const j = await res.json()
           emit('update', j)
-          if (j && j.data) scene.renderRoom(j.data)
+          if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+            scene.renderRoom(j.data)
+          }
         } catch (e) {
           emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
         }

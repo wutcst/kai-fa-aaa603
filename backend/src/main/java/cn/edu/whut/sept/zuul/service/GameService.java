@@ -211,7 +211,7 @@ public class GameService {
         }
 
         String attackType = req.getAttackType();
-        if (attackType == null || (!attackType.equals("sweep") && !attackType.equals("pierce"))) {
+        if (attackType == null || (!attackType.equals("sweep") && !attackType.equals("pierce") && !attackType.equals("charged"))) {
             return GameResponse.error("无效的攻击类型: " + attackType);
         }
 
@@ -231,13 +231,18 @@ public class GameService {
             if (mp == null || mp.getName() == null) continue;
             if (!isHit(attackType, px, py, angle, mp)) continue;
 
-            // 防御：确认怪物仍存活且可被攻击后再调用 attackMonster
+            // 防御：确认怪物仍存活且可被攻击后再调用攻击方法
             Monster m = current.getMonster(mp.getName());
             if (m == null || !m.isAlive() || m.isExploding()) continue;
 
             int dropX = (int) Math.round(mp.getX());
             int dropY = (int) Math.round(mp.getY());
-            String result = game.attackMonster(mp.getName(), dropX, dropY);
+            String result;
+            if ("charged".equals(attackType)) {
+                result = game.chargedAttackMonster(mp.getName(), dropX, dropY);
+            } else {
+                result = game.attackMonster(mp.getName(), dropX, dropY);
+            }
             sb.append(result).append("\n");
             hitCount++;
         }
@@ -267,7 +272,7 @@ public class GameService {
             while (diff > Math.PI) diff -= 2 * Math.PI;
             while (diff < -Math.PI) diff += 2 * Math.PI;
             return Math.abs(diff) <= Math.toRadians(67.5);
-        } else {
+        } else if ("pierce".equals(attackType)) {
             double dirX = Math.cos(angle);
             double dirY = Math.sin(angle);
             double mdx = mp.getX() - px;
@@ -276,7 +281,14 @@ public class GameService {
             if (along < 0 || along > 120) return false;
             double perp = Math.abs(mdx * (-dirY) + mdy * dirX);
             return perp <= 21.0; // 12/2 + 15
+        } else if ("charged".equals(attackType)) {
+            // 蓄力攻击：360° 周身 150px 范围
+            double dx = mp.getX() - px;
+            double dy = mp.getY() - py;
+            double dist = Math.sqrt(dx * dx + dy * dy);
+            return dist <= 150;
         }
+        return false;
     }
 
     /**

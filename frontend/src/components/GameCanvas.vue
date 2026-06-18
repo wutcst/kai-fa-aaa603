@@ -1023,7 +1023,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
         scene.sendCommand = async function (cmd, fromDir = null) {
           scene._lastMoveDir = fromDir
@@ -1884,6 +1884,11 @@ onMounted(() => {
         scene._waveProjectiles = []
         scene._wavePendingSend = false  // prevent duplicate sends
 
+        // 蓄力攻击状态（长按J键）
+        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
+        scene._chargeAttackPendingSend = false
+        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
+
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
           const speed = 420  // pixels per second
@@ -2287,9 +2292,9 @@ onMounted(() => {
           }
 
           // movement by WASD
-          const isCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 蓄力中（未满）禁止移动
-          const isAiming = scene._waveCharging.active && scene._waveCharging.charged      // 满蓄力瞄准中：允许转向
-          if (!isCharging) {
+          const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
+          const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
+          if (!isWaveCharging) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2300,8 +2305,10 @@ onMounted(() => {
             vx = vx / len
             vy = vy / len
             try { scene.facingAngle = Math.atan2(vy, vx) } catch (e) {}
-            if (!isAiming) {
+            if (!isWaveAiming) {
               let speed = scene.baseMoveSpeed
+              // 蓄力攻击期间移速减半
+              if (scene._chargeAttack.active) speed = speed * 0.5
               try {
                 if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
               } catch (e) {}
@@ -2374,10 +2381,303 @@ onMounted(() => {
             }
           }
 
-          // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
-          // Also detect monsters in range and send damage commands to backend
+          // ---------- 蓄力攻击（长按J键）状态机 ----------
+          const CHARGE_ATTACK_DURATION = 1000  // 1秒蓄力
+          const CHARGE_ENTRY_THRESHOLD = 200   // 按住200ms后才进入蓄力，短按留给横扫/突刺
+          const chargeNowMs = Date.now()
+
+          // 记录J键首次按下的时间，松开时根据时长决定横扫/突刺还是蓄力
+          if (!scene._jHeldSince && scene.keys.J && scene.keys.J.isDown && !scene._attackOnCooldown
+              && !scene._waveCharging.active && !scene._chargeAttack.active) {
+            scene._jHeldSince = chargeNowMs
+          }
+          if (scene._jHeldSince && !(scene.keys.J && scene.keys.J.isDown)) {
+            const heldDuration = chargeNowMs - scene._jHeldSince
+            if (heldDuration < CHARGE_ENTRY_THRESHOLD && !scene._attackOnCooldown && !scene._chargeAttack.active) {
+              // 短按（<200ms）→ 触发横扫或突刺
+              scene._attackOnCooldown = true
+              const cfg = scene.attackConfig || {}
+              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              const monsterPositions = []
+              for (const mon of scene.monstersData) {
+                if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
+              }
+              if (isShiftMove) {
+                // 突刺特效
+                const startX = scene.player.x, startY = scene.player.y
+                const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
+                const dist = cfg.pierceDistance || 120
+                const pr_ = scene.playerRadius || 10
+                const targetX = Phaser.Math.Clamp(startX + dx_ * dist, rb.left + pr_, rb.right - pr_)
+                const targetY = Phaser.Math.Clamp(startY + dy_ * dist, rb.top + pr_, rb.bottom - pr_)
+                scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+                const g2 = scene.add.graphics()
+                const extra = cfg.pierceDistanceExpand || 1.0
+                const effTX = Phaser.Math.Clamp(startX + dx_ * dist * extra, rb.left + pr_, rb.right - pr_)
+                const effTY = Phaser.Math.Clamp(startY + dy_ * dist * extra, rb.top + pr_, rb.bottom - pr_)
+                const mx_ = (startX + effTX) / 2, my_ = (startY + effTY) / 2
+                const w_ = cfg.pierceWidth || 12
+                g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
+                g2.fillPoints([{x:effTX,y:effTY},{x:mx_+(-dy_)*(w_/2),y:my_+dx_*(w_/2)},{x:startX,y:startY},{x:mx_-(-dy_)*(w_/2),y:my_-dx_*(w_/2)}], true)
+                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
+              } else {
+                // 横扫特效
+                const mainGfx = scene.add.graphics(), fireGfx = scene.add.graphics()
+                const progress_ = { t: 0 }
+                scene.drawArcSlash(mainGfx, 0); scene.drawFireDistortion(fireGfx, 0)
+                scene.spawnAttackParticles(0, 20); scene.spawnShockwave()
+                if (scene.cameras && scene.cameras.main) scene.cameras.main.shake(120, 0.005)
+                scene.tweens.add({
+                  targets: progress_, t: 1, duration: scene.attackConfig.sweepDuration || 160, ease: 'Cubic.easeOut',
+                  onUpdate: () => { scene.drawArcSlash(mainGfx, progress_.t, 0.95); scene.drawFireDistortion(fireGfx, progress_.t) },
+                  onComplete: () => {
+                    scene.spawnAttackParticles(1, 15)
+                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, onComplete: () => mainGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
+                  }
+                })
+              }
+              // 发送攻击请求到后端
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/attack', { method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({ attackType: isShiftMove ? 'pierce' : 'sweep', playerX: scene.player.x, playerY: scene.player.y, facingAngle: scene.facingAngle, monsters: monsterPositions }) })
+                  const j = await res.json(); emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) scene.renderRoom(j.data)
+                  if (j && j.message && j.message.includes('游戏结束')) scene.showGameOver()
+                } catch (e) { emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null }) }
+              })()
+            }
+            scene._jHeldSince = null
+          }
+
+          // 开始蓄力：J键持续按住超过阈值后才进入蓄力状态
           try {
-            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active && !scene._attackOnCooldown) {
+            if (scene.keys.J && scene.keys.J.isDown && !scene._chargeAttack.active && !scene._attackOnCooldown
+                && !scene._waveCharging.active && !scene._chargeAttackPendingSend
+                && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay
+                && scene._jHeldSince && (chargeNowMs - scene._jHeldSince) >= CHARGE_ENTRY_THRESHOLD) {
+              scene._chargeAttack.active = true
+              scene._chargeAttack.startTime = chargeNowMs
+              scene._chargeAttack.charged = false
+              scene._jHeldSince = null  // 清空，避免干扰
+            }
+          } catch (e) {}
+
+          // 蓄力中处理
+          if (scene._chargeAttack.active) {
+            try {
+              const jDown = scene.keys.J && scene.keys.J.isDown
+              const elapsed = chargeNowMs - scene._chargeAttack.startTime
+              const progress = Math.min(1, elapsed / CHARGE_ATTACK_DURATION)
+
+              if (!jDown) {
+                // J松开
+                if (scene._chargeAttack.charged) {
+                  // 满蓄力松开 → 发射蓄力攻击
+                  if (!scene._chargeAttackPendingSend) {
+                    scene._chargeAttackPendingSend = true
+                    // 清理蓄力UI
+                    try {
+                      if (scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx.destroy(); scene._chargeAttack.chargeBarGfx = null }
+                      if (scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx.destroy(); scene._chargeAttack.circleGfx = null }
+                    } catch (e) {}
+
+                    const CHARGE_VFX_RADIUS = 150
+                    const vfxGfx = scene.add.graphics().setDepth(15)
+
+                    const drawChargeCircle = (gfx, alpha) => {
+                      gfx.clear()
+                      gfx.lineStyle(4, 0xFFD700, alpha)
+                      gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                      const segs = 96
+                      const outer = [], inner = []
+                      for (let s = 0; s <= segs; s++) {
+                        const a = (s / segs) * Math.PI * 2
+                        outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                      }
+                      for (let s = segs; s >= 0; s--) {
+                        const a = (s / segs) * Math.PI * 2
+                        inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                      }
+                      gfx.fillStyle(0xFF6600, alpha * 0.55)
+                      gfx.fillPoints(outer.concat(inner), true)
+                    }
+
+                    drawChargeCircle(vfxGfx, 1)
+                    const shockwave1 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                    shockwave1.setStrokeStyle(3, 0xFF8800)
+                    scene.tweens.add({
+                      targets: shockwave1, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                      onUpdate: () => { shockwave1.setStrokeStyle(3, 0xFF8800, shockwave1.alpha) },
+                      onComplete: () => { shockwave1.destroy() }
+                    })
+
+                    // 60ms后第二圈
+                    scene.time.delayedCall(60, () => {
+                      const vfxGfx2 = scene.add.graphics().setDepth(15)
+                      const drawChargeCircle2 = (gfx, alpha) => {
+                        gfx.clear()
+                        gfx.lineStyle(3, 0xFFAA00, alpha)
+                        gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                        const segs = 96
+                        const outer = [], inner = []
+                        for (let s = 0; s <= segs; s++) {
+                          const a = (s / segs) * Math.PI * 2
+                          outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                        }
+                        for (let s = segs; s >= 0; s--) {
+                          const a = (s / segs) * Math.PI * 2
+                          inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                        }
+                        gfx.fillStyle(0xFF4400, alpha * 0.45)
+                        gfx.fillPoints(outer.concat(inner), true)
+                      }
+                      drawChargeCircle2(vfxGfx2, 1)
+                      const shockwave2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                      shockwave2.setStrokeStyle(3, 0xFF6600)
+                      scene.tweens.add({
+                        targets: shockwave2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                        onUpdate: () => { shockwave2.setStrokeStyle(3, 0xFF6600, shockwave2.alpha) },
+                        onComplete: () => { shockwave2.destroy() }
+                      })
+                      scene.tweens.add({
+                        targets: vfxGfx2, alpha: 0, duration: 350, delay: 100,
+                        onComplete: () => { try { vfxGfx2.destroy() } catch (e) {} }
+                      })
+                    })
+
+                    scene.tweens.add({
+                      targets: vfxGfx, alpha: 0, duration: 500, delay: 50,
+                      onComplete: () => { try { vfxGfx.destroy() } catch (e) {} }
+                    })
+
+                    if (scene.cameras && scene.cameras.main) {
+                      scene.cameras.main.shake(200, 0.01)
+                    }
+
+                    // 火花粒子
+                    for (let i = 0; i < 25; i++) {
+                      const ang = Math.random() * Math.PI * 2
+                      const dist = CHARGE_VFX_RADIUS * (0.3 + Math.random() * 0.7)
+                      const px = scene.player.x + Math.cos(ang) * dist
+                      const py = scene.player.y + Math.sin(ang) * dist
+                      const spark = scene.add.circle(px, py, 1.5 + Math.random() * 3, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
+                      scene.tweens.add({
+                        targets: spark, x: px + Math.cos(ang) * (60 + Math.random() * 60),
+                        y: py + Math.sin(ang) * (60 + Math.random() * 60),
+                        alpha: 0, scale: 0.1, duration: 200 + Math.random() * 300,
+                        ease: 'Cubic.easeOut',
+                        onComplete: () => { try { spark.destroy() } catch (e) {} }
+                      })
+                    }
+
+                    // 发送蓄力攻击请求到后端
+                    const monsterPositions = []
+                    for (const mon of scene.monstersData) {
+                      if (mon && mon.name && !mon.exploding) {
+                        monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
+                      }
+                    }
+                    ;(async () => {
+                      try {
+                        const res = await fetch('/api/attack', {
+                          method: 'POST', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ attackType: 'charged',
+                            playerX: scene.player.x, playerY: scene.player.y,
+                            facingAngle: scene.facingAngle, monsters: monsterPositions })
+                        })
+                        const j = await res.json()
+                        emit('update', j)
+                        if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                          scene.renderRoom(j.data)
+                        }
+                        if (j && j.message && j.message.includes('游戏结束')) { scene.showGameOver() }
+                      } catch (e) {
+                        emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                      }
+                      scene._chargeAttackPendingSend = false
+                    })()
+                  }
+                } else {
+                  // 未满蓄力松开 → 取消
+                  try {
+                    if (scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx.destroy(); scene._chargeAttack.chargeBarGfx = null }
+                    if (scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx.destroy(); scene._chargeAttack.circleGfx = null }
+                  } catch (e) {}
+                }
+                scene._chargeAttack.active = false
+                scene._chargeAttack.charged = false
+              } else if (!scene._chargeAttack.charged) {
+                // 蓄力中（未满）→ 绘制进度条和蓄力圈
+                if (!scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx = scene.add.graphics().setDepth(150) }
+                if (!scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx = scene.add.graphics().setDepth(14) }
+                const barGfx = scene._chargeAttack.chargeBarGfx
+                const circleGfx = scene._chargeAttack.circleGfx
+
+                barGfx.clear()
+                const barW2 = 50, barH2 = 8
+                const barX2 = scene.player.x - barW2 / 2
+                const barY2 = scene.player.y + 30
+                barGfx.fillStyle(0x222222, 0.8)
+                barGfx.fillRect(barX2, barY2, barW2, barH2)
+                barGfx.lineStyle(1, 0xaa6600, 0.9)
+                barGfx.strokeRect(barX2, barY2, barW2, barH2)
+                const fR = Math.floor(180 + progress * 75), fG = Math.floor(80 + progress * 100), fB = 20
+                barGfx.fillStyle((fR << 16) | (fG << 8) | fB, 0.9)
+                barGfx.fillRect(barX2, barY2, barW2 * progress, barH2)
+
+                circleGfx.clear()
+                const ca = 0.15 + progress * 0.4
+                circleGfx.fillStyle(0xFF6600, ca * 0.3)
+                circleGfx.fillCircle(scene.player.x, scene.player.y, 150)
+                circleGfx.lineStyle(1.5, 0xFF8800, ca)
+                circleGfx.strokeCircle(scene.player.x, scene.player.y, 150)
+                for (let d = 0; d < 24; d++) {
+                  circleGfx.beginPath()
+                  circleGfx.arc(scene.player.x, scene.player.y, 150 * (0.5 + progress * 0.5),
+                    (d / 24) * Math.PI * 2, ((d + 0.4) / 24) * Math.PI * 2, false)
+                  circleGfx.strokePath()
+                }
+                if (progress >= 1) { scene._chargeAttack.charged = true }
+              } else {
+                // 已满蓄力 → 保持满蓄力UI脉冲
+                if (!scene._chargeAttack.chargeBarGfx) { scene._chargeAttack.chargeBarGfx = scene.add.graphics().setDepth(150) }
+                if (!scene._chargeAttack.circleGfx) { scene._chargeAttack.circleGfx = scene.add.graphics().setDepth(14) }
+                const barGfx = scene._chargeAttack.chargeBarGfx
+                const circleGfx = scene._chargeAttack.circleGfx
+
+                barGfx.clear()
+                const barW3 = 50, barH3 = 8
+                const barX3 = scene.player.x - barW3 / 2
+                const barY3 = scene.player.y + 30
+                barGfx.fillStyle(0x222222, 0.8)
+                barGfx.fillRect(barX3, barY3, barW3, barH3)
+                barGfx.lineStyle(2, 0xFF4400, 1.0)
+                barGfx.strokeRect(barX3, barY3, barW3, barH3)
+                barGfx.fillStyle(0xFF4400, 0.5 + 0.5 * Math.sin(chargeNowMs * 0.01))
+                barGfx.fillRect(barX3, barY3, barW3, barH3)
+
+                circleGfx.clear()
+                const pa = 0.5 + 0.3 * Math.sin(chargeNowMs * 0.008)
+                circleGfx.fillStyle(0xFF6600, pa * 0.35)
+                circleGfx.fillCircle(scene.player.x, scene.player.y, 150)
+                circleGfx.lineStyle(2.5, 0xFFD700, pa)
+                circleGfx.strokeCircle(scene.player.x, scene.player.y, 150)
+                for (let d = 0; d < 24; d++) {
+                  circleGfx.beginPath()
+                  circleGfx.arc(scene.player.x, scene.player.y, 150,
+                    (d / 24 + chargeNowMs * 0.0005) * Math.PI * 2,
+                    ((d + 0.4) / 24 + chargeNowMs * 0.0005) * Math.PI * 2, false)
+                  circleGfx.strokePath()
+                }
+              }
+            } catch (e) {}
+          }
+
+          // 旧版 JustDown 攻击已禁用，短按横扫/突刺现在由蓄力状态机的松手路径统一处理
+          try {
+            if (false) {
               scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
 

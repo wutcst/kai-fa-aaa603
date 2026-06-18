@@ -1,20 +1,17 @@
 package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
-import cn.edu.whut.sept.zuul.model.DroppedItem;
 import cn.edu.whut.sept.zuul.model.GameResponse;
-import cn.edu.whut.sept.zuul.model.Monster;
-import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
 
 /**
- * 攻击命令：attack <monsterName>
- * 玩家主动攻击指定的怪物。
- * 注意：怪物反击是独立的，由前端的怪物AI通过 MonsterAttackCommand 触发，
- * 与玩家是否攻击无关。因此本命令仅处理玩家对怪物的伤害，不附带怪物反击。
+ * 攻击命令（旧版命令行兼容）：attack <monsterName>
+ * 委托给 {@link Game#attackMonster(String, int, int)} 完成伤害结算与掉落。
+ * 前端新版攻击通过 POST /api/attack 走 GameService.performAttack()，
+ * 但 AttackCommand 保留用于命令行调试和向后兼容。
  */
 public class AttackCommand implements Command {
-    private Game game;
+    private final Game game;
     private String targetName;
 
     public AttackCommand(Game game) {
@@ -23,22 +20,16 @@ public class AttackCommand implements Command {
 
     @Override
     public GameResponse execute() {
-        Player player = game.getPlayer();
-        if (player == null) return GameResponse.error("玩家不存在");
+        String result = game.attackMonster(targetName, 300, 160);
         Room current = game.getCurrentRoom();
-        if (targetName == null || targetName.isBlank()) {
-            return GameResponse.error("要攻击谁？请指定怪物名称，例如: attack goblin");
+        if (current == null) {
+            return GameResponse.error("当前不在任何房间");
         }
-
-        Monster m = current.getMonster(targetName);
-        if (m == null) {
-            return GameResponse.error("这里没有叫 '" + targetName + "' 的怪物。");
+        // attackMonster 返回纯文本；若以"要攻击谁"/"这里没有"/"正在自爆"开头则为错误
+        if (result.startsWith("要攻击谁") || result.startsWith("这里没有") || result.contains("无法被攻击")) {
+            return GameResponse.error(result);
         }
-
-        // 爆炸倒计时中的怪物不可被攻击
-        if (m.isExploding()) {
-            return GameResponse.error(m.getName() + " 正在自爆倒计时中，无法被攻击。");
-        }
+        return GameResponse.success(result, current.getFullInfo());
 
         // 玩家攻击（使用状态修正后的攻击力）
         int dmg = Math.max(1, player.getEffectiveAttack());

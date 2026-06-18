@@ -1,7 +1,6 @@
 package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
-import cn.edu.whut.sept.zuul.model.DroppedItem;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.Magic;
 import cn.edu.whut.sept.zuul.model.Monster;
@@ -67,32 +66,8 @@ public class WaveCommand implements Command {
             current.removeMonster(m);
             sb.append("\n你击败了 ").append(m.getName()).append("！");
 
-            // Boss 掉落药水（生命浆果或魔力浆果）
-            if (m.getType() == Monster.TYPE_BOSS) {
-                java.util.Random rnd = new java.util.Random();
-                String dropName = rnd.nextBoolean() ? "生命浆果" : "魔力浆果";
-                DroppedItem drop = new DroppedItem(dropName, 0, 0);
-                current.addDroppedItem(drop);
-                sb.append("\n" + m.getName() + "掉落了 " + dropName + "！");
-            }
-
-            // 根据怪物类型给予货币奖励
-            int reward = 0;
-            switch (m.getType()) {
-                case Monster.TYPE_NORMAL:
-                    reward = 15;
-                    break;
-                case Monster.TYPE_ELITE:
-                    reward = 35;
-                    break;
-                case Monster.TYPE_BOSS:
-                    reward = 100;
-                    break;
-            }
-            if (reward > 0 && player.getMoney() != null) {
-                player.getMoney().add(reward);
-                sb.append("\n获得了 $").append(reward).append(" 货币！");
-            }
+            // 统一处理掉落与货币奖励
+            sb.append(game.processMonsterDrop(m, 0, 0));
         }
 
         return GameResponse.success(sb.toString(), current.getFullInfo());

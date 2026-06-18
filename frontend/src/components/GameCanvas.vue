@@ -1578,7 +1578,7 @@ onMounted(() => {
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 110,
+          radius: 120,
           angleDeg: 135,
           segments: 96,
           sweepDuration: 140,
@@ -1594,6 +1594,7 @@ onMounted(() => {
           pierceFade: 180,
           pierceWidth: 14
         }
+        scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -1816,6 +1817,7 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
         window.addEventListener('backpack:toggle', function(e) {
@@ -2197,79 +2199,18 @@ onMounted(() => {
           // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
           // Also detect monsters in range and send damage commands to backend
           try {
-            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active) {
+            if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active && !scene._attackOnCooldown) {
+              scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
-
-              // helper: send attack command to backend for a specific monster
-              const attackMonster = async (monName) => {
-                try {
-                  const res = await fetch('/api/command', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'attack ' + monName })
-                  })
-                  const j = await res.json()
-                  emit('update', j)
-                  if (j && j.data) {
-                    scene.renderRoom(j.data)
-                  }
-                  if (j && j.message && j.message.includes('游戏结束')) {
-                    scene.showGameOver()
-                  }
-                } catch (e) {
-                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                }
-              }
-
-              // helper: check if a monster is inside the sweep sector (fan shape)
-              const isMonsterInSweep = (monster) => {
-                const monDx = monster.x - scene.player.x
-                const monDy = monster.y - scene.player.y
-                const dist = Math.sqrt(monDx * monDx + monDy * monDy)
-                if (dist > (cfg.radius || 110)) return false
-                const angleToMon = Math.atan2(monDy, monDx)
-                let angleDiff = angleToMon - scene.facingAngle
-                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
-                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
-                const halfSpan = Phaser.Math.DegToRad((cfg.angleDeg || 135) / 2)
-                return Math.abs(angleDiff) <= halfSpan
-              }
-
-              // helper: check if a monster is along the pierce line
-              const isMonsterInPierce = (monster, startX, startY, dirX, dirY, dist) => {
-                const monDx = monster.x - startX
-                const monDy = monster.y - startY
-                const along = monDx * dirX + monDy * dirY
-                if (along < 0 || along > dist) return false
-                const perpDist = Math.abs(monDx * (-dirY) + monDy * dirX)
-                const halfW = (cfg.pierceWidth || 12) / 2 + 15
-                return perpDist <= halfW
-              }
 
               // determine attack type
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
 
-              // detect hit monsters before any visual effect
-              const hitMonsters = []
-              if (isShiftMove) {
-                const startX = scene.player.x
-                const startY = scene.player.y
-                const dx = Math.cos(scene.facingAngle)
-                const dy = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInPierce(mon, startX, startY, dx, dy, dist)) {
-                    hitMonsters.push(mon.name)
-                  }
-                }
-              } else {
-                for (const mon of scene.monstersData) {
-                  // 爆炸中的怪物不可被攻击
-                  if (mon.exploding) continue
-                  if (isMonsterInSweep(mon)) {
-                    hitMonsters.push(mon.name)
-                  }
+              // 收集当前房间所有存活怪物的位置快照，发往后端做命中判定
+              const monsterPositions = []
+              for (const mon of scene.monstersData) {
+                if (mon && mon.name && !mon.exploding) {
+                  monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
                 }
               }
 
@@ -2285,6 +2226,21 @@ onMounted(() => {
                 const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
 
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
+
+                // ---- 突刺击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                const PIERCE_KNOCKBACK = 40
+                const pierceKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - startX
+                  const mdy = mon.y - startY
+                  const along = mdx * dx + mdy * dy
+                  if (along < 0 || along > 120) continue
+                  const perp = Math.abs(mdx * (-dy) + mdy * dx)
+                  if (perp > 24) continue
+                  pierceKnockbacks.push({ name: mon.name, pushX: dx * PIERCE_KNOCKBACK, pushY: dy * PIERCE_KNOCKBACK })
+                }
+                scene._pendingKnockbacks = pierceKnockbacks
                 try {
                   const g2 = scene.add.graphics()
                   const extra = cfg.pierceDistanceExpand || 1.0
@@ -2301,7 +2257,7 @@ onMounted(() => {
                     { x: startX, y: startY },
                     { x: mx - hx, y: my - hy }
                   ], true)
-                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {} } })
+                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
                 } catch (e) {}
               } else {
                 // === SWEEP ATTACK (enhanced visuals) ===
@@ -2317,6 +2273,32 @@ onMounted(() => {
                 if (scene.cameras && scene.cameras.main) {
                   scene.cameras.main.shake(120, 0.005)
                 }
+
+                // ---- 横扫击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
+                // 根据怪物类型分级击退：普通35px，精英25px，领袖15px
+                const SWEEP_KB_NORMAL = 35
+                const SWEEP_KB_ELITE  = 25
+                const SWEEP_KB_BOSS   = 15
+                const sweepKnockbacks = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.circ || mon.exploding) continue
+                  const mdx = mon.x - scene.player.x
+                  const mdy = mon.y - scene.player.y
+                  const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
+                  if (mdist > 120 || mdist < 0.01) continue
+                  const angleToMon = Math.atan2(mdy, mdx)
+                  let diff = angleToMon - scene.facingAngle
+                  while (diff > Math.PI) diff -= 2 * Math.PI
+                  while (diff < -Math.PI) diff += 2 * Math.PI
+                  if (Math.abs(diff) > Math.PI * 67.5 / 180) continue
+                  const nx = mdx / mdist
+                  const ny = mdy / mdist
+                  let kbDist = SWEEP_KB_NORMAL
+                  if (mon.type === 1) kbDist = SWEEP_KB_ELITE
+                  else if (mon.type === 2) kbDist = SWEEP_KB_BOSS
+                  sweepKnockbacks.push({ name: mon.name, pushX: nx * kbDist, pushY: ny * kbDist })
+                }
+                scene._pendingKnockbacks = sweepKnockbacks
 
                 scene.tweens.add({
                   targets: progress,
@@ -2339,15 +2321,58 @@ onMounted(() => {
                   onComplete: () => {
                     scene.spawnAttackParticles(1, 15)
                     scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
-                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => fireGfx.destroy() })
+                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
                   }
                 })
               }
 
-              // send attack commands for all monsters hit
-              for (const monName of hitMonsters) {
-                attackMonster(monName)
-              }
+              // 单次调用后端，由后端统一做命中判定
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/attack', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      attackType: isShiftMove ? 'pierce' : 'sweep',
+                      playerX: scene.player.x,
+                      playerY: scene.player.y,
+                      facingAngle: scene.facingAngle,
+                      monsters: monsterPositions
+                    })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) {
+                    scene.renderRoom(j.data)
+                    // ---- 在 renderRoom 重建怪物后执行击退动画 ----
+                    if (scene._pendingKnockbacks && scene._pendingKnockbacks.length > 0) {
+                      const kbs = scene._pendingKnockbacks
+                      scene._pendingKnockbacks = null
+                      const knockPr = scene.playerRadius || 14
+                      for (const kb of kbs) {
+                        const mon = scene.monstersData.find(m => m && m.name === kb.name)
+                        if (!mon || !mon.circ || mon.exploding) continue
+                        const pushX = Phaser.Math.Clamp(mon.x + kb.pushX, rb.left + knockPr, rb.right - knockPr)
+                        const pushY = Phaser.Math.Clamp(mon.y + kb.pushY, rb.top + knockPr, rb.bottom - knockPr)
+                        scene.tweens.add({
+                          targets: { x: mon.x, y: mon.y },
+                          x: pushX, y: pushY, duration: 150, ease: 'Cubic.easeOut',
+                          onUpdate: function (tween) {
+                            const t = tween.targets[0]
+                            mon.x = t.x; mon.y = t.y
+                            try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                            try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                          }
+                        })
+                      }
+                    }
+                  }
+                  if (j && j.message && j.message.includes('游戏结束')) {
+                    scene.showGameOver()
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
             }
           } catch (e) { /* ignore input issues */ }
 

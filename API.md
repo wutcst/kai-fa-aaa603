@@ -175,6 +175,78 @@ Inventory (0.0/10.0 kg):
 
 ---
 
+### 4. POST /api/attack — 执行玩家攻击（扇形扫击 / 直线突刺）
+
+后端统一做空间命中判定，前端只需传入攻击类型、玩家坐标/朝向、怪物坐标快照。
+
+**请求体**:
+
+```json
+{
+  "attackType": "sweep | pierce",
+  "playerX": 400.0,
+  "playerY": 320.0,
+  "facingAngle": 1.57,
+  "monsters": [
+    { "name": "goblin#1234", "x": 300.0, "y": 160.0 },
+    { "name": "slime#5678", "x": 350.0, "y": 200.0 }
+  ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| attackType | string | 是 | 攻击类型：`sweep`（扇形扫击）或 `pierce`（直线突刺） |
+| playerX | number | 是 | 玩家当前 X 坐标（画布坐标） |
+| playerY | number | 是 | 玩家当前 Y 坐标（画布坐标） |
+| facingAngle | number | 是 | 玩家面朝角度（弧度，与 Phaser facingAngle 一致） |
+| monsters | array | 是 | 当前房间存活怪物的名称与坐标快照列表 |
+| monsters[].name | string | 是 | 怪物名称（与后端一致） |
+| monsters[].x | number | 是 | 怪物 X 坐标 |
+| monsters[].y | number | 是 | 怪物 Y 坐标 |
+
+**攻击判定参数（后端硬编码，与前端配置一致）**:
+
+- 扇形扫击：半径 `120px`，角度 `135°`
+- 直线突刺：距离 `120px`，宽度 `12 + 30px`
+
+**响应示例（success）**:
+
+```json
+{
+  "status": "success",
+  "message": "你对 goblin#1234 造成了 20 点伤害。\n你击败了 goblin#1234！\n获得了 $15 货币！(余额: $65)",
+  "data": {
+    "name": "Room1",
+    "description": "...",
+    "exits": "east west",
+    "monsters": [],
+    "hitCount": 1,
+    "playerHp": 100,
+    "playerMaxHp": 100,
+    "playerMp": 100,
+    "playerMaxMp": 100,
+    "playerMoney": 65,
+    "activeEffects": []
+  }
+}
+```
+
+**响应示例（落空）**:
+
+```json
+{
+  "status": "success",
+  "message": "攻击落空了，没有命中任何怪物。",
+  "data": {
+    "hitCount": 0,
+    ...
+  }
+}
+```
+
+---
+
 ## 快速测试 (curl)
 
 ```bash
@@ -186,6 +258,12 @@ curl -X POST http://localhost:8080/api/command -H "Content-Type: application/jso
 
 # 移动
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"go east\"}"
+
+# 攻击（扇形扫击）
+curl -X POST http://localhost:8080/api/attack -H "Content-Type: application/json" -d "{\"attackType\":\"sweep\",\"playerX\":400,\"playerY\":320,\"facingAngle\":0,\"monsters\":[{\"name\":\"goblin#1234\",\"x\":300,\"y\":160}]}"
+
+# 攻击（直线突刺）
+curl -X POST http://localhost:8080/api/attack -H "Content-Type: application/json" -d "{\"attackType\":\"pierce\",\"playerX\":400,\"playerY\":320,\"facingAngle\":0,\"monsters\":[{\"name\":\"goblin#1234\",\"x\":500,\"y\":320}]}"
 
 # 查看物品和背包
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"items\"}"

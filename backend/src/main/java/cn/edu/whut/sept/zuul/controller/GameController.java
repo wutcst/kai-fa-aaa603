@@ -1,5 +1,6 @@
 package cn.edu.whut.sept.zuul.controller;
 
+import cn.edu.whut.sept.zuul.model.AttackRequest;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.service.GameService;
 import lombok.AllArgsConstructor;
@@ -65,5 +66,15 @@ public class GameController {
     @GetMapping("/backpack")
     public GameResponse getBackpack() {
         return gameService.getGameStatus();
+    }
+
+    /**
+     * 执行玩家攻击（扇形扫击/直线突刺），由后端统一做空间命中判定。
+     * POST /api/attack
+     * 请求体：{"attackType":"sweep","playerX":...,"playerY":...,"facingAngle":...,"monsters":[...]}
+     */
+    @PostMapping("/attack")
+    public GameResponse performAttack(@RequestBody AttackRequest request) {
+        return gameService.performAttack(request);
     }
 }

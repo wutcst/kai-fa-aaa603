@@ -229,6 +229,49 @@ public class Game {
     }
 
     /**
+     * 蓄力攻击：对指定怪物造成两次玩家当前物攻150%的物理伤害。
+     * 若怪物在两次伤害之间死亡，第一次击倒即停止并处理掉落。
+     *
+     * @param targetName 怪物名称
+     * @param dropX 掉落物 X 坐标
+     * @param dropY 掉落物 Y 坐标
+     * @return 攻击结果描述文本
+     */
+    public String chargedAttackMonster(String targetName, int dropX, int dropY) {
+        Room current = getCurrentRoom();
+        Player p = getPlayer();
+        if (p == null) return "玩家不存在";
+        if (current == null) return "当前不在任何房间";
+        if (targetName == null || targetName.isBlank()) return "要攻击谁？请指定怪物名称";
+
+        Monster m = current.getMonster(targetName);
+        if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
+        if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
+
+        // 150% 物攻，两次伤害
+        int baseDmg = Math.max(1, p.getEffectiveAttack());
+        int chargedDmg = Math.max(1, (int) Math.round(baseDmg * 1.5));
+        StringBuilder sb = new StringBuilder();
+
+        for (int hit = 1; hit <= 2; hit++) {
+            m.takeDamage(chargedDmg);
+            if (hit == 1) {
+                sb.append("蓄力攻击第1段对 ").append(m.getName()).append(" 造成了 ").append(chargedDmg).append(" 点伤害。");
+            } else {
+                sb.append("\n蓄力攻击第2段对 ").append(m.getName()).append(" 造成了 ").append(chargedDmg).append(" 点伤害。");
+            }
+            if (!m.isAlive()) {
+                current.removeMonster(m);
+                sb.append("\n你击败了 ").append(m.getName()).append("！");
+                sb.append(processMonsterDrop(m, dropX, dropY));
+                break;
+            }
+        }
+
+        return sb.toString();
+    }
+
+    /**
      * 返回全地图数据，供前端小地图使用
      * 格式：{ rooms: [{name, exits:{方向:邻居名}, roomType}], startRoomName: "..." }
      */

@@ -25,16 +25,17 @@ public class DropCommand implements Command {
 
         Player player = game.getPlayer();
         Room currentRoom = game.getCurrentRoom();
-        Item item = player.getItem(itemName);
+        Item item = player.getBag().getItem(itemName);
 
         if (item == null) {
             return GameResponse.error("你没有 '" + itemName + "' ！");
         }
 
-        player.removeItem(item);
+        player.getBag().removeItem(item);
         currentRoom.addItem(item);
+        // 返回房间完整信息作为 data
         return GameResponse.success("你丢弃了 " + itemName + "。",
-                "物品 '" + itemName + "' 已丢弃到房间。\n" + currentRoom.getFullInfo());
+                currentRoom.getFullInfo());
     }
 
     @Override

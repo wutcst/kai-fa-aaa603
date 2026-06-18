@@ -1,33 +1,61 @@
 package cn.edu.whut.sept.zuul.model;
 
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.util.*;
 
 /**
- * 房间类：包含出口、物品、传输房间标记
+ * 房间类：包含出口、物品、怪物、传输房间标记、房间类型、祭坛、商店、掉落物
  */
-@Data
+@Getter
+@Setter
 public class Room {
-    private String name;                // 房间名称
-    private String description;         // 房间描述
-    private Map<String, Room> exits;    // 出口（方向->房间）
-    private List<Item> items;           // 房间物品列表
-    private boolean isTeleportRoom;     // 是否是传输房间（lab）
+    private String name;
+    private String description;
+    private Map<String, Room> exits;
+    private List<Item> items;
+    private List<Monster> monsters;
+    private boolean isTeleportRoom;
+    private RoomType roomType;
+    // 该房间的怪物是否已被全部清除（用于防止再次进入时重新生成怪物）
+    private boolean monstersCleared;
+    // 祭坛系统（仅篝火房间使用）
+    private List<Altar> altars;
+    // 该房间是否有祭坛已被选择（持久标记，再次进入不刷新）
+    private boolean altarUsed;
+    // 商店系统（仅商店房间使用）
+    private List<ShopItem> shopItems;
+    // 商店是否已初始化
+    private boolean shopInitialized;
+    // 掉落物列表（怪物死亡后掉落的物品，带坐标信息）
+    private List<DroppedItem> droppedItems;
+    // 随机事件（仅奇遇房间使用）
+    private RandomEvent randomEvent;
+    // 随机事件是否已初始化
+    private boolean randomEventInitialized;
 
     public Room(String name, String description) {
         this.name = name;
         this.description = description;
         this.exits = new HashMap<>();
         this.items = new ArrayList<>();
+        this.monsters = new ArrayList<>();
         this.isTeleportRoom = false;
+        this.roomType = RoomType.NORMAL_MONSTER; // 默认普通怪物房
+        this.monstersCleared = false;
+        this.altars = new ArrayList<>();
+        this.altarUsed = false;
+        this.shopItems = new ArrayList<>();
+        this.shopInitialized = false;
+        this.droppedItems = new ArrayList<>();
+        this.randomEvent = null;
+        this.randomEventInitialized = false;
     }
 
-    // 添加出口
     public void setExit(String direction, Room neighbor) {
         exits.put(direction, neighbor);
     }
 
-    // 获取出口描述（如：Exits: east west）
     public String getExitString() {
         StringBuilder sb = new StringBuilder();
         for (String direction : exits.keySet()) {
@@ -36,17 +64,21 @@ public class Room {
         return sb.toString().trim();
     }
 
-    // 添加物品到房间
+    /**
+     * 获取出口数量（用于判断是否为尽头房间等）
+     */
+    public int getExitCount() {
+        return exits.size();
+    }
+
     public void addItem(Item item) {
         items.add(item);
     }
 
-    // 从房间移除物品
     public boolean removeItem(Item item) {
         return items.remove(item);
     }
 
-    // 根据名称查找房间内的物品
     public Item getItem(String itemName) {
         for (Item item : items) {
             if (item.getName().equalsIgnoreCase(itemName)) {
@@ -56,15 +88,328 @@ public class Room {
         return null;
     }
 
-    // 获取房间完整信息（供look命令使用）
+    public void addMonster(Monster m) {
+        if (m != null) monsters.add(m);
+    }
+
+    public boolean removeMonster(Monster m) {
+        boolean removed = monsters.remove(m);
+        // 如果怪物列表变空，标记该房间怪物已清除
+        if (removed && monsters.isEmpty()) {
+            this.monstersCleared = true;
+        }
+        return removed;
+    }
+
+    /**
+     * 检查房间中是否有存活的怪物（用于锁定出口）
+     */
+    public boolean hasAliveMonsters() {
+        if (monsters == null || monsters.isEmpty()) return false;
+        for (Monster m : monsters) {
+            if (m != null && m.isAlive()) return true;
+        }
+        return false;
+    }
+
+    /**
+     * 判断房间是否为怪物房间类型（需要打怪才能离开）
+     */
+    public boolean isMonsterRoom() {
+        return roomType == RoomType.NORMAL_MONSTER
+            || roomType == RoomType.ELITE_MONSTER
+            || roomType == RoomType.BOSS;
+    }
+
+    public Monster getMonster(String name) {
+        for (Monster m : monsters) {
+            if (m.getName().equalsIgnoreCase(name)) return m;
+        }
+        return null;
+    }
+
     public Map<String, Object> getFullInfo() {
+        // 如果是商店房间，确保商品已初始化
+        if (this.roomType == RoomType.SHOP) {
+            initShopItems();
+        }
+        // 如果是奇遇房间，确保随机事件已初始化
+        if (this.roomType == RoomType.ENCOUNTER) {
+            initRandomEvent();
+        }
         Map<String, Object> info = new HashMap<>();
         info.put("name", this.name);
         info.put("description", this.description);
         info.put("exits", this.getExitString());
         info.put("items", this.items);
+        info.put("monsters", this.monsters);
+        info.put("monstersCleared", this.monstersCleared);
+        info.put("hasAliveMonsters", this.hasAliveMonsters());
+        info.put("isMonsterRoom", this.isMonsterRoom());
         info.put("isTeleportRoom", this.isTeleportRoom);
+        info.put("roomType", this.roomType != null ? this.roomType.name() : RoomType.NORMAL_MONSTER.name());
+        // 祭坛数据
+        info.put("altarUsed", this.altarUsed);
+        List<Map<String, Object>> altarList = new ArrayList<>();
+        if (this.altars != null) {
+            for (Altar altar : this.altars) {
+                altarList.add(altar.toMap());
+            }
+        }
+        info.put("altars", altarList);
+        // 商店数据（仅商店房间有意义）
+        info.put("shopInitialized", this.shopInitialized);
+        info.put("isShop", this.roomType == RoomType.SHOP);
+        List<Map<String, Object>> shopItemList = new ArrayList<>();
+        if (this.shopItems != null) {
+            for (ShopItem si : this.shopItems) {
+                shopItemList.add(si.toMap());
+            }
+        }
+        info.put("shopItems", shopItemList);
+        // 掉落物数据（含坐标信息）
+        info.put("droppedItems", this.droppedItems != null ? this.droppedItems : new ArrayList<>());
+        // 随机事件数据（仅奇遇房间有意义）
+        info.put("isEncounter", this.roomType == RoomType.ENCOUNTER);
+        if (this.randomEvent != null) {
+            info.put("randomEvent", this.randomEvent.toMap());
+        } else {
+            info.put("randomEvent", null);
+        }
         return info;
     }
-}
 
+    /**
+     * 初始化祭坛（篝火房间调用）
+     * 创建三个祭坛：HEAL（左）、TRAIN（中）、WISDOM（右）
+     */
+    public void initAltars() {
+        if (this.altars == null || this.altars.isEmpty()) {
+            this.altars = new ArrayList<>();
+            this.altars.add(new Altar(AltarType.HEAL));
+            this.altars.add(new Altar(AltarType.TRAIN));
+            this.altars.add(new Altar(AltarType.WISDOM));
+        }
+        // 同步 roomUsed 状态到所有祭坛
+        for (Altar a : this.altars) {
+            if (this.altarUsed) {
+                a.markRoomUsed();
+            }
+        }
+    }
+
+    /**
+     * 获取指定类型的祭坛
+     */
+    public Altar getAltar(AltarType type) {
+        if (this.altars == null) return null;
+        for (Altar a : this.altars) {
+            if (a.getType() == type) return a;
+        }
+        return null;
+    }
+
+    /**
+     * 激活祭坛（返回激活的祭坛，null表示失败）
+     */
+    public Altar activateAltar(AltarType type) {
+        Altar altar = getAltar(type);
+        if (altar != null && altar.activate()) {
+            this.altarUsed = true;
+            // 标记所有其他祭坛为 roomUsed
+            for (Altar a : this.altars) {
+                a.markRoomUsed();
+            }
+            return altar;
+        }
+        return null;
+    }
+
+    // 安全的 hashCode / equals（只使用 name）
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Room)) return false;
+        Room room = (Room) o;
+        return Objects.equals(name, room.name);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(name);
+    }
+
+    /**
+     * 初始化商店商品（仅商店房间调用，幂等操作）
+     * 从物品注册表 ItemRegistry 中随机选取 6 种真实物品作为商品
+     */
+    public void initShopItems() {
+        if (this.shopInitialized) return;
+        if (this.shopItems == null) this.shopItems = new ArrayList<>();
+
+        // 使用房间 name 的 hashCode 作为种子保证同一房间每次生成相同结果
+        Random rnd = new Random(this.name.hashCode());
+
+        // 从注册表中随机选取最多 6 个物品名称
+        List<String> selected = ItemRegistry.pickRandom(6, rnd);
+        for (String itemName : selected) {
+            this.shopItems.add(new ShopItem(itemName));
+        }
+        this.shopInitialized = true;
+    }
+
+    /**
+     * 根据房间类型生成怪物（幂等：仅当房间无怪物时生成）
+     */
+    public void spawnMonsters() {
+        // 怪物已被清除的房间不再生成怪物
+        if (this.monstersCleared) return;
+        if (monsters != null && !monsters.isEmpty()) return;
+        if (roomType == null) return;
+        // 用房间名hash做种子，保证同一房间每次生成相同的怪物（存档恢复关键）
+        Random rnd = new Random(this.name.hashCode());
+        switch (roomType) {
+            case BOSS -> spawnBossMonster(rnd);
+            case ELITE_MONSTER -> spawnEliteMonsters(rnd);
+            case NORMAL_MONSTER -> spawnNormalMonsters(rnd);
+            default -> { /* 非怪物房间不生成 */ }
+        }
+    }
+
+    private void spawnBossMonster(Random rnd) {
+        String[] bossNames = new String[]{"巨龙", "恶魔领主", "巫妖王", "巨型石魔像", "暗影之王"};
+        String base = bossNames[rnd.nextInt(bossNames.length)];
+        String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+        String desc = "恐怖的" + base + "——最终挑战";
+        int hp = 600 + rnd.nextInt(201);   // 600-800
+        int attack = 30 + rnd.nextInt(6); // 30-35
+        int bossSpeed = 150;              // Boss移速：普通怪物的150%
+        addMonster(new Monster(mname, desc, hp, attack, 0, 0, bossSpeed, Monster.TYPE_BOSS));
+    }
+
+    private void spawnEliteMonsters(Random rnd) {
+        String[] eliteNames = new String[]{"暗影骑士", "地狱犬", "石像鬼", "暗黑法师", "巨型蜘蛛"};
+        int count = 1 + rnd.nextInt(2); // 1-2 个怪物
+        for (int i = 0; i < count; i++) {
+            String base = eliteNames[rnd.nextInt(eliteNames.length)];
+            String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+            String desc = "强大的" + base;
+            int hp = 200 + rnd.nextInt(101);    // 200-300
+            int attack = 20 + rnd.nextInt(6);   // 20-25
+            addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_ELITE));
+        }
+    }
+
+    private void spawnNormalMonsters(Random rnd) {
+        String[] monsterNames = new String[]{"哥布林", "史莱姆", "骷髅", "狼人", "食人魔"};
+        int count = 1 + rnd.nextInt(2); // 1-2 个怪物
+        // 约 25% 概率将其中一个普通怪物替换为火焰史莱姆
+        boolean flameSlimeSpawned = false;
+        for (int i = 0; i < count; i++) {
+            // 如果还没生成火焰史莱姆且为最后一个怪物或随机命中，生成火焰史莱姆
+            if (!flameSlimeSpawned && rnd.nextInt(4) == 0) {
+                String suffix = String.valueOf(rnd.nextInt(9000) + 1000);
+                addMonster(Monster.createFlameSlime(suffix));
+                flameSlimeSpawned = true;
+            } else {
+                String base = monsterNames[rnd.nextInt(monsterNames.length)];
+                String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+                String desc = "一个可怕的" + base;
+                int hp = 80 + rnd.nextInt(21);   // 80-100
+                int attack = 15 + rnd.nextInt(4); // 15-18
+                addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
+            }
+        }
+    }
+
+    /**
+     * 获取指定名称的商店商品
+     */
+    public ShopItem getShopItem(String name) {
+        if (this.shopItems == null) return null;
+        for (ShopItem si : this.shopItems) {
+            if (si.getName().equals(name)) return si;
+        }
+        return null;
+    }
+
+    /**
+     * 获取未售出的商店商品列表
+     */
+    public List<ShopItem> getAvailableShopItems() {
+        List<ShopItem> available = new ArrayList<>();
+        if (this.shopItems == null) return available;
+        for (ShopItem si : this.shopItems) {
+            if (!si.isSold()) available.add(si);
+        }
+        return available;
+    }
+
+    /**
+     * 添加掉落物到房间
+     */
+    public void addDroppedItem(DroppedItem item) {
+        if (this.droppedItems == null) this.droppedItems = new ArrayList<>();
+        this.droppedItems.add(item);
+    }
+
+    /**
+     * 按名称移除掉落物（拾取后调用）
+     */
+    public boolean removeDroppedItem(String itemName) {
+        if (this.droppedItems == null) return false;
+        return this.droppedItems.removeIf(d -> d.getItemName().equalsIgnoreCase(itemName));
+    }
+
+    /**
+     * 初始化随机事件（仅奇遇房间调用，幂等操作）
+     * 随机从四种事件（宝箱、圣女、天使、铁匠）中选择一种
+     */
+    public void initRandomEvent() {
+        if (this.randomEventInitialized) return;
+        if (this.roomType != RoomType.ENCOUNTER) return;
+
+        Random rnd = new Random();
+        // 使用房间名 hashCode 作为种子保证同一房间每次生成相同事件
+        long seed = this.name.hashCode();
+        rnd.setSeed(seed);
+
+        // 权重随机：宝箱 40%，圣女 25%，铁匠 25%，天使 10%
+        int roll = rnd.nextInt(100);
+        RandomEventType chosenType;
+        if (roll < 40) {
+            chosenType = RandomEventType.CHEST;
+        } else if (roll < 65) {
+            chosenType = RandomEventType.MAIDEN;
+        } else if (roll < 90) {
+            chosenType = RandomEventType.BLACKSMITH;
+        } else {
+            chosenType = RandomEventType.ANGEL;
+        }
+
+        this.randomEvent = new RandomEvent(chosenType);
+        this.randomEventInitialized = true;
+
+        System.out.println("[RandomEvent] Room " + this.name + " initialized with event: " + chosenType.getDisplayName());
+    }
+
+    /**
+     * 使用随机事件（标记为已使用）
+     */
+    public void useRandomEvent() {
+        if (this.randomEvent != null) {
+            this.randomEvent.markUsed();
+        }
+    }
+
+    // 安全的 toString（不包含 exits 等循环引用字段）
+    @Override
+    public String toString() {
+        return "Room{" +
+                "name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                ", isTeleportRoom=" + isTeleportRoom +
+                ", roomType=" + (roomType != null ? roomType.getDisplayName() : "NORMAL_MONSTER") +
+                '}';
+    }
+}

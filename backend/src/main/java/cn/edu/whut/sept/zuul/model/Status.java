@@ -6,7 +6,7 @@ import java.util.*;
 
 /**
  * 状态效果系统：管理玩家的增益(Buff)和减益(Debuff)状态。
- * 当前包含烧伤(BURN)和中毒(POISON)两种状态。
+ * 当前包含烧伤(BURN)、中毒(POISON)和天使祝福(ANGEL_BUFF)三种状态。
  *
  * 烧伤机制：
  * - 可叠加数层，每次施加烧伤会在现有层数上累加。
@@ -23,9 +23,14 @@ import java.util.*;
  *   例如：玩家血量15，中毒20层 → 伤害=14，HP降至1，层数降至19。
  * - 层数降至0时中毒状态自动移除。
  *
+ * 天使祝福机制：
+ * - 整体属性上浮至150%，持续30秒。
+ * - 期间玩家身上浮现金色光芒（前端渲染）。
+ * - 与烧伤、中毒完全独立，互不干扰。
+ *
  * 使用方式：Player 持有一个 StatusManager 实例，
- * 通过 statusManager.applyBurn(n) / applyPoison(n) 施加状态，
- * 通过 statusManager.tickBurn() / tickPoison() 驱动计时结算。
+ * 通过 statusManager.applyBurn(n) / applyPoison(n) / applyAngelBuff() 施加状态，
+ * 通过 statusManager.tickBurn() / tickPoison() / tickAngelBuff() 驱动计时结算。
  */
 public class Status {
 
@@ -35,8 +40,8 @@ public class Status {
     public enum StatusType {
         /** 烧伤：可叠加数层，每3秒受到等同于层数的法术伤害，然后层数减半 */
         BURN("烧伤", true),
-        /** 天使祝福：整体属性上浮至150%，持续2分钟 */
-        ANGEL_BUFF("天使祝福", false);
+        /** 天使祝福：整体属性上浮至150%，持续30秒 */
+        ANGEL_BUFF("天使祝福", false),
         /** 中毒：可叠加数层，每1秒受到等同于层数的真实伤害，然后层数减1 */
         POISON("中毒", true);
 
@@ -70,9 +75,9 @@ public class Status {
     public static class StatusEffect {
         /** 状态类型 */
         private StatusType type;
-        /** 当前层数（烧伤可叠加） */
+        /** 当前层数（可叠加） */
         private int layers;
-        /** 上次烧伤结算的时间戳（毫秒） */
+        /** 上次结算的时间戳（毫秒） */
         private long lastTickTime;
 
         /**
@@ -102,9 +107,8 @@ public class Status {
     // ======================== StatusManager ========================
 
     /**
-     * 状态管理器：组合进 Player，负责烧伤状态的增删、计时结算和属性修正。
-     * 由于当前仅有烧伤一种状态，使用单一 StatusEffect 实例管理，
-     * 保留 StatusEffect 抽象以便后续扩展更多状态类型。
+     * 状态管理器：组合进 Player，负责状态的增删、计时结算和属性修正。
+     * 三种状态（烧伤、中毒、天使祝福）完全独立互不干扰。
      */
     @Getter
     public static class StatusManager {
@@ -114,11 +118,6 @@ public class Status {
         private StatusEffect burnEffect;
         /** 天使祝福状态实例（null 表示无天使祝福） */
         private StatusEffect angelBuffEffect;
-
-        /** 烧伤触发间隔（毫秒）：3秒 */
-        public static final long BURN_TICK_INTERVAL = 3000L;
-        /** 天使祝福持续时间（毫秒）：30秒 */
-        public static final long ANGEL_BUFF_DURATION = 30000L;
         /** 中毒状态实例（null 表示无中毒） */
         private StatusEffect poisonEffect;
 
@@ -126,6 +125,8 @@ public class Status {
         public static final long BURN_TICK_INTERVAL = 3000L;
         /** 中毒触发间隔（毫秒）：1秒 */
         public static final long POISON_TICK_INTERVAL = 1000L;
+        /** 天使祝福持续时间（毫秒）：30秒 */
+        public static final long ANGEL_BUFF_DURATION = 30000L;
 
         public StatusManager(Player player) {
             this.player = player;
@@ -134,7 +135,7 @@ public class Status {
             this.poisonEffect = null;
         }
 
-        // ---- 状态管理 ----
+        // ========== 烧伤管理 ==========
 
         /**
          * 施加烧伤层数。若已有烧伤状态则在现有层数上累加，否则新建。
@@ -159,10 +160,10 @@ public class Status {
             burnEffect = null;
         }
 
-        // ---- 天使祝福管理 ----
+        // ========== 天使祝福管理 ==========
 
         /**
-         * 施加天使祝福效果：全属性上浮至150%，持续2分钟。
+         * 施加天使祝福效果：全属性上浮至150%，持续30秒。
          * 如果已有天使祝福，重置持续时间。
          */
         public void applyAngelBuff() {
@@ -204,12 +205,9 @@ public class Status {
             return hasAngelBuff() ? 1.5 : 1.0;
         }
 
+        // ========== 中毒管理 ==========
+
         /**
-         * 清除所有状态（当前即清除烧伤和天使祝福）。
-         */
-        public void clear() {
-            burnEffect = null;
-            angelBuffEffect = null;
          * 施加中毒层数。若已有中毒状态则在现有层数上累加，否则新建。
          *
          * @param layers 要增加的中毒层数（必须 > 0）
@@ -233,11 +231,17 @@ public class Status {
         }
 
         /**
-         * 清除所有状态（烧伤和中毒）。
+         * 是否拥有中毒状态。
          */
-        public void clear() {
-            burnEffect = null;
-            poisonEffect = null;
+        public boolean hasPoison() {
+            return poisonEffect != null && !poisonEffect.isExpired();
+        }
+
+        /**
+         * 获取当前中毒层数。
+         */
+        public int getPoisonLayers() {
+            return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
         }
 
         /**
@@ -255,21 +259,15 @@ public class Status {
         }
 
         /**
-         * 是否拥有中毒状态。
+         * 清除所有状态。
          */
-        public boolean hasPoison() {
-            return poisonEffect != null && !poisonEffect.isExpired();
+        public void clear() {
+            burnEffect = null;
+            angelBuffEffect = null;
+            poisonEffect = null;
         }
 
-        /**
-         * 获取当前中毒层数。
-         */
-        public int getPoisonLayers() {
-            return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
-        }
-
-        // ---- 属性修正方法 ----
-        // 天使祝福提供1.5倍属性修正
+        // ========== 属性修正方法（天使祝福加成） ==========
 
         /** 获取修正后的物理攻击力 */
         public int getModifiedAttack() {
@@ -307,7 +305,7 @@ public class Status {
             return Math.min(100, (int) Math.round(player.getDodge() * mult));
         }
 
-        // ---- 伤害钩子 ----
+        // ========== 伤害钩子 ==========
 
         /**
          * 受伤前的钩子：可用于护盾、伤害减免等效果（预留扩展）。
@@ -325,7 +323,7 @@ public class Status {
             return damage;
         }
 
-        // ---- 核心：烧伤计时结算 ----
+        // ========== 烧伤计时结算 ==========
 
         /**
          * 驱动烧伤的每3秒结算逻辑。
@@ -376,6 +374,8 @@ public class Status {
 
             return actualDamage;
         }
+
+        // ========== 中毒计时结算 ==========
 
         /**
          * 驱动中毒的每1秒结算逻辑。
@@ -432,51 +432,7 @@ public class Status {
             return actualDamage;
         }
 
-        // ---- 辅助方法 ----
-
-        /**
-         * 获取所有活跃状态的信息列表（供前端展示）。
-         */
-        public List<Map<String, Object>> getActiveEffectsInfo() {
-            List<Map<String, Object>> info = new ArrayList<>();
-            if (burnEffect != null && !burnEffect.isExpired()) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("type", StatusType.BURN.name());
-                map.put("name", StatusType.BURN.getDisplayName());
-                map.put("isDebuff", true);
-                map.put("layers", burnEffect.getLayers());
-                long elapsed = System.currentTimeMillis() - burnEffect.getLastTickTime();
-                map.put("nextTickIn", Math.max(0, BURN_TICK_INTERVAL - elapsed));
-                info.add(map);
-            }
-            if (angelBuffEffect != null && !angelBuffEffect.isExpired() && !isAngelBuffExpired()) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("type", StatusType.ANGEL_BUFF.name());
-                map.put("name", StatusType.ANGEL_BUFF.getDisplayName());
-                map.put("isDebuff", false);
-                long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
-                map.put("remainingMs", Math.max(0, ANGEL_BUFF_DURATION - elapsed));
-            if (poisonEffect != null && !poisonEffect.isExpired()) {
-                Map<String, Object> map = new HashMap<>();
-                map.put("type", StatusType.POISON.name());
-                map.put("name", StatusType.POISON.getDisplayName());
-                map.put("isDebuff", true);
-                map.put("layers", poisonEffect.getLayers());
-                long elapsed = System.currentTimeMillis() - poisonEffect.getLastTickTime();
-                map.put("nextTickIn", Math.max(0, POISON_TICK_INTERVAL - elapsed));
-                info.add(map);
-            }
-            return info;
-        }
-
-        /**
-         * 获取天使祝福剩余毫秒数
-         */
-        public long getAngelBuffRemainingMs() {
-            if (angelBuffEffect == null || angelBuffEffect.isExpired()) return 0;
-            long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
-            return Math.max(0, ANGEL_BUFF_DURATION - elapsed);
-        }
+        // ========== 天使祝福计时 ==========
 
         /**
          * tick天使祝福：检查是否过期（每帧/每次轮询调用）
@@ -489,6 +445,62 @@ public class Status {
                 return false;
             }
             return true;
+        }
+
+        /**
+         * 获取天使祝福剩余毫秒数
+         */
+        public long getAngelBuffRemainingMs() {
+            if (angelBuffEffect == null || angelBuffEffect.isExpired()) return 0;
+            long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
+            return Math.max(0, ANGEL_BUFF_DURATION - elapsed);
+        }
+
+        // ========== 辅助方法 ==========
+
+        /**
+         * 获取所有活跃状态的信息列表（供前端展示）。
+         * 三种状态各自独立检查，互不嵌套。
+         */
+        public List<Map<String, Object>> getActiveEffectsInfo() {
+            List<Map<String, Object>> info = new ArrayList<>();
+
+            // 烧伤
+            if (burnEffect != null && !burnEffect.isExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.BURN.name());
+                map.put("name", StatusType.BURN.getDisplayName());
+                map.put("isDebuff", true);
+                map.put("layers", burnEffect.getLayers());
+                long elapsed = System.currentTimeMillis() - burnEffect.getLastTickTime();
+                map.put("nextTickIn", Math.max(0, BURN_TICK_INTERVAL - elapsed));
+                info.add(map);
+            }
+
+            // 天使祝福（独立检查，不与任何其他状态嵌套）
+            if (angelBuffEffect != null && !angelBuffEffect.isExpired() && !isAngelBuffExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.ANGEL_BUFF.name());
+                map.put("name", StatusType.ANGEL_BUFF.getDisplayName());
+                map.put("isDebuff", false);
+                long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
+                map.put("remainingMs", Math.max(0, ANGEL_BUFF_DURATION - elapsed));
+                info.add(map);
+            }
+
+            // 中毒（独立检查，不与任何其他状态嵌套）
+            if (poisonEffect != null && !poisonEffect.isExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.POISON.name());
+                map.put("name", StatusType.POISON.getDisplayName());
+                map.put("isDebuff", true);
+                map.put("layers", poisonEffect.getLayers());
+                long elapsed = System.currentTimeMillis() - poisonEffect.getLastTickTime();
+                map.put("nextTickIn", Math.max(0, POISON_TICK_INTERVAL - elapsed));
+                info.add(map);
+            }
+
+            return info;
         }
     }
 }

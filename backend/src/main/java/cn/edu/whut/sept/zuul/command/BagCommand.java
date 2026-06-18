@@ -121,12 +121,6 @@ public class BagCommand implements Command {
             player.restoreHp(20);
             player.restoreMp(30);
             effectMsg.append("你恢复了 20 点生命和 30 点魔力！");
-        } else if (lowerName.contains("sword") || lowerName.contains("剑")) {
-            player.setAttack(player.getAttack() + 15);
-            effectMsg.append("你的物理攻击力 +15！");
-        } else if (lowerName.contains("shield") || lowerName.contains("盾")) {
-            player.setDefense(player.getDefense() + 10);
-            effectMsg.append("你的物理防御力 +10！");
         } else {
             player.restoreHp(10);
             effectMsg.append("你恢复了 10 点生命！");
@@ -145,7 +139,7 @@ public class BagCommand implements Command {
         String itemName = item.getName();
 
         if (Player.getItemSlot(itemName) == null) {
-            return buildInventoryResponse(itemName + " 不是饰品，无法卸下。");
+            return buildInventoryResponse(itemName + " 不是可卸下的装备或饰品。");
         }
 
         if (!player.isEquipped(itemName)) {

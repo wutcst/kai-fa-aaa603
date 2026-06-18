@@ -1035,8 +1035,8 @@ onMounted(() => {
             })
             const j = await res.json()
             emit('update', j)
-            // if response contains room data, re-render
-            if (j && j.data) {
+            // if response contains room data, re-render (跳过商店/祭坛浮层)
+            if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
               scene.renderRoom(j.data)
             }
             // check for game over from backend response
@@ -1068,7 +1068,9 @@ onMounted(() => {
               scene.gameOver = false
               if (scene.gameOverOverlay) { try { scene.gameOverOverlay.destroy() } catch (e) {}; scene.gameOverOverlay = null }
               try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
-              if (j && j.data) scene.renderRoom(j.data)
+              if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                scene.renderRoom(j.data)
+              }
             } catch (e) { /* ignore */ }
           })
           overlay.add([bg, title, hint, resetBtn])
@@ -1110,6 +1112,7 @@ onMounted(() => {
           // 清理商店覆盖层和NPC状态
           if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {}; scene.shopMenuOverlay = null }
           if (scene.shopBuyOverlay) { try { scene.shopBuyOverlay.destroy() } catch (e) {}; scene.shopBuyOverlay = null }
+          if (scene.shopSellOverlay) { try { scene.shopSellOverlay.destroy() } catch (e) {}; scene.shopSellOverlay = null }
           if (scene.shopNpcCircle) { try { scene.shopNpcCircle.destroy() } catch (e) {}; scene.shopNpcCircle = null }
           if (scene.shopNpcLabel) { try { scene.shopNpcLabel.destroy() } catch (e) {}; scene.shopNpcLabel = null }
           scene.shopNpcData = null
@@ -1477,7 +1480,7 @@ onMounted(() => {
           sellBtn.on('pointerdown', () => {
             try { scene.shopMenuOverlay.destroy() } catch (e) {}
             scene.shopMenuOverlay = null
-            // 售卖功能仅显示，不做任何操作
+            scene.showShopSell()
           })
 
           // 关闭按钮
@@ -1619,6 +1622,124 @@ onMounted(() => {
             bg, title, ...itemElements, endBtn
           ])
           scene.shopBuyOverlay = overlay
+        }
+
+        // ---------- 商店售卖界面浮层 ----------
+        scene.showShopSell = function () {
+          if (scene.shopSellOverlay) { try { scene.shopSellOverlay.destroy() } catch (e) {} }
+          const overlay = scene.add.container(0, 0).setDepth(200)
+          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.6)
+          bg.setInteractive()
+          const title = scene.add.text(400, 80, '售卖 — 点击物品出售', {
+            font: 'bold 22px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+
+          // 获取玩家当前货币
+          const currentMoney = scene.playerStats.money || 0
+          const moneyText = scene.add.text(400, 110, '当前金币：$' + currentMoney, {
+            font: '16px Arial', fill: '#FFD700'
+          }).setOrigin(0.5)
+
+          // 获取背包物品列表（从后端或本地数据）
+          async function loadAndShowSellItems() {
+            try {
+              const res = await fetch('/api/backpack')
+              const j = await res.json()
+              const items = (j && j.data && j.data.backpack) ? j.data.backpack : []
+
+              // 构建物品列表
+              const itemElements = []
+              const startY = 150
+              const rowH = 45
+
+              for (let i = 0; i < items.length; i++) {
+                const invItem = items[i]
+                const y = startY + i * rowH
+
+                // 物品名称
+                const nameText = scene.add.text(120, y, invItem.name, {
+                  font: '16px Arial', fill: '#ffffff'
+                }).setOrigin(0, 0.5)
+
+                // 数量
+                const qtyText = scene.add.text(300, y, 'x' + invItem.quantity, {
+                  font: '14px Arial', fill: '#aaaaaa'
+                }).setOrigin(0, 0.5)
+
+                // 售价（买价的一半）
+                const price = Math.max(1, Math.floor((invItem.price || 0) / 2))
+                const priceText = scene.add.text(380, y, '$' + price, {
+                  font: 'bold 16px Arial', fill: '#FFD700'
+                }).setOrigin(0, 0.5)
+
+                // 出售按钮
+                const sellBtn = scene.add.text(500, y, '[ 出售 ]', {
+                  font: '15px Arial', fill: '#44cc44', backgroundColor: '#222222',
+                  padding: { x: 8, y: 4 }
+                }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+                sellBtn.on('pointerover', () => sellBtn.setStyle({ fill: '#ffffff', backgroundColor: '#445544' }))
+                sellBtn.on('pointerout', () => sellBtn.setStyle({ fill: '#44cc44', backgroundColor: '#222222' }))
+
+                // 已装备标记（不可出售）
+                if (invItem.equipped) {
+                  const equippedTag = scene.add.text(580, y, '已装备', {
+                    font: '13px Arial', fill: '#ff8800'
+                  }).setOrigin(0, 0.5)
+                  itemElements.push(nameText, qtyText, priceText, sellBtn, equippedTag)
+                } else {
+                  sellBtn.on('pointerdown', async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'shop sell ' + invItem.name })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      // 刷新售卖界面
+                      try { scene.shopSellOverlay.destroy() } catch (e) {}
+                      scene.shopSellOverlay = null
+                      scene.showShopSell()
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                  })
+                  itemElements.push(nameText, qtyText, priceText, sellBtn)
+                }
+              }
+
+              // 如果没有物品
+              if (items.length === 0) {
+                const emptyText = scene.add.text(400, 300, '背包中没有可出售的物品', {
+                  font: '18px Arial', fill: '#888888'
+                }).setOrigin(0.5)
+                itemElements.push(emptyText)
+              }
+
+              overlay.add([bg, title, moneyText, ...itemElements, endBtn])
+
+              // 更新货币显示
+              if (j && j.data && j.data.playerMoney !== undefined) {
+                moneyText.setText('当前金币：$' + j.data.playerMoney)
+              }
+            } catch (e) {
+              emit('update', { status: 'error', message: '无法获取背包数据: ' + e.message, data: null })
+            }
+          }
+
+          // "结束售卖"按钮
+          const endBtn = scene.add.text(400, 540, '结束售卖', {
+            font: 'bold 20px Arial', fill: '#ff6666', backgroundColor: '#222222',
+            padding: { x: 24, y: 8 }
+          }).setOrigin(0.5).setInteractive({ useHandCursor: true })
+          endBtn.on('pointerover', () => endBtn.setStyle({ fill: '#ffffff', backgroundColor: '#664444' }))
+          endBtn.on('pointerout', () => endBtn.setStyle({ fill: '#ff6666', backgroundColor: '#222222' }))
+          endBtn.on('pointerdown', () => {
+            try { scene.shopSellOverlay.destroy() } catch (e) {}
+            scene.shopSellOverlay = null
+          })
+
+          scene.shopSellOverlay = overlay
+          loadAndShowSellItems()
         }
 
         // 键盘控制
@@ -1856,6 +1977,7 @@ onMounted(() => {
         scene.shopIndicators = []        // 商店白色倒三角指示器
         scene.shopMenuOverlay = null     // 购物/售卖选项浮层
         scene.shopBuyOverlay = null      // 购买界面浮层
+        scene.shopSellOverlay = null     // 售卖界面浮层
         // dropped items state
         scene.droppedItemsGroup = scene.add.group()
         scene.droppedItemsData = []       // [{ itemName, x, y, icon, label, nearPlayer }]
@@ -1897,7 +2019,9 @@ onMounted(() => {
             }
           }
           // 如果背包未打开且响应包含房间数据，正常渲染房间
-          if (!scene._backpackPaused && j && j.data && j.data.name) {
+          // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
+          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
+          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
@@ -1996,7 +2120,9 @@ onMounted(() => {
                     try { scene.updateBuffDisplay(j.data.activeEffects) } catch (e) {}
                   }
                   // 只要有房间数据就渲染房间，确保爆炸结算后怪物从画面消失
-                  if (j.data && j.data.name) {
+                  // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
+                  // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
+                  if (j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                     try { scene.renderRoom(j.data) } catch (e) {}
                   }
                   // 检查游戏结束
@@ -2027,7 +2153,7 @@ onMounted(() => {
 
           // ---- 开始蓄力 ----
           try {
-            if (scene.keys.H && scene.keys.H.isDown && hasEnoughMp && !scene._waveCharging.active && !scene._wavePendingSend && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.wisdomOverlay) {
+            if (scene.keys.H && scene.keys.H.isDown && hasEnoughMp && !scene._waveCharging.active && !scene._wavePendingSend && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
               scene._waveCharging.active = true
               scene._waveCharging.startTime = nowMs
               scene._waveCharging.charged = false
@@ -2058,7 +2184,9 @@ onMounted(() => {
                 })
                 const j = await res.json()
                 emit('update', j)
-                if (j && j.data) scene.renderRoom(j.data)
+                if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                  scene.renderRoom(j.data)
+                }
               } catch (e) {
                 emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
               }
@@ -2217,7 +2345,9 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) scene.renderRoom(j.data)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
                     if (j && j.message && j.message.includes('游戏结束')) {
                       scene.showGameOver()
                     }
@@ -2250,6 +2380,51 @@ onMounted(() => {
             if (scene.keys.J && Phaser.Input.Keyboard.JustDown(scene.keys.J) && !scene._waveCharging.active && !scene._attackOnCooldown) {
               scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
               const cfg = scene.attackConfig || {}
+
+              // helper: send attack command to backend for a specific monster
+              const attackMonster = async (monName) => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'attack ' + monName })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                  if (j && j.message && j.message.includes('游戏结束')) {
+                    scene.showGameOver()
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              }
+
+              // helper: check if a monster is inside the sweep sector (fan shape)
+              const isMonsterInSweep = (monster) => {
+                const monDx = monster.x - scene.player.x
+                const monDy = monster.y - scene.player.y
+                const dist = Math.sqrt(monDx * monDx + monDy * monDy)
+                if (dist > (cfg.radius || 110)) return false
+                const angleToMon = Math.atan2(monDy, monDx)
+                let angleDiff = angleToMon - scene.facingAngle
+                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
+                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
+                const halfSpan = Phaser.Math.DegToRad((cfg.angleDeg || 135) / 2)
+                return Math.abs(angleDiff) <= halfSpan
+              }
+
+              // helper: check if a monster is along the pierce line
+              const isMonsterInPierce = (monster, startX, startY, dirX, dirY, dist) => {
+                const monDx = monster.x - startX
+                const monDy = monster.y - startY
+                const along = monDx * dirX + monDy * dirY
+                if (along < 0 || along > dist) return false
+                const perpDist = Math.abs(monDx * (-dirY) + monDy * dirX)
+                const halfW = (cfg.pierceWidth || 12) / 2 + 15
+                return perpDist <= halfW
+              }
 
               // determine attack type
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
@@ -2515,7 +2690,9 @@ onMounted(() => {
                       })
                       const j = await res.json()
                       emit('update', j)
-                      if (j && j.data) scene.renderRoom(j.data)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
+                      }
                       if (j && j.message && j.message.includes('游戏结束')) {
                         scene.showGameOver()
                       }
@@ -2762,7 +2939,9 @@ onMounted(() => {
                   })
                   const j = await res.json()
                   emit('update', j)
-                  if (j && j.data) scene.renderRoom(j.data)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
                 } catch (e) {
                   emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
                 }
@@ -2783,7 +2962,9 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) scene.renderRoom(j.data)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
                   } catch (e) {
                     emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
                   }
@@ -2801,7 +2982,7 @@ onMounted(() => {
                     })
                     const j = await res.json()
                     emit('update', j)
-                    if (j && j.data) {
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
                       scene.renderRoom(j.data)
                       if (altarType === 'heal') {
                         scene.spawnAltarGlow(closestAltar.x, closestAltar.y, closestAltar.size, 0x44cc44, 5000)
@@ -2827,7 +3008,9 @@ onMounted(() => {
           const res = await fetch('/api/game')
           const j = await res.json()
           emit('update', j)
-          if (j && j.data) scene.renderRoom(j.data)
+          if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+            scene.renderRoom(j.data)
+          }
         } catch (e) {
           emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
         }

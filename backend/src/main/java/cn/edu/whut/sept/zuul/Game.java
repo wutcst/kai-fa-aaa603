@@ -19,8 +19,14 @@ public class Game {
     private Player player;
     private boolean gameOver;
     private List<Room> allRooms;
+    private long mapSeed;
 
     public Game() {
+        this(new Random().nextLong());
+    }
+
+    public Game(long seed) {
+        this.mapSeed = seed;
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
@@ -33,7 +39,7 @@ public class Game {
     }
 
     private void createRooms() {
-        GenerateRoom.GeneratedMap gm = GenerateRoom.generate(10, 15);
+        GenerateRoom.GeneratedMap gm = GenerateRoom.generate(10, 15, mapSeed);
         this.allRooms = gm.rooms;
 
         List<Room> rooms = gm.rooms;

@@ -3,14 +3,17 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.command.*;
 import cn.edu.whut.sept.zuul.model.AttackRequest;
 import cn.edu.whut.sept.zuul.model.GameResponse;
+import cn.edu.whut.sept.zuul.model.GameSaveEntity;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -19,7 +22,10 @@ import org.springframework.stereotype.Service;
 @Service
 public class GameService {
     // 游戏实例（单例，模拟单玩家；多玩家需改为Map<玩家ID, Game>）
-    private final Game game;
+    private Game game;
+
+    @Autowired
+    private SaveService saveService;
 
     public GameService() {
         this.game = new Game();
@@ -39,6 +45,11 @@ public class GameService {
                 if (burnDmg > 0) {
                     data.put("burnDamage", burnDmg);
                     data.put("burnLayers", player.getStatusManager().getBurnLayers());
+                }
+                // ---- 驱动天使祝福计时 ----
+                boolean angelActive = player.getStatusManager().tickAngelBuff();
+                if (angelActive) {
+                    data.put("angelBuffRemainingMs", player.getStatusManager().getAngelBuffRemainingMs());
                 }
                 // ---- 驱动中毒计时 ----
                 int poisonDmg = player.getStatusManager().tickPoison();
@@ -338,5 +349,52 @@ public class GameService {
      */
     public Map<String, Object> getFullMap() {
         return game.getFullMap();
+    }
+
+    // ======================== 存档接口 ========================
+
+    /**
+     * 保存当前游戏到数据库。
+     * @param saveId 存档ID（null表示新建）
+     * @return 保存的存档信息
+     */
+    public GameSaveEntity saveGame(Long saveId) {
+        return saveService.saveGame(game, saveId);
+    }
+
+    /**
+     * 从数据库加载存档，替换当前游戏实例。
+     * @param saveId 存档ID
+     * @return 加载后当前房间的状态数据
+     */
+    public Map<String, Object> loadGame(Long saveId) {
+        this.game = saveService.loadGame(saveId);
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return data;
+    }
+
+    /**
+     * 获取所有存档列表。
+     */
+    public List<Map<String, Object>> listSaves() {
+        return saveService.listSaves().stream().map(e -> {
+            Map<String, Object> m = new HashMap<>();
+            m.put("id", e.getId());
+            m.put("playerName", e.getPlayerName());
+            m.put("hp", e.getHp());
+            m.put("maxHp", e.getMaxHp());
+            m.put("money", e.getMoney());
+            m.put("currentRoom", e.getCurrentRoom());
+            m.put("updatedAt", e.getUpdatedAt() != null ? e.getUpdatedAt().toString() : null);
+            return m;
+        }).collect(Collectors.toList());
+    }
+
+    /**
+     * 删除存档。
+     */
+    public void deleteSave(Long saveId) {
+        saveService.deleteSave(saveId);
     }
 }

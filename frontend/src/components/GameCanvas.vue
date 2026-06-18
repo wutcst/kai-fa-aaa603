@@ -155,7 +155,7 @@
         <h2 class="control-title">⚙ 游戏控制</h2>
         <div class="control-body">
           <button class="control-btn control-btn-restart" @click="handleRestart">🔄 重新开始</button>
-          <button class="control-btn control-btn-save" @click="handleSaveGame" disabled>💾 保存游戏（开发中）</button>
+          <button class="control-btn control-btn-save" @click="handleSaveGame">💾 保存游戏</button>
           <button class="control-btn control-btn-menu" @click="handleBackToMenu">🚪 返回菜单</button>
         </div>
       </div>
@@ -167,7 +167,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import Phaser from 'phaser'
 
-const emit = defineEmits(['update', 'resetGame', 'backToMenu'])
+const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
@@ -203,7 +203,8 @@ function handleRestart() {
 }
 
 function handleSaveGame() {
-  // 预留接口：未来接入数据库存档
+  closeControlPanel()
+  emit('showSaveSlots')
 }
 
 function handleBackToMenu() {

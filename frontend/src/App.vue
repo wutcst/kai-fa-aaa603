@@ -11,12 +11,47 @@
 
     <!-- 游戏界面 -->
     <Transition name="game-enter">
-      <div v-if="screen === 'game'" class="game-view">
-        <GameCanvas
-          @update="onUpdate"
-          @reset-game="resetGame"
-          @back-to-menu="backToMenu"
-        />
+      <div v-if="screen === 'game'" class="game-view" :class="{ 'game-view-visible': screen === 'game' }">
+        <GameCanvas @update="onUpdate" @reset-game="resetGame" @back-to-menu="backToMenu" @show-save-slots="showSaveSlots" />
+      </div>
+    </Transition>
+
+    <!-- ========== 存档槽位选择弹窗 ========== -->
+    <Transition name="fade">
+      <div v-if="slotDialog.visible" class="slot-overlay" @click.self="closeSlotDialog">
+        <div class="slot-panel">
+          <h2 class="slot-title">{{ slotDialog.title }}</h2>
+          <div class="slot-list">
+            <div
+              v-for="i in 3"
+              :key="'slot-' + i"
+              class="slot-card"
+              :class="{ 'slot-has-data': slotDialog.saves[i], 'slot-empty': !slotDialog.saves[i] }"
+              @click="slotDialog.callback(i)"
+            >
+              <template v-if="slotDialog.saves[i]">
+                <div class="slot-row">
+                  <div class="slot-id">存档 {{ i }}</div>
+                  <button class="slot-delete-btn" @click.stop="deleteSlot(i)">🗑 删除</button>
+                </div>
+                <div class="slot-info">
+                  <span class="slot-player">{{ slotDialog.saves[i].playerName }}</span>
+                  <span class="slot-hp">❤ {{ slotDialog.saves[i].hp }}/{{ slotDialog.saves[i].maxHp }}</span>
+                </div>
+                <div class="slot-info2">
+                  <span class="slot-room">📍 {{ slotDialog.saves[i].currentRoom }}</span>
+                  <span class="slot-money">${{ slotDialog.saves[i].money }}</span>
+                </div>
+                <div class="slot-time">{{ slotDialog.saves[i].updatedAt }}</div>
+              </template>
+              <template v-else>
+                <div class="slot-id">存档 {{ i }}</div>
+                <div class="slot-empty-text">— 空 —</div>
+              </template>
+            </div>
+          </div>
+          <button class="slot-cancel-btn" @click="closeSlotDialog">取消</button>
+        </div>
       </div>
     </Transition>
 
@@ -28,7 +63,7 @@
 </template>
 
 <script>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import GameCanvas from './components/GameCanvas.vue'
 import MainMenu from './components/MainMenu.vue'
 
@@ -44,39 +79,114 @@ export default {
     const screen = ref('menu')
     const gameStatus = ref(null)
     const message = ref('')
+    const data = ref(null)
     const roomItems = ref([])
     const transitioning = ref(false)
 
-    // 将后端响应统一应用到组件状态
-    function applyGameResponse(j) {
-      if (!j) return
-      gameStatus.value = j.status ?? null
-      message.value = j.message ?? ''
-      roomItems.value = (j.data && j.data.items) ? j.data.items : []
+    // 槽位弹窗状态
+    const slotDialog = reactive({
+      visible: false,
+      title: '',
+      saves: {},      // { 1: {...}, 2: {...}, 3: {...} }
+      callback: null, // (slotNumber) => {}
+    })
+
+    // 关闭槽位弹窗
+    function closeSlotDialog() {
+      slotDialog.visible = false
     }
 
-    // 通知 GameCanvas 组件更新
-    function notifyGameCanvas(j) {
-      try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
-    }
-
-    // 场景过渡：封装从遮罩到游戏画面完整呈现的流程
-    async function transitionToGame(fnBeforeEnter) {
-      transitioning.value = true
-      await new Promise(r => setTimeout(r, TRANSITION_MASK_IN))
-
-      if (fnBeforeEnter) {
-        await fnBeforeEnter()
+    // 删除指定槽位的存档
+    async function deleteSlot(slotNum) {
+      if (!confirm('确定要删除 存档 ' + slotNum + ' 吗？此操作不可恢复！')) return
+      try {
+        await fetch('/api/deleteSave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ saveId: slotNum })
+        })
+        // 刷新槽位列表
+        slotDialog.saves = await fetchSaves()
+      } catch (e) {
+        alert('删除失败: ' + e.message)
       }
+    }
 
-      // 切换到游戏界面（遮罩仍在覆盖）
-      screen.value = 'game'
+    // 从后端拉取存档列表，填充到 slotDialog.saves
+    async function fetchSaves() {
+      try {
+        const res = await fetch('/api/saves')
+        const list = await res.json()
+        const map = {}
+        for (const s of list) {
+          map[s.id] = s
+        }
+        return map
+      } catch (e) {
+        return {}
+      }
+    }
 
-      // 等待 Phaser 挂载 + 首次渲染完成后再移除遮罩
-      await new Promise(r => setTimeout(r, TRANSITION_PHASER_MOUNT))
-      await loadGameData()
-      await new Promise(r => requestAnimationFrame(r))
-      transitioning.value = false
+    // 显示保存槽位弹窗（确定后保存到该槽位）
+    async function showSaveSlots() {
+      slotDialog.saves = await fetchSaves()
+      slotDialog.title = '💾 选择一个槽位保存'
+      slotDialog.callback = async (slotNum) => {
+        closeSlotDialog()
+        try {
+          const res = await fetch('/api/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ saveId: slotNum })
+          })
+          const saved = await res.json()
+          alert('游戏已保存到 存档 ' + slotNum + '！')
+        } catch (e) {
+          alert('保存失败: ' + e.message)
+        }
+      }
+      slotDialog.visible = true
+    }
+
+    // 显示读档槽位弹窗（确定后从该槽位加载）
+    async function showLoadSlots() {
+      slotDialog.saves = await fetchSaves()
+      slotDialog.title = '📂 选择一个存档读取'
+      slotDialog.callback = async (slotNum) => {
+        if (!slotDialog.saves[slotNum]) {
+          alert('该存档为空！')
+          return
+        }
+        closeSlotDialog()
+
+        transitioning.value = true
+        await new Promise(r => setTimeout(r, 600))
+
+        // 从后端加载存档
+        try {
+          const res = await fetch('/api/load', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ saveId: slotNum })
+          })
+          const j = await res.json()
+          screen.value = 'game'
+          await new Promise(r => setTimeout(r, 200))
+          // 注入加载后的数据
+          gameStatus.value = 'success'
+          message.value = '已加载 存档 ' + slotNum
+          data.value = j
+          if (j.items) roomItems.value = j.items
+          // 切换背景屏幕后 dispatch 游戏状态
+          await new Promise(r => requestAnimationFrame(r))
+          try { window.dispatchEvent(new CustomEvent('game:update', { detail: { status: 'success', message: '存档已加载', data: j } })) } catch (e) {}
+          transitioning.value = false
+        } catch (e) {
+          transitioning.value = false
+          alert('加载失败: ' + e.message)
+        }
+      }
+      slotDialog.visible = true
     }
 
     // 启动游戏（新游戏）

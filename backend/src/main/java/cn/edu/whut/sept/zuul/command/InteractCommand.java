@@ -196,6 +196,26 @@ public class InteractCommand implements Command {
      */
     private GameResponse showBlacksmithOptions(Player player, Room current, RandomEvent event) {
         StringBuilder sb = new StringBuilder();
+
+        // 收集玩家可用的装备/饰品（不包含兜底物品）
+        java.util.List<String> availableItems = getAvailableEquippableItems(player);
+
+        // 如果玩家没有任何可锻造的物品，老铁匠一撇嘴——你太穷了
+        if (availableItems.isEmpty()) {
+            String[] noItemDialog = {
+                "一位胡须花白的老铁匠正坐在熔炉旁，叮叮当当地敲打着什么。",
+                "他看到你走来，放下手中的铁锤，上下打量了你一番。",
+                "「唔…小兄弟，你身上连件像样的家伙什儿都没有，让我咋帮你强化？」",
+                "「去外面搞几件装备再回来找我吧，哈哈哈！」",
+                "老铁匠拍了拍你的肩膀，又回去继续敲打了。"
+            };
+            for (String line : noItemDialog) {
+                sb.append(line).append("\n");
+            }
+            // 不标记为used，也不返回blacksmithItems，玩家可以之后再回来
+            return GameResponse.success(sb.toString(), current.getFullInfo());
+        }
+
         String[] blacksmithDialog = {
             "一位胡须花白的老铁匠正坐在熔炉旁，叮叮当当地敲打着什么。",
             "他看到你走来，放下手中的铁锤，露出热情的笑容。",
@@ -206,8 +226,6 @@ public class InteractCommand implements Command {
             sb.append(line).append("\n");
         }
 
-        // 收集玩家可用的装备/饰品
-        java.util.List<String> availableItems = getAvailableEquippableItems(player);
         sb.append("\n你可以选择以下物品进行强化：\n");
         for (int i = 0; i < availableItems.size(); i++) {
             sb.append("  ").append(i + 1).append(". ").append(availableItems.get(i)).append("\n");
@@ -286,7 +304,9 @@ public class InteractCommand implements Command {
     }
 
     /**
-     * 获取玩家背包中可被铁匠强化的装备/饰品列表
+     * 获取玩家背包中可被铁匠强化的装备/饰品列表。
+     * 仅返回玩家实际拥有的装备/饰品（已装备或背包中的），
+     * 不再提供任何兜底物品。
      */
     private java.util.List<String> getAvailableEquippableItems(Player player) {
         java.util.List<String> items = new java.util.ArrayList<>();
@@ -301,10 +321,7 @@ public class InteractCommand implements Command {
                 items.add(bagItem.getName());
             }
         }
-        // 如果没有任何饰品，则提供基础武器（攻击物品）
-        if (items.isEmpty()) {
-            items.add("普通铁剑");
-        }
+        // 不再添加兜底物品——玩家没有任何装备时返回空列表
         return items;
     }
 

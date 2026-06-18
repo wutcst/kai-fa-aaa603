@@ -280,9 +280,27 @@ public class GameService {
             return GameResponse.error("攻击请求中没有怪物数据");
         }
 
+        // ---- 对于突刺攻击，提取起点/终点用于线段命中判定 ----
+        double pierceStartX = px;
+        double pierceStartY = py;
+        double pierceEndX = px;
+        double pierceEndY = py;
+        if ("pierce".equals(attackType)) {
+            if (req.getStartX() != null) pierceStartX = req.getStartX();
+            if (req.getStartY() != null) pierceStartY = req.getStartY();
+            if (req.getEndX() == null || req.getEndY() == null) {
+                // 兜底：用朝向推算终点（兼容旧前端）
+                pierceEndX = pierceStartX + Math.cos(angle) * 120;
+                pierceEndY = pierceStartY + Math.sin(angle) * 120;
+            } else {
+                pierceEndX = req.getEndX();
+                pierceEndY = req.getEndY();
+            }
+        }
+
         for (AttackRequest.MonsterPosition mp : monsters) {
             if (mp == null || mp.getName() == null) continue;
-            if (!isHit(attackType, px, py, angle, mp)) continue;
+            if (!isHit(attackType, px, py, angle, mp, pierceStartX, pierceStartY, pierceEndX, pierceEndY)) continue;
 
             // 防御：确认怪物仍存活且可被攻击后再调用攻击方法
             Monster m = current.getMonster(mp.getName());
@@ -312,9 +330,16 @@ public class GameService {
 
     /**
      * 空间命中判定：根据攻击类型检查怪兽是否在判定范围内。
+     *
+     * @param pierceStartX 突刺起点 X（仅 pierce 类型使用）
+     * @param pierceStartY 突刺起点 Y（仅 pierce 类型使用）
+     * @param pierceEndX   突刺终点 X（仅 pierce 类型使用）
+     * @param pierceEndY   突刺终点 Y（仅 pierce 类型使用）
      */
     private boolean isHit(String attackType, double px, double py, double angle,
-                          AttackRequest.MonsterPosition mp) {
+                          AttackRequest.MonsterPosition mp,
+                          double pierceStartX, double pierceStartY,
+                          double pierceEndX, double pierceEndY) {
         if ("sweep".equals(attackType)) {
             double dx = mp.getX() - px;
             double dy = mp.getY() - py;
@@ -326,14 +351,32 @@ public class GameService {
             while (diff < -Math.PI) diff += 2 * Math.PI;
             return Math.abs(diff) <= Math.toRadians(67.5);
         } else if ("pierce".equals(attackType)) {
-            double dirX = Math.cos(angle);
-            double dirY = Math.sin(angle);
-            double mdx = mp.getX() - px;
-            double mdy = mp.getY() - py;
-            double along = mdx * dirX + mdy * dirY;
-            if (along < 0 || along > 120) return false;
-            double perp = Math.abs(mdx * (-dirY) + mdy * dirX);
-            return perp <= 21.0; // 12/2 + 15
+            // 突刺命中判定：怪物点到"起点→终点"线段的最短距离 ≤ 21px
+            // 若投影在线段上，垂距即最短距离；否则取到两端点的最小距离
+            double sx = pierceStartX, sy = pierceStartY;
+            double ex = pierceEndX, ey = pierceEndY;
+            double segDx = ex - sx;
+            double segDy = ey - sy;
+            double segLenSq = segDx * segDx + segDy * segDy;
+
+            double mx = mp.getX();
+            double my = mp.getY();
+
+            if (segLenSq < 0.01) {
+                // 起点终点重合，退化为点判定
+                double dist = Math.sqrt((mx - sx) * (mx - sx) + (my - sy) * (my - sy));
+                return dist <= 21.0;
+            }
+
+            // 投影参数 t = ((mx-sx)·(ex-sx) + (my-sy)·(ey-sy)) / segLenSq
+            double t = ((mx - sx) * segDx + (my - sy) * segDy) / segLenSq;
+            // 夹到 [0, 1]：若投影在线段外，取最近端点
+            double clampT = Math.max(0, Math.min(1, t));
+            double closestX = sx + clampT * segDx;
+            double closestY = sy + clampT * segDy;
+            double perpDist = Math.sqrt((mx - closestX) * (mx - closestX) + (my - closestY) * (my - closestY));
+
+            return perpDist <= 21.0;
         } else if ("charged".equals(attackType)) {
             // 蓄力攻击：360° 周身 150px 范围
             double dx = mp.getX() - px;

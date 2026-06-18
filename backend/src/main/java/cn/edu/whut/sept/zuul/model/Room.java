@@ -29,6 +29,10 @@ public class Room {
     private boolean shopInitialized;
     // 掉落物列表（怪物死亡后掉落的物品，带坐标信息）
     private List<DroppedItem> droppedItems;
+    // 随机事件（仅奇遇房间使用）
+    private RandomEvent randomEvent;
+    // 随机事件是否已初始化
+    private boolean randomEventInitialized;
 
     public Room(String name, String description) {
         this.name = name;
@@ -44,6 +48,8 @@ public class Room {
         this.shopItems = new ArrayList<>();
         this.shopInitialized = false;
         this.droppedItems = new ArrayList<>();
+        this.randomEvent = null;
+        this.randomEventInitialized = false;
     }
 
     public void setExit(String direction, Room neighbor) {
@@ -127,6 +133,10 @@ public class Room {
         if (this.roomType == RoomType.SHOP) {
             initShopItems();
         }
+        // 如果是奇遇房间，确保随机事件已初始化
+        if (this.roomType == RoomType.ENCOUNTER) {
+            initRandomEvent();
+        }
         Map<String, Object> info = new HashMap<>();
         info.put("name", this.name);
         info.put("description", this.description);
@@ -159,6 +169,13 @@ public class Room {
         info.put("shopItems", shopItemList);
         // 掉落物数据（含坐标信息）
         info.put("droppedItems", this.droppedItems != null ? this.droppedItems : new ArrayList<>());
+        // 随机事件数据（仅奇遇房间有意义）
+        info.put("isEncounter", this.roomType == RoomType.ENCOUNTER);
+        if (this.randomEvent != null) {
+            info.put("randomEvent", this.randomEvent.toMap());
+        } else {
+            info.put("randomEvent", null);
+        }
         return info;
     }
 
@@ -342,6 +359,47 @@ public class Room {
     public boolean removeDroppedItem(String itemName) {
         if (this.droppedItems == null) return false;
         return this.droppedItems.removeIf(d -> d.getItemName().equalsIgnoreCase(itemName));
+    }
+
+    /**
+     * 初始化随机事件（仅奇遇房间调用，幂等操作）
+     * 随机从四种事件（宝箱、圣女、天使、铁匠）中选择一种
+     */
+    public void initRandomEvent() {
+        if (this.randomEventInitialized) return;
+        if (this.roomType != RoomType.ENCOUNTER) return;
+
+        Random rnd = new Random();
+        // 使用房间名 hashCode 作为种子保证同一房间每次生成相同事件
+        long seed = this.name.hashCode();
+        rnd.setSeed(seed);
+
+        // 权重随机：宝箱 40%，圣女 25%，铁匠 25%，天使 10%
+        int roll = rnd.nextInt(100);
+        RandomEventType chosenType;
+        if (roll < 40) {
+            chosenType = RandomEventType.CHEST;
+        } else if (roll < 65) {
+            chosenType = RandomEventType.MAIDEN;
+        } else if (roll < 90) {
+            chosenType = RandomEventType.BLACKSMITH;
+        } else {
+            chosenType = RandomEventType.ANGEL;
+        }
+
+        this.randomEvent = new RandomEvent(chosenType);
+        this.randomEventInitialized = true;
+
+        System.out.println("[RandomEvent] Room " + this.name + " initialized with event: " + chosenType.getDisplayName());
+    }
+
+    /**
+     * 使用随机事件（标记为已使用）
+     */
+    public void useRandomEvent() {
+        if (this.randomEvent != null) {
+            this.randomEvent.markUsed();
+        }
     }
 
     // 安全的 toString（不包含 exits 等循环引用字段）

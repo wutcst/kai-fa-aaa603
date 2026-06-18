@@ -25,7 +25,9 @@ public class Status {
      */
     public enum StatusType {
         /** 烧伤：可叠加数层，每3秒受到等同于层数的法术伤害，然后层数减半 */
-        BURN("烧伤", true);
+        BURN("烧伤", true),
+        /** 天使祝福：整体属性上浮至150%，持续2分钟 */
+        ANGEL_BUFF("天使祝福", false);
 
         private final String displayName;
         private final boolean debuff;
@@ -99,13 +101,18 @@ public class Status {
         private final Player player;
         /** 烧伤状态实例（null 表示无烧伤） */
         private StatusEffect burnEffect;
+        /** 天使祝福状态实例（null 表示无天使祝福） */
+        private StatusEffect angelBuffEffect;
 
         /** 烧伤触发间隔（毫秒）：3秒 */
         public static final long BURN_TICK_INTERVAL = 3000L;
+        /** 天使祝福持续时间（毫秒）：30秒 */
+        public static final long ANGEL_BUFF_DURATION = 30000L;
 
         public StatusManager(Player player) {
             this.player = player;
             this.burnEffect = null;
+            this.angelBuffEffect = null;
         }
 
         // ---- 状态管理 ----
@@ -131,11 +138,57 @@ public class Status {
             burnEffect = null;
         }
 
+        // ---- 天使祝福管理 ----
+
         /**
-         * 清除所有状态（当前即清除烧伤）。
+         * 施加天使祝福效果：全属性上浮至150%，持续2分钟。
+         * 如果已有天使祝福，重置持续时间。
+         */
+        public void applyAngelBuff() {
+            if (angelBuffEffect == null || angelBuffEffect.isExpired()) {
+                angelBuffEffect = new StatusEffect(StatusType.ANGEL_BUFF, 1);
+            } else {
+                // 重置计时
+                angelBuffEffect.setLastTickTime(System.currentTimeMillis());
+            }
+        }
+
+        /**
+         * 移除天使祝福效果。
+         */
+        public void removeAngelBuff() {
+            angelBuffEffect = null;
+        }
+
+        /**
+         * 是否拥有活跃的天使祝福。
+         */
+        public boolean hasAngelBuff() {
+            return angelBuffEffect != null && !angelBuffEffect.isExpired() && !isAngelBuffExpired();
+        }
+
+        /**
+         * 检查天使祝福是否过期
+         */
+        private boolean isAngelBuffExpired() {
+            if (angelBuffEffect == null) return true;
+            long now = System.currentTimeMillis();
+            return (now - angelBuffEffect.getLastTickTime()) >= ANGEL_BUFF_DURATION;
+        }
+
+        /**
+         * 天使祝福的属性乘数（1.5倍）
+         */
+        public double getAngelBuffMultiplier() {
+            return hasAngelBuff() ? 1.5 : 1.0;
+        }
+
+        /**
+         * 清除所有状态（当前即清除烧伤和天使祝福）。
          */
         public void clear() {
             burnEffect = null;
+            angelBuffEffect = null;
         }
 
         /**
@@ -153,36 +206,42 @@ public class Status {
         }
 
         // ---- 属性修正方法 ----
-        // 当前无属性修正类状态，所有方法直接返回基础值，保留接口以兼容 Player 调用。
+        // 天使祝福提供1.5倍属性修正
 
         /** 获取修正后的物理攻击力 */
         public int getModifiedAttack() {
-            return player.getAttack();
+            double mult = getAngelBuffMultiplier();
+            return (int) Math.round(player.getAttack() * mult);
         }
 
         /** 获取修正后的物理防御力 */
         public int getModifiedDefense() {
-            return player.getDefense();
+            double mult = getAngelBuffMultiplier();
+            return (int) Math.round(player.getDefense() * mult);
         }
 
         /** 获取修正后的魔法攻击力 */
         public int getModifiedMagicAttack() {
-            return player.getMagicAttack();
+            double mult = getAngelBuffMultiplier();
+            return (int) Math.round(player.getMagicAttack() * mult);
         }
 
         /** 获取修正后的魔法抗性（0-100） */
         public int getModifiedMagicResist() {
-            return player.getMagicResist();
+            double mult = getAngelBuffMultiplier();
+            return Math.min(100, (int) Math.round(player.getMagicResist() * mult));
         }
 
         /** 获取修正后的速度 */
         public int getModifiedSpeed() {
-            return player.getSpeed();
+            double mult = getAngelBuffMultiplier();
+            return (int) Math.round(player.getSpeed() * mult);
         }
 
         /** 获取修正后的闪避率（0-100） */
         public int getModifiedDodge() {
-            return player.getDodge();
+            double mult = getAngelBuffMultiplier();
+            return Math.min(100, (int) Math.round(player.getDodge() * mult));
         }
 
         // ---- 伤害钩子 ----
@@ -272,7 +331,38 @@ public class Status {
                 map.put("nextTickIn", Math.max(0, BURN_TICK_INTERVAL - elapsed));
                 info.add(map);
             }
+            if (angelBuffEffect != null && !angelBuffEffect.isExpired() && !isAngelBuffExpired()) {
+                Map<String, Object> map = new HashMap<>();
+                map.put("type", StatusType.ANGEL_BUFF.name());
+                map.put("name", StatusType.ANGEL_BUFF.getDisplayName());
+                map.put("isDebuff", false);
+                long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
+                map.put("remainingMs", Math.max(0, ANGEL_BUFF_DURATION - elapsed));
+                info.add(map);
+            }
             return info;
+        }
+
+        /**
+         * 获取天使祝福剩余毫秒数
+         */
+        public long getAngelBuffRemainingMs() {
+            if (angelBuffEffect == null || angelBuffEffect.isExpired()) return 0;
+            long elapsed = System.currentTimeMillis() - angelBuffEffect.getLastTickTime();
+            return Math.max(0, ANGEL_BUFF_DURATION - elapsed);
+        }
+
+        /**
+         * tick天使祝福：检查是否过期（每帧/每次轮询调用）
+         * @return true 如果祝福仍在生效，false 如果已过期
+         */
+        public boolean tickAngelBuff() {
+            if (angelBuffEffect == null || angelBuffEffect.isExpired()) return false;
+            if (isAngelBuffExpired()) {
+                angelBuffEffect = null;
+                return false;
+            }
+            return true;
         }
     }
 }

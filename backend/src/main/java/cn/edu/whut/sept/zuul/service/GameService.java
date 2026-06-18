@@ -36,6 +36,11 @@ public class GameService {
                     data.put("burnDamage", burnDmg);
                     data.put("burnLayers", player.getStatusManager().getBurnLayers());
                 }
+                // ---- 驱动天使祝福计时 ----
+                boolean angelActive = player.getStatusManager().tickAngelBuff();
+                if (angelActive) {
+                    data.put("angelBuffRemainingMs", player.getStatusManager().getAngelBuffRemainingMs());
+                }
             }
 
             // ---- 驱动生命戒指被动回血 ----

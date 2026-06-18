@@ -912,68 +912,65 @@ onMounted(() => {
           const buffBottom = roomTop - 4
           const buffLeft = barX - 105        // HP/MP label 左边缘
           const buffRight = barX + barW       // HP/MP 条右边缘
-          const buffMidX = (buffLeft + buffRight) / 2
           const buffMidY = (buffTop + buffBottom) / 2
 
-          // 查找烧伤状态和中毒状态
-          let burnEffect = null
-          let poisonEffect = null
-          for (const eff of scene._activeEffects) {
-            if (eff && eff.type === 'BURN') {
-              burnEffect = eff
-            } else if (eff && eff.type === 'POISON') {
-              poisonEffect = eff
+          // ---- 先清理所有旧的状态显示 ----
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+          scene._burnNextTickMs = 0
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+          scene._poisonNextTickMs = 0
+
+          // ---- 收集所有活跃状态，按固定顺序排列 ----
+          // 排序规则：先减益后增益，同类型按名称排序
+          const typeOrder = { 'BURN': 0, 'POISON': 1 }
+          const orderedEffects = scene._activeEffects
+            .filter(eff => eff && eff.layers > 0)
+            .sort((a, b) => {
+              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
+              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
+              if (orderA !== orderB) return orderA - orderB
+              return (a.name || a.type).localeCompare(b.name || b.type)
+            })
+
+          if (orderedEffects.length === 0) return
+
+          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
+          const cellWidth = 40    // 每个状态格子的宽度
+          const startX = 580      // 第一个格子中心X（固定）
+
+          for (let i = 0; i < orderedEffects.length; i++) {
+            const eff = orderedEffects[i]
+            const cellCX = startX + i * cellWidth
+            const cellCY = buffMidY + 6
+
+            if (eff.type === 'BURN') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 3000
+
+              // 记录用于实时倒计时
+              scene._burnLastTickMs = Date.now()
+              scene._burnNextTickMs = nextTickIn
+
+              const flameSize = Math.min(3, 1 + layers * 0.5)
+              const timerSec = nextTickIn / 1000
+
+              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
+            } else if (eff.type === 'POISON') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 1000
+
+              // 记录用于实时倒计时
+              scene._poisonLastTickMs = Date.now()
+              scene._poisonNextTickMs = nextTickIn
+
+              const timerSec = nextTickIn / 1000
+
+              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
             }
-          }
-
-          // ---- 烧伤渲染 ----
-          if (burnEffect && burnEffect.layers > 0) {
-            const layers = burnEffect.layers || 0
-            const nextTickIn = burnEffect.nextTickIn || 3000
-
-            // 记录用于实时倒计时
-            scene._burnLastTickMs = Date.now()
-            scene._burnNextTickMs = nextTickIn
-
-            const flameSize = Math.min(3, 1 + layers * 0.5)  // 层数越多火焰越大，上限3
-            const timerSec = nextTickIn / 1000
-
-            // 火焰置于 buff 栏中央偏左（中毒存在时，烧伤再往左偏移，避免重叠）
-            const hasPoison = poisonEffect && poisonEffect.layers > 0
-            const burnCX = buffMidX - (hasPoison ? 90 : 40)
-            const burnCY = buffMidY + 6
-
-            scene.drawBurnFlame(burnCX, burnCY, flameSize, layers, timerSec)
-          } else {
-            // 无烧伤：清理火焰显示
-            if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
-            if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
-            if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
-            scene._burnNextTickMs = 0
-          }
-
-          // ---- 中毒渲染 ----
-          if (poisonEffect && poisonEffect.layers > 0) {
-            const layers = poisonEffect.layers || 0
-            const nextTickIn = poisonEffect.nextTickIn || 1000
-
-            // 记录用于实时倒计时
-            scene._poisonLastTickMs = Date.now()
-            scene._poisonNextTickMs = nextTickIn
-
-            const timerSec = nextTickIn / 1000
-
-            // 中毒图标置于 buff 栏中央偏右
-            const poisonCX = buffMidX + 50
-            const poisonCY = buffMidY + 6
-
-            scene.drawPoisonIcon(poisonCX, poisonCY, layers, timerSec)
-          } else {
-            // 无中毒：清理中毒显示
-            if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
-            if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
-            if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
-            scene._poisonNextTickMs = 0
           }
         }
 
@@ -1000,7 +997,7 @@ onMounted(() => {
           scene._poisonIconGfx = iconText
 
           // 层数标注（图标右侧）
-          const layersText = scene.add.text(cx + 10, cy, String(layers), {
+          const layersText = scene.add.text(cx + 11, cy, String(layers), {
             font: 'bold 14px Arial',
             fill: '#BB44FF',
             stroke: '#000000',
@@ -2743,6 +2740,25 @@ onMounted(() => {
                   const res = await fetch('/api/command', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ command: 'test poison' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data) scene.renderRoom(j.data)
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
+          // ---- E 键测试：施加一层烧伤 ----
+          try {
+            if (scene.keys.E && Phaser.Input.Keyboard.JustDown(scene.keys.E) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test burn' })
                   })
                   const j = await res.json()
                   emit('update', j)

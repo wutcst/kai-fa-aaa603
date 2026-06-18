@@ -1247,15 +1247,38 @@ onMounted(() => {
             }
             const circleColor = 0xaa0000
             const circ = scene.add.circle(x, y, 20, circleColor).setStrokeStyle(2, 0x000000)
-            const labelText = mon.name + ' (HP:' + (mon.hp || 0) + ')'
+            const labelText = mon.name
             const label = scene.add.text(x - 32, y + 24, labelText, { font: '14px Arial', fill: '#fff' })
+
+            // 血条背景（深色）— 放在怪物圆点上方
+            const hpBarW = 54, hpBarH = 8
+            const hpBarX = x - hpBarW / 2
+            const hpBarY = y - 20 - hpBarH - 32
+            const hpBg = scene.add.rectangle(hpBarX + hpBarW / 2, hpBarY + hpBarH / 2, hpBarW, hpBarH, 0x333333).setStrokeStyle(1, 0x666666)
+            // 血条填充
+            const monMaxHp = mon.maxHp || mon.hp || 100
+            const hpRatio = Math.max(0, Math.min(1, (mon.hp || 0) / monMaxHp))
+            let hpColor = 0x44cc44
+            if (hpRatio < 0.3) hpColor = 0xcc2222
+            else if (hpRatio < 0.6) hpColor = 0xccaa22
+            const hpFill = scene.add.rectangle(hpBarX, hpBarY, hpBarW * hpRatio, hpBarH, hpColor).setOrigin(0, 0)
+            // HP 数字文字（血条内部居中，加粗白字带描边）
+            const hpNumText = scene.add.text(hpBarX + hpBarW / 2, hpBarY + hpBarH / 2, mon.hp + '/' + monMaxHp, {
+              font: 'bold 11px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+            }).setOrigin(0.5, 0.5)
+
             if (!scene.monstersGroup) scene.monstersGroup = scene.add.group()
             if (!scene.monstersData) scene.monstersData = []
             scene.monstersGroup.add(circ)
             scene.monstersGroup.add(label)
+            scene.monstersGroup.add(hpBg)
+            scene.monstersGroup.add(hpFill)
+            scene.monstersGroup.add(hpNumText)
             scene.monstersData.push({
               name: mon.name, x, y, circ, label,
-              hp: mon.hp, type: mon.type,
+              hp: mon.hp, maxHp: monMaxHp, type: mon.type,
+              hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
+              hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
               specialType: mon.specialType || null,
               exploding: false,
@@ -2374,6 +2397,33 @@ onMounted(() => {
             }
           }
 
+          // ---------- 绘制怪物攻击范围圈（半透明圆环） ----------
+          // 使用持久 Graphics 对象，每帧清空重绘
+          if (!scene._monsterRangeGfx) {
+            scene._monsterRangeGfx = scene.add.graphics().setDepth(3)
+          }
+          const rangeGfx = scene._monsterRangeGfx
+          rangeGfx.clear()
+          for (const mon of scene.monstersData) {
+            if (!mon || !mon.circ) continue
+            // 爆炸中的怪物不显示攻击范围
+            if (mon.exploding) continue
+            const isBoss = (mon.type === 2)
+            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
+            // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
+            const dx = scene.player.x - mon.x
+            const dy = scene.player.y - mon.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist <= MONSTER_DETECT_RANGE || isBoss) {
+              // Boss 全图显示，普通怪物在索敌范围内才显示
+              rangeGfx.lineStyle(1, 0xff4444, 0.25)
+              rangeGfx.strokeCircle(mon.x, mon.y, attackRange)
+              // 填充色（极淡）
+              rangeGfx.fillStyle(0xff2222, 0.05)
+              rangeGfx.fillCircle(mon.x, mon.y, attackRange)
+            }
+          }
+
           // handle attack key (J) pressed — enhanced sweep with particles, plus pierce on Shift+move
           // Also detect monsters in range and send damage commands to backend
           try {
@@ -2603,6 +2653,26 @@ onMounted(() => {
           const pr2 = scene.playerRadius || 14
           scene.player.x = Phaser.Math.Clamp(scene.player.x, rb.left + pr2, rb.right - pr2)
           scene.player.y = Phaser.Math.Clamp(scene.player.y, rb.top + pr2, rb.bottom - pr2)
+
+          // ---------- 更新怪物血条位置 ----------
+          for (const mon of scene.monstersData) {
+            if (!mon || !mon.hpBarBg) continue
+            const hpBarX = mon.x - mon.hpBarW / 2
+            const hpBarY = mon.y - 20 - mon.hpBarH - 30
+            const ratio = Math.max(0, Math.min(1, (mon.hp || 0) / Math.max(1, mon.maxHp || 1)))
+            mon.hpBarBg.setPosition(hpBarX + mon.hpBarW / 2, hpBarY + mon.hpBarH / 2)
+            let color = 0x44cc44
+            if (ratio < 0.3) color = 0xcc2222
+            else if (ratio < 0.6) color = 0xccaa22
+            mon.hpBarFill.setFillStyle(color)
+            mon.hpBarFill.setPosition(hpBarX, hpBarY)
+            mon.hpBarFill.setDisplaySize(mon.hpBarW * ratio, mon.hpBarH)
+            if (mon.hpNumText) {
+              mon.hpNumText.setPosition(hpBarX + mon.hpBarW / 2, hpBarY + mon.hpBarH / 2)
+              mon.hpNumText.setText((mon.hp || 0) + '/' + (mon.maxHp || 0))
+            }
+          }
+
           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
           // ---------- 月光波弹射运动 ----------

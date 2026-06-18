@@ -9,7 +9,7 @@ import java.util.List;
  */
 @Data
 public class AttackRequest {
-    /** 攻击类型："sweep"（扇形扫击）或 "pierce"（直线突刺） */
+    /** 攻击类型："sweep"（扇形扫击）、"pierce"（直线突刺）或 "charged"（蓄力360°范围攻击） */
     private String attackType;
 
     /** 玩家当前 X 坐标（前端画布坐标） */

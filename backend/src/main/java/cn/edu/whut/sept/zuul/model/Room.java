@@ -362,35 +362,84 @@ public class Room {
     }
 
     /**
-     * 初始化随机事件（仅奇遇房间调用，幂等操作）
-     * 随机从四种事件（宝箱、圣女、天使、铁匠）中选择一种
+     * 初始化随机事件（仅奇遇房间调用，幂等操作）。
+     *
+     * 新版规则（roll 1-100）：
+     * -   1-20：优质事件 → 木制宝箱（75%概率，75-150金）或金色宝箱（25%概率，999金）
+     * -  21-50：劣质事件 → 房间中央生成精英敌人，击败后施加负面状态（烧伤/中毒/流血 5-10层）
+     * - 51-100：一般事件 → 喷泉（50%失10HP得20金 / 50%失25金回10HP）
      */
     public void initRandomEvent() {
         if (this.randomEventInitialized) return;
         if (this.roomType != RoomType.ENCOUNTER) return;
 
-        Random rnd = new Random();
         // 使用房间名 hashCode 作为种子保证同一房间每次生成相同事件
-        long seed = this.name.hashCode();
-        rnd.setSeed(seed);
+        Random rnd = new Random(this.name.hashCode());
 
-        // 权重随机：宝箱 40%，圣女 25%，铁匠 25%，天使 10%
-        int roll = rnd.nextInt(100);
+        // Roll 1-100 判定事件档次
+        int roll = rnd.nextInt(100) + 1;
         RandomEventType chosenType;
-        if (roll < 40) {
-            chosenType = RandomEventType.CHEST;
-        } else if (roll < 65) {
-            chosenType = RandomEventType.MAIDEN;
-        } else if (roll < 90) {
-            chosenType = RandomEventType.BLACKSMITH;
+
+        if (roll <= 20) {
+            // 优质事件：25%金色宝箱，75%木制宝箱
+            if (rnd.nextInt(100) < 25) {
+                chosenType = RandomEventType.GOLDEN_CHEST;
+            } else {
+                chosenType = RandomEventType.WOODEN_CHEST;
+            }
+        } else if (roll <= 50) {
+            // 劣质事件：精英敌人
+            chosenType = RandomEventType.ELITE_ENEMY;
         } else {
-            chosenType = RandomEventType.ANGEL;
+            // 一般事件：喷泉
+            chosenType = RandomEventType.FOUNTAIN;
         }
 
         this.randomEvent = new RandomEvent(chosenType);
+
+        // 根据事件类型填充具体数据
+        switch (chosenType) {
+            case WOODEN_CHEST:
+                // 75-150 金币
+                this.randomEvent.setRewardGold(75 + rnd.nextInt(76));
+                break;
+            case GOLDEN_CHEST:
+                this.randomEvent.setRewardGold(999);
+                break;
+            case ELITE_ENEMY: {
+                // 随机选择负面状态：烧伤、中毒、流血
+                String[] debuffs = {"烧伤", "中毒", "流血"};
+                String debuff = debuffs[rnd.nextInt(debuffs.length)];
+                this.randomEvent.setDebuffType(debuff);
+                // 5-10 层
+                this.randomEvent.setDebuffLayers(5 + rnd.nextInt(6));
+
+                // 生成精英敌人
+                String[] eliteNames = {"暗影骑士", "地狱犬", "石像鬼", "暗黑法师", "巨型蜘蛛"};
+                String base = eliteNames[rnd.nextInt(eliteNames.length)];
+                String mname = base + "#" + (rnd.nextInt(9000) + 1000);
+                this.randomEvent.setEliteEnemyName(mname);
+
+                // 仅在怪物列表为空且未被清除时添加精英敌人（幂等保护 + 存档恢复兼容）
+                if (this.monsters == null) this.monsters = new ArrayList<>();
+                if (this.monsters.isEmpty() && !this.monstersCleared) {
+                    String desc = "被奇遇力量侵蚀的" + base;
+                    int hp = 200 + rnd.nextInt(101);    // 200-300
+                    int attack = 20 + rnd.nextInt(6);   // 20-25
+                    addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_ELITE));
+                }
+                break;
+            }
+            case FOUNTAIN:
+                // 50% 失血得钱模式，50% 失钱回血模式
+                this.randomEvent.setFountainBloodMode(rnd.nextBoolean());
+                break;
+        }
+
         this.randomEventInitialized = true;
 
-        System.out.println("[RandomEvent] Room " + this.name + " initialized with event: " + chosenType.getDisplayName());
+        System.out.println("[RandomEvent] Room " + this.name + " initialized with event: "
+                + chosenType.getDisplayName() + " (roll=" + roll + ")");
     }
 
     /**

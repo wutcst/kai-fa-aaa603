@@ -111,10 +111,9 @@ public class InteractCommand implements Command {
             return GameResponse.error("这个房间的奇遇已经被触发过了。");
         }
 
-        // 判断是否为铁匠的"选择物品"操作
+        // 判断是否为铁匠的"选择物品"操作（旧版兼容）
         if (event.getType() == RandomEventType.BLACKSMITH && altarTypeStr != null
                 && !altarTypeStr.equalsIgnoreCase("event")) {
-            // 尝试从altarTypeStr解析目标物品名称（格式：blacksmith <itemName>）
             return handleBlacksmithChoose(player, current, event);
         }
 
@@ -122,6 +121,7 @@ public class InteractCommand implements Command {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getType()) {
+            // ===== 旧版事件 =====
             case CHEST:
                 handleChest(player, sb);
                 break;
@@ -132,12 +132,114 @@ public class InteractCommand implements Command {
                 handleAngel(player, sb);
                 break;
             case BLACKSMITH:
-                // 铁匠需要先展示可选物品列表
                 return showBlacksmithOptions(player, current, event);
+
+            // ===== 新版奇遇事件 =====
+            case WOODEN_CHEST:
+                handleWoodenChest(player, event, sb);
+                break;
+            case GOLDEN_CHEST:
+                handleGoldenChest(player, event, sb);
+                break;
+            case ELITE_ENEMY:
+                // 精英敌人通过战斗击败触发，这里提示玩家去战斗
+                return handleEliteEnemyPrompt(current, event);
+            case FOUNTAIN:
+                handleFountain(player, event, sb);
+                // 喷泉不标记为已使用，允许反复交互
+                return GameResponse.success(sb.toString(), current.getFullInfo());
         }
 
         current.useRandomEvent();
         return GameResponse.success(sb.toString(), current.getFullInfo());
+    }
+
+    /**
+     * 木制宝箱事件：75-150 金币
+     */
+    private void handleWoodenChest(Player player, RandomEvent event, StringBuilder sb) {
+        int gold = event.getRewardGold();
+        String[] dialog = {
+            "你发现了一个精致的木制宝箱！",
+            "打开宝箱，叮当作响的金币映入眼帘。",
+            "你获得了 " + gold + " 枚金币！"
+        };
+        for (String line : dialog) {
+            sb.append(line).append("\n");
+        }
+        player.getMoney().add(gold);
+    }
+
+    /**
+     * 金色宝箱事件：999 金币
+     */
+    private void handleGoldenChest(Player player, RandomEvent event, StringBuilder sb) {
+        int gold = event.getRewardGold();
+        String[] dialog = {
+            "你发现了一个闪耀着金光的华丽宝箱！",
+            "宝箱上镶嵌着璀璨的宝石，散发着令人目眩的光芒。",
+            "「天选之人啊，这是属于你的绝世财富。」——宝箱缓缓打开。",
+            "你获得了 " + gold + " 枚金币！！！"
+        };
+        for (String line : dialog) {
+            sb.append(line).append("\n");
+        }
+        player.getMoney().add(gold);
+    }
+
+    /**
+     * 精英敌人事件：提示玩家去击败房间中的精英敌人
+     */
+    private GameResponse handleEliteEnemyPrompt(Room current, RandomEvent event) {
+        StringBuilder sb = new StringBuilder();
+        String enemyName = event.getEliteEnemyName();
+        String debuffType = event.getDebuffType();
+        int debuffLayers = event.getDebuffLayers();
+
+        sb.append("这个房间被一股邪恶的力量笼罩着……\n");
+        sb.append("一个强大的敌人「").append(enemyName).append("」正盘踞在房间中央！\n");
+        sb.append("击败它吧，但要小心——据说它临死前会释放").append(debuffType)
+          .append("诅咒（").append(debuffLayers).append("层）。");
+
+        // 不标记为used，等击败怪物后由 Game.processMonsterDrop 处理
+        return GameResponse.success(sb.toString(), current.getFullInfo());
+    }
+
+    /**
+     * 喷泉事件：50% 失10HP得20金 / 50% 失25金回10HP
+     */
+    private void handleFountain(Player player, RandomEvent event, StringBuilder sb) {
+        boolean bloodMode = event.isFountainBloodMode();
+
+        sb.append("你发现了一座古老而神秘的喷泉，泉水泛着奇异的光芒……\n");
+
+        if (bloodMode) {
+            // 失血得钱模式
+            int hpLoss = Math.min(10, player.getHp() - 1); // 至少保留1点HP
+            if (hpLoss <= 0) {
+                sb.append("但你的生命值已经很低了，无法承受泉水的代价。");
+                return;
+            }
+            player.setHp(player.getHp() - hpLoss);
+            player.getMoney().add(20);
+            sb.append("你将手伸入泉水中，一股刺痛传来！\n");
+            sb.append("你失去了 ").append(hpLoss).append(" 点生命值，但获得了 20 枚金币。");
+        } else {
+            // 失钱回血模式
+            int money = player.getMoney().getAmount();
+            if (money < 25) {
+                sb.append("泉水的光芒闪烁了一下，但你身上的金币不够支付代价……\n");
+                sb.append("（需要至少 25 金币）");
+                return;
+            }
+            player.getMoney().spend(25);
+            int healAmount = Math.min(10, player.getMaxHp() - player.getHp());
+            if (healAmount > 0) {
+                player.restoreHp(healAmount);
+            }
+            sb.append("你投入了 25 枚金币，泉水散发出温暖的光芒！\n");
+            sb.append("你恢复了 ").append(healAmount).append(" 点生命值。");
+        }
     }
 
     /**

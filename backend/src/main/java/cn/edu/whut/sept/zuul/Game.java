@@ -142,7 +142,7 @@ public class Game {
     private static final Random DROP_RND = new Random();
 
     /**
-     * 处理怪物死亡后的掉落和货币奖励。
+     * 处理怪物死亡后的掉落、货币奖励，以及奇遇精英敌人的负面状态施加。
      * @param m     被击败的怪物
      * @param dropX 掉落物 X 坐标
      * @param dropY 掉落物 Y 坐标
@@ -151,13 +151,44 @@ public class Game {
     public String processMonsterDrop(Monster m, int dropX, int dropY) {
         StringBuilder sb = new StringBuilder();
 
+        // ---- 奇遇精英敌人：击败后施加减益（在掉落之前处理） ----
+        Room currentRoom = getCurrentRoom();
+        if (m.getType() == Monster.TYPE_ELITE && currentRoom != null
+                && currentRoom.getRoomType() == cn.edu.whut.sept.zuul.model.RoomType.ENCOUNTER
+                && currentRoom.getRandomEvent() != null
+                && currentRoom.getRandomEvent().getType() == cn.edu.whut.sept.zuul.model.RandomEventType.ELITE_ENEMY
+                && !currentRoom.getRandomEvent().isUsed()) {
+
+            cn.edu.whut.sept.zuul.model.RandomEvent event = currentRoom.getRandomEvent();
+            String debuffType = event.getDebuffType();
+            int debuffLayers = event.getDebuffLayers();
+
+            if (debuffType != null && debuffLayers > 0 && player != null && player.getStatusManager() != null) {
+                switch (debuffType) {
+                    case "烧伤":
+                        player.getStatusManager().applyBurn(debuffLayers);
+                        sb.append("\n").append(m.getName()).append("临死前对你施加了").append(debuffLayers).append("层烧伤！");
+                        break;
+                    case "中毒":
+                        player.getStatusManager().applyPoison(debuffLayers);
+                        sb.append("\n").append(m.getName()).append("临死前对你施加了").append(debuffLayers).append("层中毒！");
+                        break;
+                    case "流血":
+                        player.getStatusManager().applyBleed(debuffLayers);
+                        sb.append("\n").append(m.getName()).append("临死前对你施加了").append(debuffLayers).append("层流血！");
+                        break;
+                }
+            }
+            // 标记事件为已使用（击败精英敌人即完成事件）
+            currentRoom.useRandomEvent();
+        }
+
         // ---- Boss 掉落浆果 ----
         if (m.getType() == Monster.TYPE_BOSS) {
             String dropName = DROP_RND.nextBoolean() ? "生命浆果" : "魔力浆果";
             DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
-            Room room = getCurrentRoom();
-            if (room != null) {
-                room.addDroppedItem(drop);
+            if (currentRoom != null) {
+                currentRoom.addDroppedItem(drop);
             }
             sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
         }
@@ -165,9 +196,8 @@ public class Game {
         // ---- 普通怪物 30% 概率掉落药水 ----
         if (m.getType() == Monster.TYPE_NORMAL && DROP_RND.nextInt(100) < 30) {
             DroppedItem drop = new DroppedItem("药水", dropX, dropY);
-            Room room = getCurrentRoom();
-            if (room != null) {
-                room.addDroppedItem(drop);
+            if (currentRoom != null) {
+                currentRoom.addDroppedItem(drop);
             }
             sb.append("\n").append(m.getName()).append("掉落了药水！");
         }
@@ -177,9 +207,8 @@ public class Game {
             String[] eliteDrops = {"铁剑", "铁盾", "暗影披风", "生命戒指", "元素项链"};
             String dropName = eliteDrops[DROP_RND.nextInt(eliteDrops.length)];
             DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
-            Room room = getCurrentRoom();
-            if (room != null) {
-                room.addDroppedItem(drop);
+            if (currentRoom != null) {
+                currentRoom.addDroppedItem(drop);
             }
             sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
         }

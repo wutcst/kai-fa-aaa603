@@ -26,7 +26,7 @@ import java.util.*;
  * 流血机制：
  * - 可叠加数层，每次施加流血会在现有层数上累加。
  * - 每次玩家进行普通攻击（横扫、蓄力横扫、突刺）时，若身上有流血状态，
- *   受到2点真实伤害（无视防御和魔抗，直接扣除血量），然后将流血层数减1。
+ *   受到2点真实伤害（无视防御和魔抗，直接扣除血量，可致死），然后将流血层数减1。
  * - 层数降至0时流血状态自动移除。
  *
  * 使用方式：Player 持有一个 StatusManager 实例，
@@ -44,7 +44,7 @@ public class Status {
         BURN("烧伤", true),
         /** 中毒：可叠加数层，每1秒受到等同于层数的真实伤害，然后层数减1 */
         POISON("中毒", true),
-        /** 流血：可叠加数层，每次玩家攻击时受到1点真实伤害，然后层数减1 */
+        /** 流血：可叠加数层，每次玩家攻击时受到2点真实伤害（可致死），然后层数减1 */
         BLEED("流血", true);
 
         private final String displayName;
@@ -313,11 +313,11 @@ public class Status {
          * 应由 GameService.performAttack() 和 AttackCommand 在攻击流程中调用。
          *
          * 每次触发时：
-         * 1. 若玩家身上有流血状态，受到 2 点真实伤害（无视防御和魔抗，直接扣除血量）
+         * 1. 若玩家身上有流血状态，受到 2 点真实伤害（无视防御和魔抗，直接扣除血量，可致死）
          * 2. 流血层数减 1
          * 3. 若层数降至 0，移除流血状态
          *
-         * @return 本次结算造成的实际伤害（2），无流血状态或血量已为 1 时返回 0
+         * @return 本次结算造成的实际伤害（2），无流血状态时返回 0
          */
         public int tickBleedOnAttack() {
             if (bleedEffect == null || bleedEffect.isExpired()) {
@@ -331,18 +331,12 @@ public class Status {
                 return 0;
             }
     
-            // 真实伤害：直接扣除 2 点血量，无视防御和魔抗
+            // 真实伤害：直接扣除 2 点血量，无视防御和魔抗，可致死
             int actualDamage = 2;
             int currentHp = player.getHp();
 
-            // 防御：HP 最低保持 1（流血不会杀死玩家）
-            if (currentHp > 1) {
-                player.setHp(currentHp - actualDamage);
-                player.recordDamage(actualDamage);
-            } else {
-                // 血量已为 1，不造成伤害（但仍扣除层数）
-                actualDamage = 0;
-            }
+            player.setHp(Math.max(0, currentHp - actualDamage));
+            player.recordDamage(actualDamage);
 
             // 层数减 1
             int newLayers = layers - 1;

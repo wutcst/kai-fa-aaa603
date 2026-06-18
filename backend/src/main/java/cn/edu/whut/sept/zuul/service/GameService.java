@@ -247,6 +247,17 @@ public class GameService {
             }
         }
 
+        // ---- 如果玩家因流血死亡，立即返回死亡结果 ----
+        if (player != null && !player.isAlive()) {
+            game.setGameOver(true);
+            Map<String, Object> data = new HashMap<>(current.getFullInfo());
+            data.put("hitCount", 0);
+            data.put("gameOver", true);
+            injectPlayerStatus(data);
+            sb.append("你因流血过多而死亡！");
+            return GameResponse.success(sb.toString().trim(), data);
+        }
+
         List<AttackRequest.MonsterPosition> monsters = req.getMonsters();
         if (monsters == null || monsters.isEmpty()) {
             Map<String, Object> data = new HashMap<>(current.getFullInfo());

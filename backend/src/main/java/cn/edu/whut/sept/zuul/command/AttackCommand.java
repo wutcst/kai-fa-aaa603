@@ -29,6 +29,17 @@ public class AttackCommand implements Command {
             }
         }
 
+        // ---- 如果玩家因流血死亡，立即返回死亡结果 ----
+        if (game.getPlayer() != null && !game.getPlayer().isAlive()) {
+            game.setGameOver(true);
+            fullResult.append("你因流血过多而死亡！");
+            Room current = game.getCurrentRoom();
+            if (current != null) {
+                return GameResponse.success(fullResult.toString().trim(), current.getFullInfo());
+            }
+            return GameResponse.error(fullResult.toString().trim());
+        }
+
         String result = game.attackMonster(targetName, 300, 160);
         fullResult.append(result);
 

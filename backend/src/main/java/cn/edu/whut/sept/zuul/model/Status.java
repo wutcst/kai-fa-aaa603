@@ -280,15 +280,20 @@ public class Status {
         public int getBurnLayers() {
             return (burnEffect != null && !burnEffect.isExpired()) ? burnEffect.getLayers() : 0;
         }
+        /**
+         * 是否拥有中毒状态。
+         */
+        public boolean hasPoison() {
+            return poisonEffect != null && !poisonEffect.isExpired();
+        }
 
         /**
-         * 清除所有状态。
+         * 获取当前中毒层数。
          */
-        public void clear() {
-            burnEffect = null;
-            angelBuffEffect = null;
-            poisonEffect = null;
+        public int getPoisonLayers() {
+            return (poisonEffect != null && !poisonEffect.isExpired()) ? poisonEffect.getLayers() : 0;
         }
+
 
         /**
          * 是否拥有流血状态。

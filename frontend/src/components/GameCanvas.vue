@@ -48,13 +48,13 @@
             >
               <!-- 物品简略图标 -->
               <!-- 生命浆果：三个红色重叠圆点 -->
-              <div v-if="getSlotItem(i - 1) && getSlotItem(i - 1).rarity === 'lifeBerry'" class="slot-icon slot-icon-lifeberry">
+              <div v-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('生命浆果')" class="slot-icon slot-icon-lifeberry">
                 <span class="berry-dot" style="left:10px;top:14px;"></span>
                 <span class="berry-dot" style="left:20px;top:10px;"></span>
                 <span class="berry-dot" style="left:28px;top:18px;"></span>
               </div>
               <!-- 魔力浆果：三个蓝色重叠椭圆 -->
-              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).rarity === 'manaBerry'" class="slot-icon slot-icon-manaberry">
+              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('魔力浆果')" class="slot-icon slot-icon-manaberry">
                 <span class="mana-ellipse" style="left:10px;top:16px;"></span>
                 <span class="mana-ellipse" style="left:18px;top:10px;"></span>
                 <span class="mana-ellipse" style="left:26px;top:18px;"></span>
@@ -142,6 +142,24 @@
         </div>
       </div>
     </div>
+
+    <!-- ==================== 控制面板覆盖层（ESC 打开/关闭） ==================== -->
+    <div v-if="controlPanelVisible" class="control-overlay" @click.self="closeControlPanel">
+      <div class="control-panel">
+        <button class="control-close-btn" @click="closeControlPanel" title="关闭 (ESC)">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+        <h2 class="control-title">⚙ 游戏控制</h2>
+        <div class="control-body">
+          <button class="control-btn control-btn-restart" @click="handleRestart">🔄 重新开始</button>
+          <button class="control-btn control-btn-save" @click="handleSaveGame" disabled>💾 保存游戏（开发中）</button>
+          <button class="control-btn control-btn-menu" @click="handleBackToMenu">🚪 返回菜单</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -149,7 +167,7 @@
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import Phaser from 'phaser'
 
-const emit = defineEmits(['update'])
+const emit = defineEmits(['update', 'resetGame', 'backToMenu'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
@@ -160,14 +178,45 @@ const selectedSlot = ref(null)      // 选中的格子索引 (0-14)
 const hoveredSlot = ref(null)       // 鼠标悬停的格子索引
 const backpackItems = ref([])       // 背包物品列表 [{itemId, name, rarity, functionDesc, loreDesc, quantity, ...}]
 
+// ==================== 控制面板 UI 响应式状态 ====================
+const controlPanelVisible = ref(false)
+
+function openControlPanel() {
+  // 暂停 Phaser 场景，防止 ESC 关闭面板时触发其他行为
+  if (game && game.scene && game.scene.scenes) {
+    game.scene.scenes.forEach(s => { if (s.scene.isActive()) s.scene.pause() })
+  }
+  controlPanelVisible.value = true
+}
+
+function closeControlPanel() {
+  controlPanelVisible.value = false
+  // 恢复 Phaser 场景
+  if (game && game.scene && game.scene.scenes) {
+    game.scene.scenes.forEach(s => { if (s.scene.isPaused()) s.scene.resume() })
+  }
+}
+
+function handleRestart() {
+  closeControlPanel()
+  emit('resetGame')
+}
+
+function handleSaveGame() {
+  // 预留接口：未来接入数据库存档
+}
+
+function handleBackToMenu() {
+  closeControlPanel()
+  emit('backToMenu')
+}
+
 // 稀有度对应颜色
 function rarityColor(rarity) {
   switch (rarity) {
     case 'legendary': return '#FF6600'
     case 'epic': return '#CC44FF'
     case 'rare': return '#4488FF'
-    case 'lifeBerry': return '#44cc44' // 生命浆果 → 绿色
-    case 'manaBerry': return '#4488ff' // 魔力浆果 → 蓝色
     default: return '#FFD700' // common -> 金色
   }
 }
@@ -322,12 +371,24 @@ function onKeyDown(e) {
     // 通知 Phaser 场景暂停/恢复
     window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: backpackVisible.value } }))
   }
-  // 背包打开时阻止 Esc 之外的其他按键进入游戏
-  if (backpackVisible.value) {
-    if (e.key === 'Escape') {
+  // ESC 键：切换控制面板
+  if (e.key === 'Escape') {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+    // 如果背包打开，先关闭背包
+    if (backpackVisible.value) {
       closeBackpack()
+      return
     }
-    // 阻止所有游戏按键传递
+    // 切换控制面板
+    e.preventDefault()
+    if (controlPanelVisible.value) {
+      closeControlPanel()
+    } else {
+      openControlPanel()
+    }
+  }
+  // 背包打开时阻止其他按键进入游戏
+  if (backpackVisible.value) {
     if (['w','W','a','A','s','S','d','D','j','J',' ', 'h','H','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
       e.stopPropagation()
       e.stopImmediatePropagation()
@@ -339,30 +400,6 @@ function onKeyDown(e) {
 let mapLayout = null          // { rooms, roomMap, coords }
 let currentRoomName = ''      // 当前玩家所在房间名
 // --------------------------------
-
-// Helper: 按键映射 (保留不变)
-const keyToDir = (key) => {
-  switch (key) {
-    case 'ArrowUp':
-    case 'w':
-    case 'W':
-      return 'north'
-    case 'ArrowDown':
-    case 's':
-    case 'S':
-      return 'south'
-    case 'ArrowLeft':
-    case 'a':
-    case 'A':
-      return 'west'
-    case 'ArrowRight':
-    case 'd':
-    case 'D':
-      return 'east'
-    default:
-      return null
-  }
-}
 
 // ---------- 小地图核心函数 ----------
 
@@ -2767,230 +2804,6 @@ onMounted(() => {
             } catch (e) {}
           }
 
-          // 旧版 JustDown 攻击已禁用，短按横扫/突刺现在由蓄力状态机的松手路径统一处理
-          try {
-            if (false) {
-              scene._attackOnCooldown = true  // 攻击冷却开始：动画期间禁止再次攻击
-              const cfg = scene.attackConfig || {}
-
-              // helper: send attack command to backend for a specific monster
-              const attackMonster = async (monName) => {
-                try {
-                  const res = await fetch('/api/command', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'attack ' + monName })
-                  })
-                  const j = await res.json()
-                  emit('update', j)
-                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-                    scene.renderRoom(j.data)
-                  }
-                  if (j && j.message && j.message.includes('游戏结束')) {
-                    scene.showGameOver()
-                  }
-                } catch (e) {
-                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                }
-              }
-
-              // helper: check if a monster is inside the sweep sector (fan shape)
-              const isMonsterInSweep = (monster) => {
-                const monDx = monster.x - scene.player.x
-                const monDy = monster.y - scene.player.y
-                const dist = Math.sqrt(monDx * monDx + monDy * monDy)
-                if (dist > (cfg.radius || 110)) return false
-                const angleToMon = Math.atan2(monDy, monDx)
-                let angleDiff = angleToMon - scene.facingAngle
-                while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI
-                while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI
-                const halfSpan = Phaser.Math.DegToRad((cfg.angleDeg || 135) / 2)
-                return Math.abs(angleDiff) <= halfSpan
-              }
-
-              // helper: check if a monster is along the pierce line
-              const isMonsterInPierce = (monster, startX, startY, dirX, dirY, dist) => {
-                const monDx = monster.x - startX
-                const monDy = monster.y - startY
-                const along = monDx * dirX + monDy * dirY
-                if (along < 0 || along > dist) return false
-                const perpDist = Math.abs(monDx * (-dirY) + monDy * dirX)
-                const halfW = (cfg.pierceWidth || 12) / 2 + 15
-                return perpDist <= halfW
-              }
-
-              // determine attack type
-              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
-
-              // 收集当前房间所有存活怪物的位置快照，发往后端做命中判定
-              const monsterPositions = []
-              for (const mon of scene.monstersData) {
-                if (mon && mon.name && !mon.exploding) {
-                  monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
-                }
-              }
-
-              if (isShiftMove) {
-                // === PIERCE ATTACK ===
-                const startX = scene.player.x
-                const startY = scene.player.y
-                const dx = Math.cos(scene.facingAngle)
-                const dy = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
-                const pr = scene.playerRadius || 10
-                const targetX = Phaser.Math.Clamp(startX + dx * dist, rb.left + pr, rb.right - pr)
-                const targetY = Phaser.Math.Clamp(startY + dy * dist, rb.top + pr, rb.bottom - pr)
-
-                scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
-
-                // ---- 突刺击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
-                const PIERCE_KNOCKBACK = 40
-                const pierceKnockbacks = []
-                for (const mon of scene.monstersData) {
-                  if (!mon || !mon.circ || mon.exploding) continue
-                  const mdx = mon.x - startX
-                  const mdy = mon.y - startY
-                  const along = mdx * dx + mdy * dy
-                  if (along < 0 || along > 120) continue
-                  const perp = Math.abs(mdx * (-dy) + mdy * dx)
-                  if (perp > 24) continue
-                  pierceKnockbacks.push({ name: mon.name, pushX: dx * PIERCE_KNOCKBACK, pushY: dy * PIERCE_KNOCKBACK })
-                }
-                scene._pendingKnockbacks = pierceKnockbacks
-                try {
-                  const g2 = scene.add.graphics()
-                  const extra = cfg.pierceDistanceExpand || 1.0
-                  const effTargetX = Phaser.Math.Clamp(startX + dx * dist * extra, rb.left + pr, rb.right - pr)
-                  const effTargetY = Phaser.Math.Clamp(startY + dy * dist * extra, rb.top + pr, rb.bottom - pr)
-                  const mx = (startX + effTargetX) / 2, my = (startY + effTargetY) / 2
-                  const w = cfg.pierceWidth || 12
-                  const px = -dy, py = dx
-                  const hx = px * (w/2), hy = py * (w/2)
-                  g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
-                  g2.fillPoints([
-                    { x: effTargetX, y: effTargetY },
-                    { x: mx + hx, y: my + hy },
-                    { x: startX, y: startY },
-                    { x: mx - hx, y: my - hy }
-                  ], true)
-                  scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
-                } catch (e) {}
-              } else {
-                // === SWEEP ATTACK (enhanced visuals) ===
-                const mainGfx = scene.add.graphics()
-                const fireGfx = scene.add.graphics()
-                const progress = { t: 0 }
-                const duration = scene.attackConfig.sweepDuration || 160
-
-                scene.drawArcSlash(mainGfx, 0)
-                scene.drawFireDistortion(fireGfx, 0)
-                scene.spawnAttackParticles(0, 20)
-                scene.spawnShockwave()
-                if (scene.cameras && scene.cameras.main) {
-                  scene.cameras.main.shake(120, 0.005)
-                }
-
-                // ---- 横扫击退记录：先标记命中怪物，等 renderRoom 后再执行 tween ----
-                // 根据怪物类型分级击退：普通35px，精英25px，领袖15px
-                const SWEEP_KB_NORMAL = 35
-                const SWEEP_KB_ELITE  = 25
-                const SWEEP_KB_BOSS   = 15
-                const sweepKnockbacks = []
-                for (const mon of scene.monstersData) {
-                  if (!mon || !mon.circ || mon.exploding) continue
-                  const mdx = mon.x - scene.player.x
-                  const mdy = mon.y - scene.player.y
-                  const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
-                  if (mdist > 120 || mdist < 0.01) continue
-                  const angleToMon = Math.atan2(mdy, mdx)
-                  let diff = angleToMon - scene.facingAngle
-                  while (diff > Math.PI) diff -= 2 * Math.PI
-                  while (diff < -Math.PI) diff += 2 * Math.PI
-                  if (Math.abs(diff) > Math.PI * 67.5 / 180) continue
-                  const nx = mdx / mdist
-                  const ny = mdy / mdist
-                  let kbDist = SWEEP_KB_NORMAL
-                  if (mon.type === 1) kbDist = SWEEP_KB_ELITE
-                  else if (mon.type === 2) kbDist = SWEEP_KB_BOSS
-                  sweepKnockbacks.push({ name: mon.name, pushX: nx * kbDist, pushY: ny * kbDist })
-                }
-                scene._pendingKnockbacks = sweepKnockbacks
-
-                scene.tweens.add({
-                  targets: progress,
-                  t: 1,
-                  duration: duration,
-                  ease: 'Cubic.easeOut',
-                  onUpdate: () => {
-                    const t = progress.t
-                    scene.drawArcSlash(mainGfx, t, 0.95)
-                    scene.drawFireDistortion(fireGfx, t)
-                    if (t > 0.1 && Math.random() < 0.5) {
-                      const ghost = scene.add.graphics()
-                      scene.drawArcSlash(ghost, t, 0.3)
-                      scene.tweens.add({ targets: ghost, alpha: 0, duration: 80, onComplete: () => ghost.destroy() })
-                    }
-                    if (Math.random() < 0.5 && t > 0.15 && t < 0.9) {
-                      scene.spawnAttackParticles(t, 4)
-                    }
-                  },
-                  onComplete: () => {
-                    scene.spawnAttackParticles(1, 15)
-                    scene.tweens.add({ targets: mainGfx, alpha: 0, duration: 100, ease: 'Cubic.easeIn', onComplete: () => mainGfx.destroy() })
-                    scene.tweens.add({ targets: fireGfx, alpha: 0, duration: 150, ease: 'Cubic.easeIn', onComplete: () => { fireGfx.destroy(); scene._attackOnCooldown = false } })
-                  }
-                })
-              }
-
-              // 单次调用后端，由后端统一做命中判定
-              ;(async () => {
-                try {
-                  const res = await fetch('/api/attack', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      attackType: isShiftMove ? 'pierce' : 'sweep',
-                      playerX: scene.player.x,
-                      playerY: scene.player.y,
-                      facingAngle: scene.facingAngle,
-                      monsters: monsterPositions
-                    })
-                  })
-                  const j = await res.json()
-                  emit('update', j)
-                  if (j && j.data) {
-                    scene.renderRoom(j.data)
-                    // ---- 在 renderRoom 重建怪物后执行击退动画 ----
-                    if (scene._pendingKnockbacks && scene._pendingKnockbacks.length > 0) {
-                      const kbs = scene._pendingKnockbacks
-                      scene._pendingKnockbacks = null
-                      const knockPr = scene.playerRadius || 14
-                      for (const kb of kbs) {
-                        const mon = scene.monstersData.find(m => m && m.name === kb.name)
-                        if (!mon || !mon.circ || mon.exploding) continue
-                        const pushX = Phaser.Math.Clamp(mon.x + kb.pushX, rb.left + knockPr, rb.right - knockPr)
-                        const pushY = Phaser.Math.Clamp(mon.y + kb.pushY, rb.top + knockPr, rb.bottom - knockPr)
-                        scene.tweens.add({
-                          targets: { x: mon.x, y: mon.y },
-                          x: pushX, y: pushY, duration: 150, ease: 'Cubic.easeOut',
-                          onUpdate: function (tween) {
-                            const t = tween.targets[0]
-                            mon.x = t.x; mon.y = t.y
-                            try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
-                            try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
-                          }
-                        })
-                      }
-                    }
-                  }
-                  if (j && j.message && j.message.includes('游戏结束')) {
-                    scene.showGameOver()
-                  }
-                } catch (e) {
-                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                }
-              })()
-            }
-          } catch (e) { /* ignore input issues */ }
-
           // 玩家边界限制
           const pr2 = scene.playerRadius || 14
           scene.player.x = Phaser.Math.Clamp(scene.player.x, rb.left + pr2, rb.right - pr2)
@@ -3828,5 +3641,113 @@ onBeforeUnmount(() => {
 .btn-discard:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* ==================== 控制面板样式 ==================== */
+.control-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.control-panel {
+  position: relative;
+  width: 300px;
+  background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
+  border: 2px solid rgba(180, 150, 80, 0.5);
+  border-radius: 16px;
+  overflow: hidden;
+  padding: 32px 28px 28px;
+}
+
+/* 右上角关闭按钮 */
+.control-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: transparent;
+  border: 1px solid rgba(180, 150, 80, 0.3);
+  color: #998866;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+  z-index: 2;
+}
+.control-close-btn:hover {
+  background: rgba(200, 60, 60, 0.12);
+  border-color: rgba(200, 60, 60, 0.4);
+  color: #cc6666;
+}
+
+/* 标题 */
+.control-title {
+  font-size: 20px;
+  font-weight: bold;
+  color: #e8d8b0;
+  text-align: center;
+  letter-spacing: 2px;
+  margin: 0 0 20px;
+  padding-top: 8px;
+}
+
+/* 按钮容器 */
+.control-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 按钮通用 */
+.control-btn {
+  padding: 12px 20px;
+  font-size: 15px;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+  letter-spacing: 1px;
+  border: 1px solid;
+}
+
+/* 重新开始 */
+.control-btn-restart {
+  background: #1e2a38;
+  color: #c8d8e8;
+  border-color: rgba(140, 170, 210, 0.25);
+}
+.control-btn-restart:hover {
+  background: #2a3a4e;
+  border-color: rgba(160, 190, 220, 0.4);
+}
+
+/* 保存游戏 */
+.control-btn-save {
+  background: #1a2418;
+  color: #667766;
+  border-color: rgba(100, 130, 100, 0.15);
+  cursor: not-allowed;
+}
+
+/* 返回菜单 */
+.control-btn-menu {
+  background: #2a1a0e;
+  color: #e0c898;
+  border-color: rgba(200, 160, 80, 0.3);
+}
+.control-btn-menu:hover {
+  background: #3a2510;
+  border-color: rgba(220, 180, 100, 0.45);
 }
 </style>

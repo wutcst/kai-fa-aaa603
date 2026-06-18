@@ -625,6 +625,10 @@ onMounted(() => {
         scene.doorRects = []
         scene.monstersData = []
         scene.itemsData = []
+        // encounter event arrays (initialized early to avoid undefined errors)
+        scene.encounterIndicators = []
+        scene.encounterGroup = scene.add.group()
+        scene.encounterData = null
         scene.roomBoundsGraphic = scene.add.graphics()
         scene.bgColor = 0x6bbf3a
         scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
@@ -1200,6 +1204,11 @@ onMounted(() => {
           scene.shopNpcData = null
           scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.shopIndicators = []
+          // clear previous encounter event sprites
+          if (scene.encounterGroup) { scene.encounterGroup.clear(true, true) }
+          scene.encounterData = null
+          scene.encounterIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.encounterIndicators = []
           // clear previous dropped items
           if (scene.droppedItemsGroup) {
             scene.droppedItemsGroup.clear(true, true)
@@ -1440,6 +1449,65 @@ onMounted(() => {
             })
             scene.shopNpcCircle = npc
             scene.shopNpcLabel = npcLabel
+          }
+
+          // ---------- 奇遇事件渲染（仅奇遇房间） ----------
+          const isEncounter = roomInfo.isEncounter || roomType === 'ENCOUNTER'
+          const randomEvent = roomInfo.randomEvent
+          scene.encounterData = null
+          if (!scene.encounterGroup) scene.encounterGroup = scene.add.group()
+          // 喷泉允许反复交互，即使 used=true 也继续渲染
+          const showEncounter = isEncounter && randomEvent && (!randomEvent.used || randomEvent.type === 'FOUNTAIN')
+          if (showEncounter) {
+            const eventType = randomEvent.type
+            const eventColor = randomEvent.color || 0xDAA520
+            const eventDisplayName = randomEvent.displayName || '奇遇'
+            const ex = rectCenterX
+            const ey = rectCenterY
+            const eSize = 32
+
+            let eventSprite
+            if (eventType === 'WOODEN_CHEST' || eventType === 'GOLDEN_CHEST' || eventType === 'CHEST') {
+              // 宝箱：金色/棕色方块图案
+              const chestColor = (eventType === 'GOLDEN_CHEST') ? 0xFFD700 : eventColor
+              eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, chestColor).setStrokeStyle(3, 0xffffff)
+              // 宝箱盖线条
+              const lidLine = scene.add.line(ex - eSize/2 + 2, ey - 4, 0, ex + eSize/2 - 2, ey - 4, 0, 0x000000, 0.5)
+              scene.encounterGroup.add(lidLine)
+              // 锁孔
+              const lockCircle = scene.add.circle(ex, ey + 4, 3, 0x000000)
+              scene.encounterGroup.add(lockCircle)
+            } else if (eventType === 'FOUNTAIN') {
+              // 喷泉：蓝色圆形+内部波浪
+              eventSprite = scene.add.circle(ex, ey, eSize / 2, eventColor).setStrokeStyle(3, 0xffffff)
+              // 内部装饰点
+              const innerCircle = scene.add.circle(ex, ey, eSize / 4, 0x0088aa)
+              scene.encounterGroup.add(innerCircle)
+            } else if (eventType === 'ELITE_ENEMY') {
+              // 精英敌人：红色感叹号标记（怪物本身已在monsters中渲染）
+              eventSprite = scene.add.star(ex, ey - 30, 5, 8, 16, 0xFF0000).setStrokeStyle(2, 0xffffff)
+            } else {
+              // 通用事件：彩色方块
+              eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, eventColor).setStrokeStyle(3, 0xffffff)
+            }
+            scene.encounterGroup.add(eventSprite)
+
+            // 事件名称标签
+            const eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
+              font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+            }).setOrigin(0, 0)
+            scene.encounterGroup.add(eventLabel)
+
+            scene.encounterData = {
+              type: eventType,
+              displayName: eventDisplayName,
+              color: eventColor,
+              x: ex, y: ey,
+              size: eSize,
+              sprite: eventSprite,
+              label: eventLabel,
+              used: randomEvent.used || false
+            }
           }
 
           // ---------- 掉落物渲染 ----------
@@ -3238,6 +3306,40 @@ onMounted(() => {
             }
           }
 
+          // ---------- 奇遇事件交互检测 ----------
+          const ENCOUNTER_INTERACT_RANGE = 50
+          let nearEncounter = false
+          // 喷泉允许反复交互，即使 used=true 也继续检测
+          if (scene.encounterData && (!scene.encounterData.used || scene.encounterData.type === 'FOUNTAIN')) {
+            const dx = scene.player.x - scene.encounterData.x
+            const dy = scene.player.y - scene.encounterData.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist < ENCOUNTER_INTERACT_RANGE) {
+              nearEncounter = true
+            }
+          }
+
+          // 更新奇遇事件白色倒三角指示器
+          scene.encounterIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.encounterIndicators = []
+          if (nearEncounter) {
+            const triSize = 14
+            const triY = scene.encounterData.y - scene.encounterData.size / 2 - triSize - 4
+            const triX = scene.encounterData.x
+            const triangle = scene.add.triangle(triX, triY, 0, triSize, triSize, 0, triSize * 2, triSize, 0xffffff, 0.9)
+            triangle.setOrigin(0.5, 0.5)
+            triangle.setScale(1, -1)
+            scene.tweens.add({
+              targets: triangle,
+              alpha: 0.4,
+              duration: 500,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+            })
+            scene.encounterIndicators.push(triangle)
+          }
+
           // 更新商店NPC白色倒三角指示器
           scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.shopIndicators = []
@@ -3344,6 +3446,69 @@ onMounted(() => {
               } else if (nearShopNpc) {
                 // 与商人交互：弹出购物/售卖选项菜单
                 scene.showShopMenu()
+              } else if (nearEncounter && scene.encounterData) {
+                // 奇遇事件交互
+                const eventType = scene.encounterData.type
+                if (eventType === 'ELITE_ENEMY') {
+                  // 精英敌人事件：发送 interact event 获取战斗提示
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'interact event' })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
+                      }
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                  })()
+                } else {
+                  // 宝箱/喷泉事件：发送 interact event
+                  const eventX = scene.encounterData.x
+                  const eventY = scene.encounterData.y
+                  const eventColor = scene.encounterData.color
+                  const eventSize = scene.encounterData.size
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'interact event' })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        // 在 renderRoom 前提取金币数量（renderRoom 会清空 encounterData）
+                        const re = j.data.randomEvent
+                        const rewardGold = (re && re.rewardGold) ? re.rewardGold : 0
+                        scene.renderRoom(j.data)
+                        // 宝箱/喷泉特效光芒
+                        if (eventColor) {
+                          scene.spawnAltarGlow(eventX, eventY, eventSize, eventColor, 5000)
+                        }
+                        // 宝箱事件：显示浮动金币文本
+                        if (rewardGold > 0) {
+                          const flyText = scene.add.text(eventX, eventY - 40, '你获得了' + rewardGold + '枚金币！', {
+                            font: 'bold 18px Arial', fill: '#FFD700', stroke: '#000000', strokeThickness: 3
+                          }).setOrigin(0.5).setDepth(210)
+                          scene.tweens.add({
+                            targets: flyText,
+                            y: eventY - 100,
+                            alpha: 0,
+                            duration: 2000,
+                            delay: 500,
+                            onComplete: () => { try { flyText.destroy() } catch (e) {} }
+                          })
+                        }
+                      }
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                  })()
+                }
               } else if (closestAltar && !scene.altarUsedInRoom && !closestAltar.activated) {
                 const altarType = closestAltar.type.toLowerCase()
                 ;(async () => {

@@ -191,7 +191,35 @@ public class SaveService {
             roomMap.put(r.getName(), r);
         }
 
-        // 8. 恢复怪物血量
+        // 8. 先应用房间状态（monstersCleared/altarUsed/randomEventUsed）
+        //    必须在 initRandomEvent / spawnMonsters 之前，避免在已清除的房间里重新生成怪物
+        List<RoomStateEntity> roomStates = roomStateRepo.findBySaveId(saveId);
+        for (RoomStateEntity rs : roomStates) {
+            Room room = roomMap.get(rs.getRoomName());
+            if (room != null) {
+                room.setMonstersCleared(rs.isMonstersCleared());
+                room.setAltarUsed(rs.isAltarUsed());
+            }
+        }
+
+        // 9. 初始化奇遇房间的随机事件（依赖步骤8的monstersCleared状态）
+        for (Room room : game.getAllRooms()) {
+            if (room.getRoomType() == RoomType.ENCOUNTER) {
+                room.initRandomEvent();
+            }
+        }
+
+        // 10. 应用 randomEventUsed 标记（必须在initRandomEvent之后）
+        for (RoomStateEntity rs : roomStates) {
+            Room room = roomMap.get(rs.getRoomName());
+            if (room != null && rs.isRandomEventUsed()) {
+                if (room.getRandomEvent() != null) {
+                    room.getRandomEvent().setUsed(true);
+                }
+            }
+        }
+
+        // 11. 恢复怪物血量
         List<MonsterStateEntity> monsterStates = monsterStateRepo.findBySaveId(saveId);
         for (MonsterStateEntity ms : monsterStates) {
             Room room = roomMap.get(ms.getRoomName());
@@ -210,23 +238,7 @@ public class SaveService {
             }
         }
 
-        // 9. 应用房间状态
-        List<RoomStateEntity> roomStates = roomStateRepo.findBySaveId(saveId);
-        for (RoomStateEntity rs : roomStates) {
-            Room room = roomMap.get(rs.getRoomName());
-            if (room != null) {
-                room.setMonstersCleared(rs.isMonstersCleared());
-                room.setAltarUsed(rs.isAltarUsed());
-                if (rs.isRandomEventUsed()) {
-                    room.initRandomEvent();  // 确保事件已初始化
-                    if (room.getRandomEvent() != null) {
-                        room.getRandomEvent().setUsed(true);
-                    }
-                }
-            }
-        }
-
-        // 9. 应用商店售出状态
+        // 12. 应用商店售出状态
         List<ShopStateEntity> shopStates = shopStateRepo.findBySaveId(saveId);
         for (ShopStateEntity ss : shopStates) {
             Room room = roomMap.get(ss.getRoomName());

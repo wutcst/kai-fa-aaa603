@@ -4,6 +4,8 @@ import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.model.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * 交互命令：interact <altarType>
@@ -28,14 +30,22 @@ public class InteractCommand implements Command {
 
         Room current = game.getCurrentRoom();
 
-        // ======== 奇遇房间随机事件交互 ========
+        // ---- 奇遇房间随机事件交互 ----
         if (current.getRoomType() == RoomType.ENCOUNTER) {
             return handleRandomEvent(player, current);
         }
 
-        // ======== 篝火房间祭坛交互（原有逻辑） ========
+        // ---- 篝火房间祭坛交互 ----
         if (current.getRoomType() != RoomType.CAMPFIRE) {
             return GameResponse.error("当前房间没有可交互的对象。");
+        }
+
+        // ---- 博学祭坛第二阶段：玩家选择增益 ----
+        Altar wisdomAltarForSelect = current.getAltar(AltarType.WISDOM);
+        if (wisdomAltarForSelect != null && wisdomAltarForSelect.isActivated()
+                && wisdomAltarForSelect.getPendingBoons() != null
+                && !wisdomAltarForSelect.getPendingBoons().isEmpty()) {
+            return handleWisdomBoonSelection(player, current, wisdomAltarForSelect);
         }
 
         if (altarTypeStr == null || altarTypeStr.isBlank()) {
@@ -88,11 +98,60 @@ public class InteractCommand implements Command {
                         .append("，防御 +").append(defBonus).append("，魔抗 +10。");
                 break;
             case WISDOM:
-                sb.append("祭坛散发出蓝色的光芒，请从以下增益中选择一项...");
+                // 随机选取3个增益供玩家选择
+                List<WisdomBoon> boons = WisdomBoon.randomPick(3);
+                altar.setPendingBoons(boons);
+                sb.append("祭坛散发出蓝色的光芒，请从以下增益中选择一项：\n");
+                for (int i = 0; i < boons.size(); i++) {
+                    WisdomBoon b = boons.get(i);
+                    sb.append("  ").append(i + 1).append(". 【").append(b.getDisplayName())
+                            .append("】").append(b.getDescription()).append("\n");
+                }
+                sb.append("\n请输入 interact wisdom <增益名称> 来选择增益。");
                 break;
         }
 
         return GameResponse.success(sb.toString(), current.getFullInfo());
+    }
+
+    /**
+     * 处理博学祭坛的第二阶段：玩家从三个增益中选择一个。
+     */
+    private GameResponse handleWisdomBoonSelection(Player player, Room current, Altar wisdomAltar) {
+        if (altarTypeStr == null || altarTypeStr.isBlank()
+                || altarTypeStr.equalsIgnoreCase("wisdom")) {
+            // 玩家未指定增益名或重复输入wisdom，重新展示选项
+            StringBuilder sb = new StringBuilder();
+            sb.append("请从以下增益中选择一项：\n");
+            List<WisdomBoon> boons = wisdomAltar.getPendingBoons();
+            for (int i = 0; i < boons.size(); i++) {
+                WisdomBoon b = boons.get(i);
+                sb.append("  ").append(i + 1).append(". 【").append(b.getDisplayName())
+                        .append("】").append(b.getDescription()).append("\n");
+            }
+            sb.append("\n请输入 interact wisdom <增益名称> 来选择增益。");
+            return GameResponse.success(sb.toString(), current.getFullInfo());
+        }
+
+        // 尝试匹配输入到增益名称或显示名
+        for (WisdomBoon boon : wisdomAltar.getPendingBoons()) {
+            if (altarTypeStr.equalsIgnoreCase(boon.name())
+                    || altarTypeStr.equalsIgnoreCase(boon.getDisplayName())) {
+                String result = player.applyWisdomBoon(boon);
+                wisdomAltar.getPendingBoons().clear();
+                StringBuilder sb = new StringBuilder();
+                sb.append("你选择了【").append(boon.getDisplayName()).append("】增益！\n");
+                sb.append(result);
+                return GameResponse.success(sb.toString(), current.getFullInfo());
+            }
+        }
+
+        // 未匹配到有效增益
+        String validNames = wisdomAltar.getPendingBoons().stream()
+                .map(WisdomBoon::getDisplayName)
+                .collect(Collectors.joining("、"));
+        return GameResponse.error("无效的增益名称：" + altarTypeStr
+                + "。可选：使用 displayName（" + validNames + "）或英文名。");
     }
 
     /**
@@ -121,7 +180,7 @@ public class InteractCommand implements Command {
         StringBuilder sb = new StringBuilder();
 
         switch (event.getType()) {
-            // ===== 旧版事件 =====
+            // 旧版事件
             case CHEST:
                 handleChest(player, sb);
                 break;
@@ -134,7 +193,7 @@ public class InteractCommand implements Command {
             case BLACKSMITH:
                 return showBlacksmithOptions(player, current, event);
 
-            // ===== 新版奇遇事件 =====
+            // 新版奇遇事件
             case WOODEN_CHEST:
                 handleWoodenChest(player, event, sb);
                 break;
@@ -337,9 +396,6 @@ public class InteractCommand implements Command {
         event.setBlacksmithTargetItem(String.join(",", availableItems));
 
         // 这里不标记为used，等待玩家选择具体物品后再使用
-        // 但我们需要返回数据，所以创建一个包含事件信息和可选列表的响应
-        // 注意：不调用 current.useRandomEvent()，等玩家选完再标记
-        // 在返回数据中加入 blacksmithItems 列表，供前端渲染可点击按钮
         Map<String, Object> extendedData = new HashMap<>(current.getFullInfo());
         extendedData.put("blacksmithItems", availableItems);
         return GameResponse.success(sb.toString(), extendedData);

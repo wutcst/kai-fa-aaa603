@@ -85,39 +85,40 @@
   </div>
 </template>
 
-<script>
+<script setup>
 import { ref, onMounted } from 'vue'
 
-export default {
-  emits: ['start-game', 'load-game'],
-  setup() {
-    const showAbout = ref(false)
-    const particles = ref([])
+defineEmits(['start-game', 'load-game'])
 
-    // 生成飘浮粒子
-    function generateParticles() {
-      const arr = []
-      for (let i = 0; i < 60; i++) {
-        arr.push({
-          id: i,
-          x: Math.random() * 100,
-          y: Math.random() * 100,
-          size: 2 + Math.random() * 6,
-          delay: Math.random() * 8,
-          duration: 6 + Math.random() * 8,
-          opacity: 0.15 + Math.random() * 0.4,
-        })
-      }
-      particles.value = arr
-    }
+const showAbout = ref(false)
+const particles = ref([])
 
-    onMounted(() => {
-      generateParticles()
-    })
-
-    return { showAbout, particles }
-  }
+// 粒子配置常量
+const PARTICLE_COUNT = 60
+const PARTICLE_CONFIG = {
+  sizeMin: 2, sizeMax: 8,
+  delayMax: 8,
+  durMin: 6, durMax: 14,
+  opacityMin: 0.15, opacityMax: 0.55,
 }
+
+// 生成飘浮粒子
+function generateParticles() {
+  const { sizeMin, sizeMax, delayMax, durMin, durMax, opacityMin, opacityMax } = PARTICLE_CONFIG
+  particles.value = Array.from({ length: PARTICLE_COUNT }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    size: sizeMin + Math.random() * (sizeMax - sizeMin),
+    delay: Math.random() * delayMax,
+    duration: durMin + Math.random() * (durMax - durMin),
+    opacity: opacityMin + Math.random() * (opacityMax - opacityMin),
+  }))
+}
+
+onMounted(() => {
+  generateParticles()
+})
 </script>
 
 <style scoped>

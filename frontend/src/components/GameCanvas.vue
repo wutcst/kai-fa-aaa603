@@ -155,7 +155,7 @@
         <h2 class="control-title">⚙ 游戏控制</h2>
         <div class="control-body">
           <button class="control-btn control-btn-restart" @click="handleRestart">🔄 重新开始</button>
-          <button class="control-btn control-btn-save" @click="handleSaveGame" disabled>💾 保存游戏（开发中）</button>
+          <button class="control-btn control-btn-save" @click="handleSaveGame">💾 保存游戏</button>
           <button class="control-btn control-btn-menu" @click="handleBackToMenu">🚪 返回菜单</button>
         </div>
       </div>
@@ -166,34 +166,8 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import Phaser from 'phaser'
-import {
-  createPlayerContainer,
-  drawGoblin,
-  drawSlime,
-  drawSkeleton,
-  drawWerewolf,
-  drawOgre,
-  drawFlameSlime,
-  drawShadowKnight,
-  drawHellHound,
-  drawGargoyle,
-  drawDarkMage,
-  drawGiantSpider,
-  drawDragon,
-  drawDemonLord,
-  drawLichKing,
-  drawGolem,
-  drawShadowKing,
-  drawChest,
-  drawMaiden,
-  drawAngel,
-  drawBlacksmith,
-  drawShopMerchant,
-  getMonsterDrawer,
-  getEncounterDrawer
-} from '../entity/EntityDrawer.js'
 
-const emit = defineEmits(['update', 'resetGame', 'backToMenu'])
+const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
@@ -229,7 +203,8 @@ function handleRestart() {
 }
 
 function handleSaveGame() {
-  // 预留接口：未来接入数据库存档
+  closeControlPanel()
+  emit('showSaveSlots')
 }
 
 function handleBackToMenu() {
@@ -650,6 +625,10 @@ onMounted(() => {
         scene.doorRects = []
         scene.monstersData = []
         scene.itemsData = []
+        // encounter event arrays (initialized early to avoid undefined errors)
+        scene.encounterIndicators = []
+        scene.encounterGroup = scene.add.group()
+        scene.encounterData = null
         scene.roomBoundsGraphic = scene.add.graphics()
         scene.bgColor = 0x6bbf3a
         scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
@@ -1124,9 +1103,8 @@ onMounted(() => {
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
         scene.playerRadius = 10
-        // 使用骑士Container替换简单圆点
-        scene.player = createPlayerContainer(scene, 400, 320)
-        scene.playerLabel = scene.add.text(400 - 20, 320 + 28, 'You', { font: '12px Arial', fill: '#fff' })
+        scene.player = scene.add.circle(400, 320, scene.playerRadius, 0x00aaff).setStrokeStyle(2, 0x000000)
+        scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
         scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
@@ -1226,14 +1204,11 @@ onMounted(() => {
           scene.shopNpcData = null
           scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.shopIndicators = []
-          // 清理奇遇NPC状态
-          if (scene.encounterNpcCircle) { try { scene.encounterNpcCircle.destroy() } catch (e) {}; scene.encounterNpcCircle = null }
-          if (scene.encounterNpcLabel) { try { scene.encounterNpcLabel.destroy() } catch (e) {}; scene.encounterNpcLabel = null }
-          scene.encounterNpcData = null
+          // clear previous encounter event sprites
+          if (scene.encounterGroup) { scene.encounterGroup.clear(true, true) }
+          scene.encounterData = null
           scene.encounterIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.encounterIndicators = []
-          if (scene.encounterOverlay) { try { scene.encounterOverlay.destroy() } catch (e) {}; scene.encounterOverlay = null }
-          scene._encounterDialogRenderData = null
           // clear previous dropped items
           if (scene.droppedItemsGroup) {
             scene.droppedItemsGroup.clear(true, true)
@@ -1246,10 +1221,13 @@ onMounted(() => {
           scene.titleText.setText(roomInfo.name || '未知房间')
           scene.descText.setText(roomInfo.description || '')
           // 只在房间真正切换时才更换背景，避免攻击等操作导致背景闪变
-          if (roomInfo.name && roomInfo.name !== scene._currentRoomName) {
+          // 同时保存房间变更标记，供后续 _lastMoveDir 定位逻辑使用
+          const roomChanged = roomInfo.name && roomInfo.name !== scene._currentRoomName
+          if (roomChanged) {
             try { scene.setBgForRoom && scene.setBgForRoom(roomInfo) } catch (e) {}
             scene._currentRoomName = roomInfo.name
           }
+          scene._lastRoomChanged = roomChanged
 
           const exitsStr = roomInfo.exits || ''
           const exits = exitsStr.split(/\s+/).filter(s => s)
@@ -1312,7 +1290,7 @@ onMounted(() => {
           try { scene.updateBuffDisplay(roomInfo.activeEffects) } catch (e) {}
 
           const opposite = { north: 'south', south: 'north', east: 'west', west: 'east' }
-          if (scene._lastMoveDir) {
+          if (scene._lastMoveDir && scene._lastRoomChanged) {
             const from = scene._lastMoveDir
             const to = opposite[from]
             if (to && exits.includes(to)) {
@@ -1327,7 +1305,7 @@ onMounted(() => {
               targetX = Phaser.Math.Clamp(targetX, rectLeft + pr, rectLeft + roomW - pr)
               targetY = Phaser.Math.Clamp(targetY, rectTop + pr, rectTop + roomH - pr)
               try { scene.player.setPosition(targetX, targetY) } catch (e) { scene.player.x = targetX; scene.player.y = targetY }
-              try { scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28) } catch (e) {}
+              try { scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 18) } catch (e) {}
             }
             scene._lastMoveDir = null
           }
@@ -1361,15 +1339,10 @@ onMounted(() => {
               x = saved.x
               y = saved.y
             }
-            // 使用 EntityDrawer 绘制怪物形象（统一1.5倍缩放）
-            const drawer = getMonsterDrawer(mon.name, mon.specialType)
-            const circ = scene.add.graphics()
-            circ.setPosition(x, y)
-            if (drawer) drawer(circ, 1.5)
-            circ.setDepth(20)
+            const circleColor = 0xaa0000
+            const circ = scene.add.circle(x, y, 20, circleColor).setStrokeStyle(2, 0x000000)
             const labelText = mon.name
-            // 标签Y偏移统一调整为34（实体放大后）
-            const label = scene.add.text(x - 32, y + 34, labelText, { font: '14px Arial', fill: '#fff' })
+            const label = scene.add.text(x - 32, y + 24, labelText, { font: '14px Arial', fill: '#fff' })
 
             // 血条背景（深色）— 放在怪物圆点上方
             const hpBarW = 54, hpBarH = 8
@@ -1470,58 +1443,70 @@ onMounted(() => {
               shopInitialized: roomInfo.shopInitialized || false,
               shopItems: shopItems
             }
-            // 使用 EntityDrawer 绘制商人形象（统一1.5倍缩放）
-            const npc = scene.add.graphics()
-            npc.setPosition(rectCenterX, rectCenterY)
-            if (typeof drawShopMerchant !== 'undefined') drawShopMerchant(npc, 1.5)
-            npc.setDepth(20)
-            const npcLabel = scene.add.text(rectCenterX - 24, rectCenterY + 30, '商人', {
+            const npc = scene.add.circle(rectCenterX, rectCenterY, npcRadius, 0xFFD700).setStrokeStyle(2, 0x000000)
+            const npcLabel = scene.add.text(rectCenterX - 24, rectCenterY + npcRadius + 6, '商人', {
               font: '12px Arial', fill: '#FFD700'
             })
             scene.shopNpcCircle = npc
             scene.shopNpcLabel = npcLabel
           }
 
-          // ---------- 奇遇NPC渲染（仅奇遇房间，已使用的不再显示） ----------
+          // ---------- 奇遇事件渲染（仅奇遇房间） ----------
           const isEncounter = roomInfo.isEncounter || roomType === 'ENCOUNTER'
-          if (isEncounter && roomInfo.randomEvent) {
-            const event = roomInfo.randomEvent
-            const evUsed = event.used || false
-            const evType = event.type
-            // 仅当事件未被使用时渲染NPC图形
-            if (!evUsed) {
-              const encounterDrawer = getEncounterDrawer(evType)
-              const npcX = rectCenterX
-              const npcY = rectCenterY - 10
-              const npc = scene.add.graphics()
-              npc.setPosition(npcX, npcY)
-              if (encounterDrawer) encounterDrawer(npc, 1.5)
-              npc.setDepth(20)
-              // 奇遇NPC名称标签
-              const npcLabel = scene.add.text(npcX - 24, npcY + 30, event.displayName || evType, {
-                font: '12px Arial', fill: '#ffffff'
-              })
-              scene.encounterNpcCircle = npc
-              scene.encounterNpcLabel = npcLabel
-              scene.encounterNpcData = {
-                x: npcX,
-                y: npcY,
-                radius: 22,
-                eventType: evType,
-                displayName: event.displayName || evType,
-                used: false
-              }
+          const randomEvent = roomInfo.randomEvent
+          scene.encounterData = null
+          if (!scene.encounterGroup) scene.encounterGroup = scene.add.group()
+          // 喷泉允许反复交互，即使 used=true 也继续渲染
+          const showEncounter = isEncounter && randomEvent && (!randomEvent.used || randomEvent.type === 'FOUNTAIN')
+          if (showEncounter) {
+            const eventType = randomEvent.type
+            const eventColor = randomEvent.color || 0xDAA520
+            const eventDisplayName = randomEvent.displayName || '奇遇'
+            const ex = rectCenterX
+            const ey = rectCenterY
+            const eSize = 32
+
+            let eventSprite
+            if (eventType === 'WOODEN_CHEST' || eventType === 'GOLDEN_CHEST' || eventType === 'CHEST') {
+              // 宝箱：金色/棕色方块图案
+              const chestColor = (eventType === 'GOLDEN_CHEST') ? 0xFFD700 : eventColor
+              eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, chestColor).setStrokeStyle(3, 0xffffff)
+              // 宝箱盖线条
+              const lidLine = scene.add.line(ex - eSize/2 + 2, ey - 4, 0, ex + eSize/2 - 2, ey - 4, 0, 0x000000, 0.5)
+              scene.encounterGroup.add(lidLine)
+              // 锁孔
+              const lockCircle = scene.add.circle(ex, ey + 4, 3, 0x000000)
+              scene.encounterGroup.add(lockCircle)
+            } else if (eventType === 'FOUNTAIN') {
+              // 喷泉：蓝色圆形+内部波浪
+              eventSprite = scene.add.circle(ex, ey, eSize / 2, eventColor).setStrokeStyle(3, 0xffffff)
+              // 内部装饰点
+              const innerCircle = scene.add.circle(ex, ey, eSize / 4, 0x0088aa)
+              scene.encounterGroup.add(innerCircle)
+            } else if (eventType === 'ELITE_ENEMY') {
+              // 精英敌人：红色感叹号标记（怪物本身已在monsters中渲染）
+              eventSprite = scene.add.star(ex, ey - 30, 5, 8, 16, 0xFF0000).setStrokeStyle(2, 0xffffff)
             } else {
-              // 事件已使用，不渲染图形，但保留 encounterNpcData 标记 used=true
-              // 防止碰撞回避或其他代码报错
-              scene.encounterNpcData = {
-                x: rectCenterX,
-                y: rectCenterY - 10,
-                radius: 0,
-                eventType: evType,
-                displayName: event.displayName || evType,
-                used: true
-              }
+              // 通用事件：彩色方块
+              eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, eventColor).setStrokeStyle(3, 0xffffff)
+            }
+            scene.encounterGroup.add(eventSprite)
+
+            // 事件名称标签
+            const eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
+              font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+            }).setOrigin(0, 0)
+            scene.encounterGroup.add(eventLabel)
+
+            scene.encounterData = {
+              type: eventType,
+              displayName: eventDisplayName,
+              color: eventColor,
+              x: ex, y: ey,
+              size: eSize,
+              sprite: eventSprite,
+              label: eventLabel,
+              used: randomEvent.used || false
             }
           }
 
@@ -1933,183 +1918,6 @@ onMounted(() => {
           loadAndShowSellItems()
         }
 
-        // ---------- 奇遇NPC对话系统 ----------
-        /**
-         * 显示奇遇NPC对话浮层
-         * @param {string} message - 后端返回的对话文本（含\n）
-         * @param {string} eventType - CHEST/MAIDEN/ANGEL/BLACKSMITH
-         * @param {string[]} blacksmithItems - 铁匠可选物品列表（可能为null）
-         */
-        scene.showEncounterDialog = function (message, eventType, blacksmithItems) {
-          if (scene.encounterOverlay) { scene._closeEncounterDialog() }
-
-          // 根据事件类型决定NPC头像和颜色
-          let npcEmoji = '📦'
-          let npcTitle = '神秘宝箱'
-          let accentColor = '#FFD700'
-          let bgColor = 0x2a1a0a
-          if (eventType === 'MAIDEN') {
-            npcEmoji = '👼'
-            npcTitle = '圣洁少女'
-            accentColor = '#ffffff'
-            bgColor = 0x1a1a2e
-          } else if (eventType === 'ANGEL') {
-            npcEmoji = '🕊️'
-            npcTitle = '神圣天使'
-            accentColor = '#88ddff'
-            bgColor = 0x0a1a2e
-          } else if (eventType === 'BLACKSMITH') {
-            npcEmoji = '🔨'
-            npcTitle = '老铁匠'
-            accentColor = '#ff8844'
-            bgColor = 0x2a1a0a
-          }
-
-          // 关闭对话框的通用函数（清除timer/ref）
-          scene._closeEncounterDialog = function () {
-            if (scene._encounterTimer) {
-              scene.time.removeEvent(scene._encounterTimer)
-              scene._encounterTimer = null
-            }
-            if (scene.encounterOverlay) {
-              try { scene.encounterOverlay.destroy() } catch (e) {}
-              scene.encounterOverlay = null
-            }
-            if (scene._encounterDialogRenderData) {
-              scene.renderRoom(scene._encounterDialogRenderData)
-              scene._encounterDialogRenderData = null
-            }
-          }
-
-          const overlay = scene.add.container(0, 0).setDepth(200)
-          // 半透明背景遮罩
-          const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.55)
-          bg.setInteractive()
-          overlay.add(bg)
-
-          // 对话框面板 - 居中 500x420
-          const panelX = 400
-          const panelY = 290
-          const panelW = 500
-          const panelH = 420
-          const panelLeft = panelX - panelW / 2
-          const panelTop = panelY - panelH / 2
-
-          const panel = scene.add.graphics()
-          panel.fillStyle(bgColor, 0.95)
-          panel.fillRoundedRect(panelLeft, panelTop, panelW, panelH, 12)
-          panel.lineStyle(2, Phaser.Display.Color.HexStringToColor(accentColor).color, 0.8)
-          panel.strokeRoundedRect(panelLeft, panelTop, panelW, panelH, 12)
-          overlay.add(panel)
-
-          // NPC头像（大号emoji文字）
-          const portrait = scene.add.text(panelX, panelTop + 28, npcEmoji, {
-            font: '36px Arial', fill: accentColor
-          }).setOrigin(0.5)
-          overlay.add(portrait)
-
-          // NPC标题
-          const title = scene.add.text(panelX, panelTop + 64, npcTitle, {
-            font: 'bold 18px Arial', fill: accentColor
-          }).setOrigin(0.5)
-          overlay.add(title)
-
-          // 装饰分隔线
-          const divider = scene.add.graphics()
-          divider.lineStyle(1, Phaser.Display.Color.HexStringToColor(accentColor).color, 0.4)
-          divider.lineBetween(panelLeft + 30, panelTop + 84, panelLeft + panelW - 30, panelTop + 84)
-          overlay.add(divider)
-
-          // 对话文本区域（自动换行，460px宽，最多显示12行）
-          const textLines = (message || '').split('\n')
-          const textStartY = panelTop + 100
-          const maxLines = 12
-
-          textLines.slice(0, maxLines).forEach((line, i) => {
-            const txt = scene.add.text(panelX, textStartY + i * 26, line.trim(), {
-              font: '15px "Microsoft YaHei", Arial, sans-serif',
-              fill: '#e0d8cc',
-              wordWrap: { width: 460 },
-              lineSpacing: 4
-            }).setOrigin(0.5, 0)
-            overlay.add(txt)
-          })
-
-          // 铁匠特殊：显示可点击的物品选择按钮
-          if (eventType === 'BLACKSMITH' && blacksmithItems && blacksmithItems.length > 0) {
-            const btnW = 140
-            const btnGap = 12
-
-            blacksmithItems.forEach((itemName, idx) => {
-              const bx = panelX + (idx - (blacksmithItems.length - 1) / 2) * (btnW + btnGap)
-              const by = panelTop + panelH - 110
-
-              const btnBg = scene.add.rectangle(bx, by, btnW, 36, 0x443322, 0.9)
-                .setStrokeStyle(1, 0xcc8844)
-                .setInteractive({ useHandCursor: true })
-              const btnText = scene.add.text(bx, by, itemName, {
-                font: '13px Arial', fill: '#ffcc88'
-              }).setOrigin(0.5)
-
-              btnBg.on('pointerover', () => {
-                btnBg.setFillStyle(0x665544)
-                btnBg.setStrokeStyle(2, 0xff8844)
-              })
-              btnBg.on('pointerout', () => {
-                btnBg.setFillStyle(0x443322)
-                btnBg.setStrokeStyle(1, 0xcc8844)
-              })
-              btnBg.on('pointerdown', async () => {
-                try {
-                  const res = await fetch('/api/command', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ command: 'interact ' + itemName })
-                  })
-                  const j = await res.json()
-                  emit('update', j)
-                  try { scene.encounterOverlay.destroy() } catch (e) {}
-                  scene.encounterOverlay = null
-                  scene.showEncounterDialog(j.message || '强化完成！', eventType, null)
-                  if (j && j.data) {
-                    scene._encounterDialogRenderData = j.data
-                  }
-                } catch (e) {
-                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                }
-              })
-
-              overlay.add([btnBg, btnText])
-            })
-          }
-
-          // 倒计时 + 按SPACE关闭提示
-          const closeHintY = eventType === 'BLACKSMITH' && blacksmithItems && blacksmithItems.length > 0
-            ? panelTop + panelH - 40
-            : panelTop + panelH - 30
-          const countdownText = scene.add.text(panelX, closeHintY, '10秒后自动关闭 · 按 SPACE 关闭', {
-            font: 'bold 14px Arial', fill: accentColor
-          }).setOrigin(0.5)
-          overlay.add(countdownText)
-
-          scene.encounterOverlay = overlay
-
-          // 启动10秒自动关闭倒计时（每秒更新文字）
-          let secondsLeft = 10
-          scene._encounterTimer = scene.time.addEvent({
-            delay: 1000,
-            repeat: 9,
-            callback: () => {
-              secondsLeft--
-              if (secondsLeft > 0) {
-                countdownText.setText(secondsLeft + '秒后自动关闭 · 按 SPACE 关闭')
-              } else {
-                countdownText.setText('即将关闭...')
-                scene._closeEncounterDialog()
-              }
-            }
-          })
-        }
-
         // 键盘控制
         scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE')
         scene.baseMoveSpeed = 160
@@ -2132,6 +1940,7 @@ onMounted(() => {
           pierceWidth: 14
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
+        scene._piercing = false          // 突刺移动中：禁止WASD移动输入
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -2348,13 +2157,6 @@ onMounted(() => {
         scene.shopNpcLabel = null        // NPC 商人标签
         scene.shopNpcData = null         // { x, y, radius, shopInitialized, shopItems }
         scene.shopIndicators = []        // 商店白色倒三角指示器
-        // encounter NPC state
-        scene.encounterNpcCircle = null  // 奇遇NPC图形
-        scene.encounterNpcLabel = null   // 奇遇NPC标签
-        scene.encounterNpcData = null    // { x, y, radius, eventType, displayName, used }
-        scene.encounterIndicators = []   // 奇遇NPC白色倒三角指示器
-        scene.encounterOverlay = null    // 奇遇NPC对话框浮层
-        scene._encounterDialogRenderData = null // 对话框关闭时重绘房间的数据
         scene.shopMenuOverlay = null     // 购物/售卖选项浮层
         scene.shopBuyOverlay = null      // 购买界面浮层
         scene.shopSellOverlay = null     // 售卖界面浮层
@@ -2399,9 +2201,9 @@ onMounted(() => {
             }
           }
           // 如果背包未打开且响应包含房间数据，正常渲染房间
-          // 注意：如果有商店菜单、购物界面、博学祭坛浮层或奇遇对话框打开，不调用 renderRoom()
-          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单/对话框闪退
-          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay && !scene.encounterOverlay) {
+          // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
+          // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
+          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
@@ -2669,7 +2471,7 @@ onMounted(() => {
           // movement by WASD
           const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
           const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
-          if (!isWaveCharging) {
+          if (!isWaveCharging && !scene._piercing) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2752,7 +2554,7 @@ onMounted(() => {
               mon.y = Phaser.Math.Clamp(mon.y, rb.top + pr, rb.bottom - pr)
               // 更新怪物精灵位置
               try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
-              try { mon.label.setPosition(mon.x - 32, mon.y + 34) } catch (e) {}
+              try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
             }
           }
 
@@ -2806,24 +2608,122 @@ onMounted(() => {
               for (const mon of scene.monstersData) {
                 if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
               }
+
+              // 突刺起点/终点变量（提升到块外，供异步 fetch 回调访问）
+              let pierceStartX = scene.player.x, pierceStartY = scene.player.y
+              let pierceEndX = scene.player.x, pierceEndY = scene.player.y
+
               if (isShiftMove) {
                 // 突刺特效
                 const startX = scene.player.x, startY = scene.player.y
                 const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
                 const dist = cfg.pierceDistance || 120
                 const pr_ = scene.playerRadius || 10
-                const targetX = Phaser.Math.Clamp(startX + dx_ * dist, rb.left + pr_, rb.right - pr_)
-                const targetY = Phaser.Math.Clamp(startY + dy_ * dist, rb.top + pr_, rb.bottom - pr_)
+
+                // ---- 路径碰撞检测：收集沿路径的所有障碍物 ----
+                let nearestT = 1.0  // 0=起点, 1=终点；找到最近的碰撞 t
+                const playerRadius = pr_
+
+                // 辅助函数：射线与圆的交点，返回 t∈[0,1] 或 null
+                const rayCircleHit = (sx, sy, ex, ey, cx, cy, cr) => {
+                  const rdx = ex - sx, rdy = ey - sy
+                  const lenSq = rdx * rdx + rdy * rdy
+                  if (lenSq < 0.001) return null
+                  const fcx = cx - sx, fcy = cy - sy
+                  const tProj = Math.max(0, Math.min(1, (fcx * rdx + fcy * rdy) / lenSq))
+                  const nearX = sx + tProj * rdx, nearY = sy + tProj * rdy
+                  const dSq = (nearX - cx) * (nearX - cx) + (nearY - cy) * (nearY - cy)
+                  const effR = cr + playerRadius
+                  if (dSq > effR * effR) return null
+                  // 从圆心沿法向反推到射线起点，求真正的进入 t
+                  const d = Math.sqrt(dSq)
+                  const pen = Math.sqrt(effR * effR - dSq)  // 弦半长
+                  const tEnter = tProj - pen / Math.sqrt(lenSq)
+                  return Math.max(0, tEnter)  // 夹到 [0, 1]
+                }
+
+                // 检查路径上的怪物：不阻挡，但在突刺结束后推开
+                const pushedMonsters = []
+                for (const mon of scene.monstersData) {
+                  if (!mon || !mon.name || mon.exploding) continue
+                  const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                    mon.x, mon.y, 20) // 怪物碰撞半径 ≈20
+                  if (t !== null) {
+                    pushedMonsters.push(mon)
+                  }
+                }
+
+                // 检查祭坛障碍（阻挡）
+                if (scene.altarsData) {
+                  for (const altar of scene.altarsData) {
+                    // 祭坛是矩形，用其外接圆近似（halfSize * sqrt(2)）
+                    const halfDiag = (altar.size / 2) * Math.sqrt(2)
+                    const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                      altar.x, altar.y, halfDiag)
+                    if (t !== null && t < nearestT) nearestT = t
+                  }
+                }
+
+                // 检查 NPC 商人障碍
+                if (scene.shopNpcData) {
+                  const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
+                    scene.shopNpcData.x, scene.shopNpcData.y, scene.shopNpcData.radius)
+                  if (t !== null && t < nearestT) nearestT = t
+                }
+
+                // 根据碰撞结果计算实际终点：在碰撞点前留 2px 间隙
+                let actualDist = dist * nearestT
+                if (nearestT < 1.0) actualDist = Math.max(0, actualDist - 2)
+                else actualDist = dist
+
+                const targetX = Phaser.Math.Clamp(startX + dx_ * actualDist, rb.left + pr_, rb.right - pr_)
+                const targetY = Phaser.Math.Clamp(startY + dy_ * actualDist, rb.top + pr_, rb.bottom - pr_)
+
+                // 赋值外层变量，供异步 fetch 回调访问
+                pierceStartX = startX; pierceStartY = startY
+                pierceEndX = targetX; pierceEndY = targetY
+
+                // 锁定移动
+                scene._piercing = true
+
                 scene.tweens.add({ targets: scene.player, x: targetX, y: targetY, duration: cfg.pierceDuration || 100, ease: 'Cubic.easeOut' })
                 const g2 = scene.add.graphics()
                 const extra = cfg.pierceDistanceExpand || 1.0
-                const effTX = Phaser.Math.Clamp(startX + dx_ * dist * extra, rb.left + pr_, rb.right - pr_)
-                const effTY = Phaser.Math.Clamp(startY + dy_ * dist * extra, rb.top + pr_, rb.bottom - pr_)
+                const effTX = Phaser.Math.Clamp(startX + dx_ * actualDist * extra, rb.left + pr_, rb.right - pr_)
+                const effTY = Phaser.Math.Clamp(startY + dy_ * actualDist * extra, rb.top + pr_, rb.bottom - pr_)
                 const mx_ = (startX + effTX) / 2, my_ = (startY + effTY) / 2
                 const w_ = cfg.pierceWidth || 12
                 g2.fillStyle(0xC0C0C0, cfg.mainAlpha || 0.95)
                 g2.fillPoints([{x:effTX,y:effTY},{x:mx_+(-dy_)*(w_/2),y:my_+dx_*(w_/2)},{x:startX,y:startY},{x:mx_-(-dy_)*(w_/2),y:my_-dx_*(w_/2)}], true)
-                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => { try { g2.destroy() } catch (e) {}; scene._attackOnCooldown = false } })
+                scene.tweens.add({ targets: g2, alpha: 0, duration: cfg.pierceFade || 180, onComplete: () => {
+                  try { g2.destroy() } catch (e) {}
+                  scene._attackOnCooldown = false
+                  scene._piercing = false
+                }})
+
+                // ---- 推开路径上的怪物：沿突刺方向击退 ----
+                if (pushedMonsters.length > 0) {
+                  const PUSH_DISTANCE = 55     // 击退距离
+                  const PUSH_DURATION = 130    // 击退动画时长
+                  for (const mon of pushedMonsters) {
+                    const pushX = mon.x + dx_ * PUSH_DISTANCE
+                    const pushY = mon.y + dy_ * PUSH_DISTANCE
+                    const clampedX = Phaser.Math.Clamp(pushX, rb.left + 10, rb.right - 10)
+                    const clampedY = Phaser.Math.Clamp(pushY, rb.top + 10, rb.bottom - 10)
+                    scene.tweens.add({
+                      targets: { x: mon.x, y: mon.y },
+                      x: clampedX, y: clampedY,
+                      duration: PUSH_DURATION,
+                      ease: 'Cubic.easeOut',
+                      onUpdate: function (tween) {
+                        const t = tween.targets[0]
+                        mon.x = t.x; mon.y = t.y
+                        try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
+                        try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
+                      }
+                    })
+                  }
+                }
               } else {
                 // 横扫特效
                 const mainGfx = scene.add.graphics(), fireGfx = scene.add.graphics()
@@ -2844,8 +2744,27 @@ onMounted(() => {
               // 发送攻击请求到后端
               ;(async () => {
                 try {
+                  let requestBody
+                  if (isShiftMove) {
+                    // 突刺：发送起点/终点供后端做线段命中判定
+                    requestBody = {
+                      attackType: 'pierce',
+                      playerX: pierceStartX, playerY: pierceStartY,
+                      facingAngle: scene.facingAngle,
+                      startX: pierceStartX, startY: pierceStartY,
+                      endX: pierceEndX, endY: pierceEndY,
+                      monsters: monsterPositions
+                    }
+                  } else {
+                    requestBody = {
+                      attackType: 'sweep',
+                      playerX: scene.player.x, playerY: scene.player.y,
+                      facingAngle: scene.facingAngle,
+                      monsters: monsterPositions
+                    }
+                  }
                   const res = await fetch('/api/attack', { method: 'POST', headers: {'Content-Type':'application/json'},
-                    body: JSON.stringify({ attackType: isShiftMove ? 'pierce' : 'sweep', playerX: scene.player.x, playerY: scene.player.y, facingAngle: scene.facingAngle, monsters: monsterPositions }) })
+                    body: JSON.stringify(requestBody) })
                   const j = await res.json(); emit('update', j)
                   if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) scene.renderRoom(j.data)
                   if (j && j.message && j.message.includes('游戏结束')) scene.showGameOver()
@@ -3103,12 +3022,6 @@ onMounted(() => {
             }
           }
 
-          // 更新剑旋转角度，使其始终朝向 facingAngle
-          try {
-            if (scene.player && scene.player.swordGfx) {
-              scene.player.swordGfx.rotation = scene.facingAngle
-            }
-          } catch (e) {}
           scene.playerLabel.setPosition(scene.player.x - 20, scene.player.y + 28)
 
           // ---------- 月光波弹射运动 ----------
@@ -3283,18 +3196,6 @@ onMounted(() => {
               scene.player.y += (dy / dist) * overlap
             }
           }
-          // 奇遇NPC碰撞回避
-          if (scene.encounterNpcData) {
-            const npcPr = (scene.playerRadius || 10) + scene.encounterNpcData.radius + 4
-            const dx = scene.player.x - scene.encounterNpcData.x
-            const dy = scene.player.y - scene.encounterNpcData.y
-            const dist = Math.sqrt(dx * dx + dy * dy)
-            if (dist < npcPr && dist > 0.001) {
-              const overlap = npcPr - dist
-              scene.player.x += (dx / dist) * overlap
-              scene.player.y += (dy / dist) * overlap
-            }
-          }
 
           // 门检测 (skip if charging)
           // 检查当前房间是否有存活怪物 — 有则禁止出门
@@ -3405,6 +3306,40 @@ onMounted(() => {
             }
           }
 
+          // ---------- 奇遇事件交互检测 ----------
+          const ENCOUNTER_INTERACT_RANGE = 50
+          let nearEncounter = false
+          // 喷泉允许反复交互，即使 used=true 也继续检测
+          if (scene.encounterData && (!scene.encounterData.used || scene.encounterData.type === 'FOUNTAIN')) {
+            const dx = scene.player.x - scene.encounterData.x
+            const dy = scene.player.y - scene.encounterData.y
+            const dist = Math.sqrt(dx * dx + dy * dy)
+            if (dist < ENCOUNTER_INTERACT_RANGE) {
+              nearEncounter = true
+            }
+          }
+
+          // 更新奇遇事件白色倒三角指示器
+          scene.encounterIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
+          scene.encounterIndicators = []
+          if (nearEncounter) {
+            const triSize = 14
+            const triY = scene.encounterData.y - scene.encounterData.size / 2 - triSize - 4
+            const triX = scene.encounterData.x
+            const triangle = scene.add.triangle(triX, triY, 0, triSize, triSize, 0, triSize * 2, triSize, 0xffffff, 0.9)
+            triangle.setOrigin(0.5, 0.5)
+            triangle.setScale(1, -1)
+            scene.tweens.add({
+              targets: triangle,
+              alpha: 0.4,
+              duration: 500,
+              yoyo: true,
+              repeat: -1,
+              ease: 'Sine.easeInOut'
+            })
+            scene.encounterIndicators.push(triangle)
+          }
+
           // 更新商店NPC白色倒三角指示器
           scene.shopIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
           scene.shopIndicators = []
@@ -3426,40 +3361,7 @@ onMounted(() => {
             scene.shopIndicators.push(triangle)
           }
 
-          // ---------- 奇遇NPC交互检测（对话框已打开时禁用） ----------
-          const ENCOUNTER_INTERACT_RANGE = 50
-          let nearEncounterNpc = false
-          if (scene.encounterNpcData && !scene.encounterNpcData.used && !scene.encounterOverlay) {
-            const dx = scene.player.x - scene.encounterNpcData.x
-            const dy = scene.player.y - scene.encounterNpcData.y
-            const dist = Math.sqrt(dx * dx + dy * dy)
-            if (dist < ENCOUNTER_INTERACT_RANGE) {
-              nearEncounterNpc = true
-            }
-          }
-
-          // 更新奇遇NPC白色倒三角指示器
-          scene.encounterIndicators.forEach(ind => { try { ind.destroy() } catch (e) {} })
-          scene.encounterIndicators = []
-          if (nearEncounterNpc) {
-            const triSize = 14
-            const triY = scene.encounterNpcData.y - scene.encounterNpcData.radius - triSize - 4
-            const triX = scene.encounterNpcData.x
-            const triangle = scene.add.triangle(triX, triY, 0, triSize, triSize, 0, triSize * 2, triSize, 0xffffff, 0.9)
-            triangle.setOrigin(0.5, 0.5)
-            triangle.setScale(1, -1)
-            scene.tweens.add({
-              targets: triangle,
-              alpha: 0.4,
-              duration: 500,
-              yoyo: true,
-              repeat: -1,
-              ease: 'Sine.easeInOut'
-            })
-            scene.encounterIndicators.push(triangle)
-          }
-
-          // SPACE 键交互（拾取 > 商店 > 奇遇 > 祭坛, skip if charging）
+          // SPACE 键交互（拾取 > 商店 > 祭坛, skip if charging）
           // ---- 1 键测试：施加一层中毒 ----
           try {
             if (scene.keys.ONE && Phaser.Input.Keyboard.JustDown(scene.keys.ONE) && !scene._waveCharging.active) {
@@ -3523,11 +3425,6 @@ onMounted(() => {
           // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
-              // 如果奇遇对话框已打开，按SPACE关闭（不触发任何交互）
-              if (scene.encounterOverlay) {
-                scene._closeEncounterDialog()
-                return
-              }
               if (scene._closestDropItem) {
                 // 拾取掉落物
                 const dropItem = scene._closestDropItem
@@ -3549,30 +3446,69 @@ onMounted(() => {
               } else if (nearShopNpc) {
                 // 与商人交互：弹出购物/售卖选项菜单
                 scene.showShopMenu()
-              } else if (nearEncounterNpc) {
-                // 与奇遇NPC交互：发送 interact event 给后端，用对话框显示结果
-                ;(async () => {
-                  try {
-                    const res = await fetch('/api/command', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ command: 'interact event' })
-                    })
-                    const j = await res.json()
-                    emit('update', j)
-                    if (j && j.status === 'success') {
-                      const evType = scene.encounterNpcData ? scene.encounterNpcData.eventType : null
-                      const blacksmithItems = (j.data && j.data.blacksmithItems) ? j.data.blacksmithItems : null
-                      scene.showEncounterDialog(j.message || '交互完成', evType, blacksmithItems)
-                      if (j && j.data) {
-                        scene._encounterDialogRenderData = j.data
+              } else if (nearEncounter && scene.encounterData) {
+                // 奇遇事件交互
+                const eventType = scene.encounterData.type
+                if (eventType === 'ELITE_ENEMY') {
+                  // 精英敌人事件：发送 interact event 获取战斗提示
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'interact event' })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
                       }
-                    } else if (j && j.status === 'error') {
-                      emit('update', { status: 'error', message: j.message, data: null })
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
                     }
-                  } catch (e) {
-                    emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-                  }
-                })()
+                  })()
+                } else {
+                  // 宝箱/喷泉事件：发送 interact event
+                  const eventX = scene.encounterData.x
+                  const eventY = scene.encounterData.y
+                  const eventColor = scene.encounterData.color
+                  const eventSize = scene.encounterData.size
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/command', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ command: 'interact event' })
+                      })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        // 在 renderRoom 前提取金币数量（renderRoom 会清空 encounterData）
+                        const re = j.data.randomEvent
+                        const rewardGold = (re && re.rewardGold) ? re.rewardGold : 0
+                        scene.renderRoom(j.data)
+                        // 宝箱/喷泉特效光芒
+                        if (eventColor) {
+                          scene.spawnAltarGlow(eventX, eventY, eventSize, eventColor, 5000)
+                        }
+                        // 宝箱事件：显示浮动金币文本
+                        if (rewardGold > 0) {
+                          const flyText = scene.add.text(eventX, eventY - 40, '你获得了' + rewardGold + '枚金币！', {
+                            font: 'bold 18px Arial', fill: '#FFD700', stroke: '#000000', strokeThickness: 3
+                          }).setOrigin(0.5).setDepth(210)
+                          scene.tweens.add({
+                            targets: flyText,
+                            y: eventY - 100,
+                            alpha: 0,
+                            duration: 2000,
+                            delay: 500,
+                            onComplete: () => { try { flyText.destroy() } catch (e) {} }
+                          })
+                        }
+                      }
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                  })()
+                }
               } else if (closestAltar && !scene.altarUsedInRoom && !closestAltar.activated) {
                 const altarType = closestAltar.type.toLowerCase()
                 ;(async () => {
@@ -4094,9 +4030,15 @@ onBeforeUnmount(() => {
 /* 保存游戏 */
 .control-btn-save {
   background: #1a2418;
-  color: #667766;
-  border-color: rgba(100, 130, 100, 0.15);
-  cursor: not-allowed;
+  color: #aaccaa;
+  border-color: rgba(100, 180, 100, 0.35);
+  cursor: pointer;
+}
+.control-btn-save:hover {
+  background: #2a3a28;
+  color: #ccddcc;
+  border-color: rgba(120, 200, 120, 0.5);
+  box-shadow: 0 0 12px rgba(80, 160, 80, 0.3);
 }
 
 /* 返回菜单 */

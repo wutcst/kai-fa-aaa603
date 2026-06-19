@@ -166,6 +166,12 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount } from 'vue'
 import Phaser from 'phaser'
+import {
+  createPlayerContainer,
+  getMonsterDrawer,
+  getEncounterDrawer,
+  drawShopMerchant
+} from '../entity/EntityDrawer.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
@@ -1103,7 +1109,9 @@ onMounted(() => {
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
         scene.playerRadius = 10
-        scene.player = scene.add.circle(400, 320, scene.playerRadius, 0x00aaff).setStrokeStyle(2, 0x000000)
+        // 使用骑士实体绘制替换简单蓝色圆形
+        scene.player = createPlayerContainer(scene, 400, 320)
+        scene.player.setDepth(20)
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
@@ -1339,10 +1347,15 @@ onMounted(() => {
               x = saved.x
               y = saved.y
             }
-            const circleColor = 0xaa0000
-            const circ = scene.add.circle(x, y, 20, circleColor).setStrokeStyle(2, 0x000000)
+            // 使用实体绘制替换简单圆形
+            const monGfx = scene.add.graphics()
+            monGfx.setPosition(x, y)
+            const drawer = getMonsterDrawer(mon.name, mon.specialType)
+            if (drawer) drawer(monGfx, 1.5)  // 统一1.5倍缩放
+            monGfx.setDepth(20)
+
             const labelText = mon.name
-            const label = scene.add.text(x - 32, y + 24, labelText, { font: '14px Arial', fill: '#fff' })
+            const label = scene.add.text(x - 32, y + 34, labelText, { font: '14px Arial', fill: '#fff' })
 
             // 血条背景（深色）— 放在怪物圆点上方
             const hpBarW = 54, hpBarH = 8
@@ -1363,13 +1376,13 @@ onMounted(() => {
 
             if (!scene.monstersGroup) scene.monstersGroup = scene.add.group()
             if (!scene.monstersData) scene.monstersData = []
-            scene.monstersGroup.add(circ)
+            scene.monstersGroup.add(monGfx)
             scene.monstersGroup.add(label)
             scene.monstersGroup.add(hpBg)
             scene.monstersGroup.add(hpFill)
             scene.monstersGroup.add(hpNumText)
             scene.monstersData.push({
-              name: mon.name, x, y, circ, label,
+              name: mon.name, x, y, circ: monGfx, label,
               hp: mon.hp, maxHp: monMaxHp, type: mon.type,
               hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
               hpBarW: hpBarW, hpBarH: hpBarH,
@@ -1444,8 +1457,12 @@ onMounted(() => {
               shopInitialized: roomInfo.shopInitialized || false,
               shopItems: shopItems
             }
-            const npc = scene.add.circle(rectCenterX, rectCenterY, npcRadius, 0xFFD700).setStrokeStyle(2, 0x000000)
-            const npcLabel = scene.add.text(rectCenterX - 24, rectCenterY + npcRadius + 6, '商人', {
+            const npcGfx = scene.add.graphics()
+            npcGfx.setPosition(rectCenterX, rectCenterY + 6)
+            drawShopMerchant(npcGfx, 1.5)
+            npcGfx.setDepth(20)
+            const npc = npcGfx
+            const npcLabel = scene.add.text(rectCenterX - 24, rectCenterY + 30, '商人', {
               font: '12px Arial', fill: '#FFD700'
             })
             scene.shopNpcCircle = npc
@@ -1469,15 +1486,13 @@ onMounted(() => {
 
             let eventSprite
             if (eventType === 'WOODEN_CHEST' || eventType === 'GOLDEN_CHEST' || eventType === 'CHEST') {
-              // 宝箱：金色/棕色方块图案
-              const chestColor = (eventType === 'GOLDEN_CHEST') ? 0xFFD700 : eventColor
-              eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, chestColor).setStrokeStyle(3, 0xffffff)
-              // 宝箱盖线条
-              const lidLine = scene.add.line(ex - eSize/2 + 2, ey - 4, 0, ex + eSize/2 - 2, ey - 4, 0, 0x000000, 0.5)
-              scene.encounterGroup.add(lidLine)
-              // 锁孔
-              const lockCircle = scene.add.circle(ex, ey + 4, 3, 0x000000)
-              scene.encounterGroup.add(lockCircle)
+              // 使用实体绘制替换基础方块
+              const chestGfx = scene.add.graphics()
+              chestGfx.setPosition(ex, ey)
+              const chestDrawer = getEncounterDrawer('CHEST')
+              if (chestDrawer) chestDrawer(chestGfx, 1.5)
+              chestGfx.setDepth(20)
+              eventSprite = chestGfx
             } else if (eventType === 'FOUNTAIN') {
               // 喷泉：蓝色圆形+内部波浪
               eventSprite = scene.add.circle(ex, ey, eSize / 2, eventColor).setStrokeStyle(3, 0xffffff)
@@ -2517,7 +2532,13 @@ onMounted(() => {
             const len = Math.sqrt(vx*vx + vy*vy)
             vx = vx / len
             vy = vy / len
-            try { scene.facingAngle = Math.atan2(vy, vx) } catch (e) {}
+            try {
+              scene.facingAngle = Math.atan2(vy, vx)
+              // 骑士剑旋转跟随朝向
+              if (scene.player && scene.player.swordGfx) {
+                scene.player.swordGfx.rotation = scene.facingAngle
+              }
+            } catch (e) {}
             if (!isWaveAiming) {
               let speed = scene.baseMoveSpeed
               // 蓄力攻击期间移速减半

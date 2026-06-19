@@ -371,6 +371,17 @@ public class Player {
         hp = Math.min(hp + amount, maxHp);
     }
 
+    /**
+     * 应用博学祭坛增益效果。
+     * @param boon 增益类型
+     * @return 增益描述文本
+     */
+    public String applyWisdomBoon(WisdomBoon boon) {
+        if (boon == null) return "";
+        boon.apply(this);
+        return "【" + boon.getDisplayName() + "】" + boon.getDescription() + "！";
+    }
+
     public boolean isAlive() {
         return hp > 0;
     }

@@ -1424,7 +1424,8 @@ onMounted(() => {
                 rect, label: typeLabel,
                 activated: isActivated,
                 color: color,
-                originalColor: altarInfo.color || 0x888888
+                originalColor: altarInfo.color || 0x888888,
+                pendingBoons: altarInfo.pendingBoons || []
               })
             }
           }
@@ -1587,32 +1588,67 @@ onMounted(() => {
 
         scene.showWisdomOverlay = function () {
           if (scene.wisdomOverlay) { try { scene.wisdomOverlay.destroy() } catch (e) {} }
+          // 从 altarsData 中获取 WISDOM 祭坛的 pendingBoons
+          const wisdomData = (scene.altarsData || []).find(a => a.type === 'WISDOM')
+          const boons = wisdomData ? (wisdomData.pendingBoons || []) : []
+          if (boons.length === 0) {
+            // 无增益数据，显示提示
+            const overlay = scene.add.container(0, 0).setDepth(200)
+            const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.5).setInteractive()
+            const title = scene.add.text(400, 280, '博学祭坛 — 无可用增益', {
+              font: 'bold 22px Arial', fill: '#4488ff'
+            }).setOrigin(0.5)
+            const hint = scene.add.text(400, 340, '（增益数据未加载，请重试）', {
+              font: '14px Arial', fill: '#888888'
+            }).setOrigin(0.5)
+            bg.on('pointerdown', () => {
+              try { scene.wisdomOverlay.destroy() } catch (e) {}
+              scene.wisdomOverlay = null
+            })
+            overlay.add([bg, title, hint])
+            scene.wisdomOverlay = overlay
+            return
+          }
           const overlay = scene.add.container(0, 0).setDepth(200)
           const bg = scene.add.rectangle(400, 300, 800, 600, 0x000000, 0.5)
           bg.setInteractive()
-          const title = scene.add.text(400, 200, '博学祭坛 — 请选择一项增益', {
+          const title = scene.add.text(400, 170, '博学祭坛 — 请选择一项增益', {
             font: 'bold 22px Arial', fill: '#4488ff'
           }).setOrigin(0.5)
-          const options = [
-            { label: '选项一（暂未实现）', y: 260 },
-            { label: '选项二（暂未实现）', y: 310 },
-            { label: '选项三（暂未实现）', y: 360 }
-          ]
           const optionTexts = []
-          options.forEach(opt => {
-            const txt = scene.add.text(400, opt.y, opt.label, {
-              font: '18px Arial', fill: '#aaaaaa', backgroundColor: '#222222',
-              padding: { x: 20, y: 8 }
+          boons.forEach((boon, i) => {
+            const label = '【' + (boon.displayName || boon.name) + '】' + (boon.description || '')
+            const y = 240 + i * 60
+            const txt = scene.add.text(400, y, label, {
+              font: '17px Arial', fill: '#dddddd', backgroundColor: '#222244',
+              padding: { x: 24, y: 10 }
             }).setOrigin(0.5).setInteractive({ useHandCursor: true })
-            txt.on('pointerover', () => txt.setStyle({ fill: '#ffffff', backgroundColor: '#444444' }))
-            txt.on('pointerout', () => txt.setStyle({ fill: '#aaaaaa', backgroundColor: '#222222' }))
+            txt.on('pointerover', () => txt.setStyle({ fill: '#ffffff', backgroundColor: '#334488' }))
+            txt.on('pointerout', () => txt.setStyle({ fill: '#dddddd', backgroundColor: '#222244' }))
             txt.on('pointerdown', () => {
+              // 发送选择命令到后端
+              const boonName = boon.displayName || boon.name
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'interact wisdom ' + boonName })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
               try { scene.wisdomOverlay.destroy() } catch (e) {}
               scene.wisdomOverlay = null
             })
             optionTexts.push(txt)
           })
-          const hint = scene.add.text(400, 440, '点击选项后浮层关闭（增益系统待实现）', {
+          const hint = scene.add.text(400, 440, '点击增益名称即可选择', {
             font: '13px Arial', fill: '#888888'
           }).setOrigin(0.5)
           overlay.add([bg, title, ...optionTexts, hint])

@@ -1106,7 +1106,166 @@ export function drawShopMerchant(gfx, s) {
   fillRect(gfx, S(0), S(16), S(3.5), S(2), 0x442211)
 }
 
-// ==================== 七、怪物匹配与渲染调度 ====================
+// ==================== 七、物品图标绘制（掉落物/背包/商店用） ====================
+
+// ---- 22. 药水 (Potion) ----
+export function drawPotion(gfx, s) {
+  const S = (v) => v * s
+  // 瓶身
+  fillRect(gfx, S(-4), S(-2), S(8), S(10), 0x88ccff, 0.9)
+  // 瓶颈
+  fillRect(gfx, S(-2), S(-5), S(4), S(4), 0x88ccff, 0.9)
+  // 瓶塞
+  fillRect(gfx, S(-2.5), S(-6), S(5), S(2), 0x8B4513)
+  // 红色药水液体
+  fillRect(gfx, S(-3), S(1), S(6), S(6), 0xff4444, 0.8)
+  // 液体高光
+  fillRect(gfx, S(-2), S(2), S(2), S(4), 0xff8888, 0.5)
+  // 瓶口反光
+  gfx.lineStyle(S(1), 0xffffff, 0.3)
+  gfx.beginPath()
+  gfx.moveTo(S(-3), S(-4)); gfx.lineTo(S(3), S(-4))
+  gfx.strokePath()
+}
+
+// ---- 23. 铁剑 (Iron Sword) ----
+export function drawIronSword(gfx, s) {
+  const S = (v) => v * s
+  // 剑刃
+  fillTriangle(gfx, S(0), S(-16), S(-2), S(2), S(2), S(2), 0xC0C0C0)
+  // 剑刃中线高光
+  gfx.lineStyle(S(1), 0xffffff, 0.4)
+  gfx.beginPath()
+  gfx.moveTo(S(0), S(-15)); gfx.lineTo(S(0), S(1))
+  gfx.strokePath()
+  // 剑格（护手）
+  fillRect(gfx, S(-5), S(2), S(10), S(2), 0x8B7355)
+  // 剑柄
+  fillRect(gfx, S(-1.5), S(4), S(3), S(6), 0x654321)
+  // 剑柄缠绕纹
+  gfx.lineStyle(S(0.8), 0x887766, 0.6)
+  for (let i = 0; i < 3; i++) {
+    const y = S(5 + i * 1.5)
+    gfx.beginPath()
+    gfx.moveTo(S(-1), y); gfx.lineTo(S(1), y)
+    gfx.strokePath()
+  }
+  // 剑首（尾端圆球）
+  fillCircle(gfx, 0, S(10), S(2), 0x8B7355)
+}
+
+// ---- 24. 铁盾 (Iron Shield) ----
+export function drawIronShield(gfx, s) {
+  const S = (v) => v * s
+  // 盾牌外形
+  fillEllipse(gfx, 0, 0, S(16), S(20), 0x888888)
+  // 金属边框
+  gfx.lineStyle(S(2), 0x666666, 1)
+  gfx.strokeEllipse(0, 0, S(16), S(20))
+  // 十字金属纹
+  fillRect(gfx, S(-1), S(-9), S(2), S(18), 0xAAAAAA, 0.6)
+  fillRect(gfx, S(-6), S(-1), S(12), S(2), 0xAAAAAA, 0.6)
+  // 中心铆钉
+  fillCircle(gfx, 0, 0, S(2.5), 0xBBBBBB)
+  fillCircle(gfx, 0, 0, S(1.5), 0xDDDDDD)
+  // 边缘铆钉
+  const rivets = [
+    [0, -8], [5, -5], [7, 0], [5, 5], [0, 8],
+    [-5, 5], [-7, 0], [-5, -5]
+  ]
+  rivets.forEach(([rx, ry]) => {
+    fillCircle(gfx, S(rx), S(ry), S(1), 0xAAAAAA)
+  })
+}
+
+// ---- 25. 暗影披风 (Shadow Cloak) ----
+export function drawShadowCloak(gfx, s) {
+  const S = (v) => v * s
+  // 披风主体（暗紫色）
+  fillTriangle(gfx, S(-10), S(-8), S(10), S(-8), S(0), S(14), 0x2A0A3A)
+  // 内层更深
+  fillTriangle(gfx, S(-7), S(-5), S(7), S(-5), S(0), S(11), 0x1A0530)
+  // 暗影能量纹路
+  gfx.lineStyle(S(1), 0x6633AA, 0.3)
+  gfx.beginPath()
+  gfx.moveTo(S(-5), S(-3)); gfx.lineTo(S(-2), S(2)); gfx.lineTo(S(-4), S(7))
+  gfx.strokePath()
+  gfx.beginPath()
+  gfx.moveTo(S(5), S(-3)); gfx.lineTo(S(2), S(2)); gfx.lineTo(S(4), S(7))
+  gfx.strokePath()
+  // 暗影雾气光晕
+  fillCircle(gfx, S(0), S(2), S(10), 0x6633AA, 0.08)
+  fillCircle(gfx, S(-3), S(0), S(6), 0x8844CC, 0.06)
+  fillCircle(gfx, S(3), S(3), S(7), 0x8844CC, 0.06)
+  // 领扣
+  fillCircle(gfx, 0, S(-7), S(2), 0x888888)
+  fillCircle(gfx, 0, S(-7), S(1), 0xAAAAAA)
+}
+
+// ---- 26. 生命戒指 (Life Ring) ----
+export function drawLifeRing(gfx, s) {
+  const S = (v) => v * s
+  // 翠绿色光晕
+  fillCircle(gfx, 0, 0, S(14), 0x44CC44, 0.08)
+  fillCircle(gfx, 0, 0, S(12), 0x44CC44, 0.05)
+  // 戒指外圈
+  gfx.lineStyle(S(3), 0x88DD88, 1)
+  gfx.strokeCircle(0, 0, S(8))
+  // 戒指内圈
+  gfx.lineStyle(S(1.5), 0xAAEEAA, 0.8)
+  gfx.strokeCircle(0, 0, S(7))
+  // 生命之树枝叶纹路
+  gfx.lineStyle(S(1), 0x66BB66, 0.5)
+  gfx.beginPath()
+  gfx.moveTo(S(-3), S(-6)); gfx.lineTo(S(-5), S(-3)); gfx.lineTo(S(-6), S(0))
+  gfx.strokePath()
+  gfx.beginPath()
+  gfx.moveTo(S(3), S(-6)); gfx.lineTo(S(5), S(-3)); gfx.lineTo(S(6), S(0))
+  gfx.strokePath()
+  gfx.beginPath()
+  gfx.moveTo(S(-4), S(4)); gfx.lineTo(S(0), S(7)); gfx.lineTo(S(4), S(4))
+  gfx.strokePath()
+  // 绿叶点缀
+  fillCircle(gfx, S(-5), S(-3), S(1.5), 0x88FF88, 0.7)
+  fillCircle(gfx, S(5), S(-3), S(1.5), 0x88FF88, 0.7)
+  fillCircle(gfx, S(0), S(7), S(1.5), 0x88FF88, 0.7)
+  // 顶部绿色宝石
+  fillCircle(gfx, 0, S(-8), S(2.5), 0x66EE66, 0.9)
+  fillCircle(gfx, 0, S(-8), S(1.5), 0xAAFFAA, 0.7)
+}
+
+// ---- 27. 元素项链 (Element Necklace) ----
+export function drawElementNecklace(gfx, s) {
+  const S = (v) => v * s
+  // 四色元素光晕
+  fillCircle(gfx, S(-4), S(-2), S(8), 0xFF4444, 0.06)
+  fillCircle(gfx, S(4), S(-2), S(8), 0x4444FF, 0.06)
+  fillCircle(gfx, S(-3), S(5), S(8), 0xFFFF44, 0.06)
+  fillCircle(gfx, S(3), S(5), S(8), 0x44FF44, 0.06)
+  // 金色链子
+  gfx.lineStyle(S(1.5), 0xDDAA44, 0.8)
+  gfx.beginPath()
+  gfx.moveTo(S(-6), S(-10)); gfx.lineTo(S(-3), S(-8)); gfx.lineTo(S(0), S(-9))
+  gfx.lineTo(S(3), S(-8)); gfx.lineTo(S(6), S(-10))
+  gfx.strokePath()
+  // 吊坠底座
+  fillEllipse(gfx, 0, S(2), S(10), S(10), 0x886644)
+  // 四元素宝石
+  fillCircle(gfx, S(-3), S(-1), S(3), 0xFF3333, 0.9)
+  fillCircle(gfx, S(3), S(-1), S(3), 0x3333FF, 0.9)
+  fillCircle(gfx, S(-2), S(5), S(3), 0xFFFF33, 0.9)
+  fillCircle(gfx, S(2), S(5), S(3), 0x33FF33, 0.9)
+  // 中心主石（白色）
+  fillCircle(gfx, 0, S(2), S(2.5), 0xFFFFFF, 0.9)
+  fillCircle(gfx, 0, S(2), S(1.5), 0xFFEE88, 0.8)
+  // 宝石高光
+  fillCircle(gfx, S(-3.5), S(-2), S(1), 0xFFFFFF, 0.3)
+  fillCircle(gfx, S(2.5), S(-2), S(1), 0xFFFFFF, 0.3)
+  fillCircle(gfx, S(-2.5), S(4), S(1), 0xFFFFFF, 0.3)
+  fillCircle(gfx, S(1.5), S(4), S(1), 0xFFFFFF, 0.3)
+}
+
+// ==================== 八、怪物匹配与渲染调度 ====================
 
 /**
  * 根据怪物名称和特殊类型获取对应的绘制函数
@@ -1159,4 +1318,21 @@ export function getEncounterDrawer(eventType) {
     BLACKSMITH: drawBlacksmith
   }
   return map[eventType] || null
+}
+
+/**
+ * 根据物品名称获取对应的图标绘制函数
+ * @param {string} itemName - 物品名称
+ * @returns {Function|null} 绘制函数（签名: drawFn(gfx, scale)）
+ */
+export function getItemDrawer(itemName) {
+  if (!itemName) return null
+  if (itemName.includes('药水')) return drawPotion
+  if (itemName.includes('铁剑') || (itemName.includes('剑') && itemName.includes('铁'))) return drawIronSword
+  if (itemName.includes('铁盾') || (itemName.includes('盾') && itemName.includes('铁'))) return drawIronShield
+  if (itemName.includes('暗影披风') || itemName.includes('披风')) return drawShadowCloak
+  if (itemName.includes('生命戒指') || itemName.includes('戒指')) return drawLifeRing
+  if (itemName.includes('元素项链') || itemName.includes('项链')) return drawElementNecklace
+  // 生命浆果/魔力浆果/饼干等消耗品不覆盖，保持原来风格
+  return null
 }

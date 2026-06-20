@@ -51,7 +51,8 @@ import {
   createPlayerContainer,
   getMonsterDrawer,
   getEncounterDrawer,
-  drawShopMerchant
+  drawShopMerchant,
+  getItemDrawer
 } from '../entity/EntityDrawer.js'
 import { createApi } from '../composables/useApi.js'
 import { createKeyboardManager } from '../composables/useKeyboard.js'
@@ -891,6 +892,20 @@ onMounted(() => {
           const money = roomInfo.playerMoney !== undefined ? roomInfo.playerMoney : scene.playerStats.money
           try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
 
+          // 重置蓄力状态（特效自销毁，不主动清理）
+          scene._chargeAttackPendingSend = false
+          if (scene._chargeAttack) {
+            scene._chargeAttack.active = false
+            scene._chargeAttack.charged = false
+          }
+          if (scene._chargeAttack && scene._chargeAttack.chargeBarGfx) {
+            try { scene._chargeAttack.chargeBarGfx.destroy() } catch (e) {}
+            scene._chargeAttack.chargeBarGfx = null
+          }
+          if (scene._chargeAttack && scene._chargeAttack.circleGfx) {
+            try { scene._chargeAttack.circleGfx.destroy() } catch (e) {}
+            scene._chargeAttack.circleGfx = null
+          }
 
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
@@ -1239,18 +1254,18 @@ onMounted(() => {
           // ---------- 掉落物渲染 ----------
           const droppedItems = roomInfo.droppedItems || []
           if (!scene.droppedItemsGroup) scene.droppedItemsGroup = scene.add.group()
-          // 使用房间名+物品名哈希缓存掉落物位置，保证每次渲染位置不变
+          // 使用房间名+物品名+序号哈希缓存掉落物位置，保证每次渲染位置不变
           if (!scene._dropPosCache) scene._dropPosCache = {}
           scene.droppedItemsData = []
-          droppedItems.forEach(drop => {
-            // 为当前房间的每个掉落物生成固定坐标
-            const cacheKey = (roomInfo.name || '') + '::' + drop.itemName
+          droppedItems.forEach((drop, dropIdx) => {
+            // 为当前房间的每个掉落物生成固定坐标（含序号，防止同名物品重叠）
+            const cacheKey = (roomInfo.name || '') + '::' + drop.itemName + '::' + dropIdx
             let dx, dy
             if (scene._dropPosCache[cacheKey]) {
               dx = scene._dropPosCache[cacheKey].x
               dy = scene._dropPosCache[cacheKey].y
             } else {
-              // 基于房间名+物品名生成确定性偏移
+              // 基于房间名+物品名+序号生成确定性偏移
               const hash = (cacheKey.split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0) & 0x7fffffff)
               const offX = ((hash % 61) - 30)
               const offY = (((hash >> 8) % 61) - 30)
@@ -1258,11 +1273,22 @@ onMounted(() => {
               dy = rectCenterY + offY
               scene._dropPosCache[cacheKey] = { x: dx, y: dy }
             }
-            // 药水图标：彩色小瓶子形状
-            const isLife = drop.itemName && drop.itemName.includes('生命')
-            const color = isLife ? 0x44cc44 : 0x4488ff
-            const icon = scene.add.circle(dx, dy, 12, color).setStrokeStyle(2, 0xffffff)
-            icon.setDepth(60)
+            // 使用物品实体绘制替换基础圆形
+            let icon
+            const itemDrawer = getItemDrawer(drop.itemName)
+            if (itemDrawer) {
+              const igfx = scene.add.graphics()
+              igfx.setPosition(dx, dy)
+              itemDrawer(igfx, 1.2)
+              igfx.setDepth(60)
+              icon = igfx
+            } else {
+              // 无对应绘制的物品（如生命浆果/魔力浆果），用原有圆形
+              const isLife = drop.itemName && drop.itemName.includes('生命')
+              const color = isLife ? 0x44cc44 : 0x4488ff
+              icon = scene.add.circle(dx, dy, 12, color).setStrokeStyle(2, 0xffffff)
+              icon.setDepth(60)
+            }
             // 标签
             const label = scene.add.text(dx - 20, dy + 16, drop.itemName, {
               font: '11px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
@@ -1472,8 +1498,18 @@ onMounted(() => {
               continue
             }
 
-            // 灰色方框图标
-            const icon = scene.add.rectangle(cx, cy, iconSize, iconSize, 0x888888).setStrokeStyle(2, 0xaaaaaa)
+            // 使用物品实体绘制替换灰色方框
+            let icon
+            const shopDrawer = getItemDrawer(item.name)
+            if (shopDrawer) {
+              const igfx = scene.add.graphics()
+              igfx.setPosition(cx, cy)
+              shopDrawer(igfx, 1.5)
+              igfx.setDepth(201)
+              icon = igfx
+            } else {
+              icon = scene.add.rectangle(cx, cy, iconSize, iconSize, 0x888888).setStrokeStyle(2, 0xaaaaaa)
+            }
             // 商品名称
             const nameText = scene.add.text(cx, cy + iconSize / 2 + 8, item.name, {
               font: '13px Arial', fill: '#ffffff'
@@ -2029,8 +2065,9 @@ onMounted(() => {
 
           // ---------- 定期轮询后端驱动爆炸计时与全局状态更新 ----------
           // 每500ms轮询一次GET /api/game，驱动tickExplosions（自爆倒计时）、烧伤结算等
+          // 蓄力攻击期间跳过轮询renderRoom，避免进度条被重置回退
           if (!scene._nextPollTime) scene._nextPollTime = 0
-          if (time > scene._nextPollTime && !scene._backpackPaused && !scene.gameOver) {
+          if (time > scene._nextPollTime && !scene._backpackPaused && !scene.gameOver && !scene._chargeAttack.active) {
             scene._nextPollTime = time + 500
             ;(async () => {
               try {
@@ -2559,85 +2596,74 @@ onMounted(() => {
                     } catch (e) {}
 
                     const CHARGE_VFX_RADIUS = 150
+                    // 双圈合成到同一个 graphics（两圈用不同颜色/透明度叠加）
                     const vfxGfx = scene.add.graphics().setDepth(15)
-
-                    const drawChargeCircle = (gfx, alpha) => {
-                      gfx.clear()
-                      gfx.lineStyle(4, 0xFFD700, alpha)
-                      gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
-                      const segs = 96
-                      const outer = [], inner = []
-                      for (let s = 0; s <= segs; s++) {
-                        const a = (s / segs) * Math.PI * 2
-                        outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
-                      }
-                      for (let s = segs; s >= 0; s--) {
-                        const a = (s / segs) * Math.PI * 2
-                        inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
-                      }
-                      gfx.fillStyle(0xFF6600, alpha * 0.55)
-                      gfx.fillPoints(outer.concat(inner), true)
+                    // —— 第一圈（金色外圈+橙色填充）——
+                    vfxGfx.lineStyle(4, 0xFFD700, 1)
+                    vfxGfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                    const segs = 16
+                    let outer = [], inner = []
+                    for (let s = 0; s <= segs; s++) {
+                      const a = (s / segs) * Math.PI * 2
+                      outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
                     }
+                    for (let s = segs; s >= 0; s--) {
+                      const a = (s / segs) * Math.PI * 2
+                      inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                    }
+                    vfxGfx.fillStyle(0xFF6600, 0.55)
+                    vfxGfx.fillPoints(outer.concat(inner), true)
 
-                    drawChargeCircle(vfxGfx, 1)
-                    const shockwave1 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
-                    shockwave1.setStrokeStyle(3, 0xFF8800)
-                    scene.tweens.add({
-                      targets: shockwave1, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
-                      onUpdate: () => { shockwave1.setStrokeStyle(3, 0xFF8800, shockwave1.alpha) },
-                      onComplete: () => { shockwave1.destroy() }
-                    })
+                    // —— 第二圈（橙色描边+红色填充，叠加在同一 graphics）——
+                    vfxGfx.lineStyle(3, 0xFFAA00, 0.85)
+                    vfxGfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                    outer = []; inner = []
+                    for (let s = 0; s <= segs; s++) {
+                      const a = (s / segs) * Math.PI * 2
+                      outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                    }
+                    for (let s = segs; s >= 0; s--) {
+                      const a = (s / segs) * Math.PI * 2
+                      inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                    }
+                    vfxGfx.fillStyle(0xFF4400, 0.45 * 0.85)
+                    vfxGfx.fillPoints(outer.concat(inner), true)
 
-                    // 60ms后第二圈
-                    scene.time.delayedCall(60, () => {
-                      const vfxGfx2 = scene.add.graphics().setDepth(15)
-                      const drawChargeCircle2 = (gfx, alpha) => {
-                        gfx.clear()
-                        gfx.lineStyle(3, 0xFFAA00, alpha)
-                        gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
-                        const segs = 96
-                        const outer = [], inner = []
-                        for (let s = 0; s <= segs; s++) {
-                          const a = (s / segs) * Math.PI * 2
-                          outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
-                        }
-                        for (let s = segs; s >= 0; s--) {
-                          const a = (s / segs) * Math.PI * 2
-                          inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
-                        }
-                        gfx.fillStyle(0xFF4400, alpha * 0.45)
-                        gfx.fillPoints(outer.concat(inner), true)
-                      }
-                      drawChargeCircle2(vfxGfx2, 1)
-                      const shockwave2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
-                      shockwave2.setStrokeStyle(3, 0xFF6600)
-                      scene.tweens.add({
-                        targets: shockwave2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
-                        onUpdate: () => { shockwave2.setStrokeStyle(3, 0xFF6600, shockwave2.alpha) },
-                        onComplete: () => { shockwave2.destroy() }
-                      })
-                      scene.tweens.add({
-                        targets: vfxGfx2, alpha: 0, duration: 350, delay: 100,
-                        onComplete: () => { try { vfxGfx2.destroy() } catch (e) {} }
-                      })
-                    })
-
+                    // 淡出销毁
                     scene.tweens.add({
                       targets: vfxGfx, alpha: 0, duration: 500, delay: 50,
                       onComplete: () => { try { vfxGfx.destroy() } catch (e) {} }
                     })
 
+                    // 冲击波1（金色）
+                    const shockwave = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                    shockwave.setStrokeStyle(3, 0xFF8800)
+                    scene.tweens.add({
+                      targets: shockwave, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                      onUpdate: () => { shockwave.setStrokeStyle(3, 0xFF8800, shockwave.alpha) },
+                      onComplete: () => { shockwave.destroy() }
+                    })
+                    // 冲击波2（红色）
+                    const sw2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                    sw2.setStrokeStyle(3, 0xFF6600)
+                    scene.tweens.add({
+                      targets: sw2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                      onUpdate: () => { sw2.setStrokeStyle(3, 0xFF6600, sw2.alpha) },
+                      onComplete: () => { sw2.destroy() }
+                    })
+
+                    // 相机震动
                     if (scene.cameras && scene.cameras.main) {
-                      scene.cameras.main.shake(200, 0.01)
+                      scene.cameras.main.shake(200, 0.006)
                     }
 
                     // 火花粒子
-                    for (let i = 0; i < 25; i++) {
+                    for (let i = 0; i < 10; i++) {
                       const ang = Math.random() * Math.PI * 2
                       const dist = CHARGE_VFX_RADIUS * (0.3 + Math.random() * 0.7)
                       const px = scene.player.x + Math.cos(ang) * dist
                       const py = scene.player.y + Math.sin(ang) * dist
-                      const spark = scene.add.circle(px, py, 1.5 + Math.random() * 3, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
+                      const spark = scene.add.circle(px, py, 2 + Math.random() * 2.5, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
                       scene.tweens.add({
                         targets: spark, x: px + Math.cos(ang) * (60 + Math.random() * 60),
                         y: py + Math.sin(ang) * (60 + Math.random() * 60),
@@ -2664,8 +2690,11 @@ onMounted(() => {
                         })
                         const j = await res.json()
                         emit('update', j)
+                        // 蓄力VFX还在运行（冲击波250ms + 火花500ms），延迟renderRoom避免与tweens同帧抢占
                         if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-                          scene.renderRoom(j.data)
+                          scene.time.delayedCall(300, () => {
+                            try { scene.renderRoom(j.data) } catch (e) {}
+                          })
                         }
                         if (j && j.message && j.message.includes('游戏结束')) { scene.showGameOver() }
                       } catch (e) {
@@ -3034,11 +3063,16 @@ onMounted(() => {
             for (const drop of scene.droppedItemsData) {
               if (drop.icon && drop.icon.scene) {
                 if (drop === scene._closestDropItem) {
-                  drop.icon.setStrokeStyle(3, 0xFFD700) // 金色高亮
                   drop.icon.setScale(1.3)
+                  // 仅圆形支持 setStrokeStyle，Graphics 对象不支持
+                  if (drop.icon.type === 'Arc') {
+                    drop.icon.setStrokeStyle(3, 0xFFD700)
+                  }
                 } else {
-                  drop.icon.setStrokeStyle(2, 0xffffff)
                   drop.icon.setScale(1.0)
+                  if (drop.icon.type === 'Arc') {
+                    drop.icon.setStrokeStyle(2, 0xffffff)
+                  }
                 }
               }
             }

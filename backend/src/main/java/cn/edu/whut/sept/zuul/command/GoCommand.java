@@ -22,6 +22,12 @@ public class GoCommand implements Command {
         }
 
         Room currentRoom = game.getCurrentRoom();
+        
+        // 检查当前房间是否为怪物房间且还有存活的怪物 — 阻止离开
+        if (currentRoom.isMonsterRoom() && currentRoom.hasAliveMonsters()) {
+            return GameResponse.error("还有怪物在附近！击败所有怪物后才能离开。");
+        }
+
         Room nextRoom = currentRoom.getExits().get(direction);
         if (nextRoom == null) {
             return GameResponse.error("该方向没有门：" + direction + "！");
@@ -29,9 +35,14 @@ public class GoCommand implements Command {
 
         // 触发传输房间逻辑
         game.triggerTeleport(nextRoom);
-        // 记录房间历史（供back命令使用）
-        game.addRoomHistory(currentRoom);
         game.setCurrentRoom(nextRoom);
+
+        // 房间怪物生成（幂等，由Room自身负责）
+        try {
+            nextRoom.spawnMonsters();
+        } catch (Exception e) {
+            // 不要因为刷怪导致移动失败
+        }
 
         return GameResponse.success("你移动到了 " + nextRoom.getName(), nextRoom.getFullInfo());
     }

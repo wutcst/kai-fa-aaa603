@@ -1,3 +1,56 @@
-body { margin: 0; padding: 0; }
-button { padding: 6px 12px; border-radius: 4px; cursor: pointer; }
-pre { white-space: pre-wrap; word-wrap: break-word; }
+/* ============ 全局重置与基础样式 ============ */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #0d0804;
+  color: #d4c4a0;
+  font-family: Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button {
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+button:hover {
+  filter: brightness(1.15);
+}
+
+pre {
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+#root {
+  min-height: 100vh;
+  background: #0d0804;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(30, 20, 10, 0.5);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(200, 160, 80, 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(200, 160, 80, 0.35);
+}

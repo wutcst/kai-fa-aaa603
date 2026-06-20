@@ -3,44 +3,18 @@
     <!-- Phaser 游戏主容器 -->
     <div ref="gameContainer" style="width:800px;height:600px;background:#000;"></div>
 
-    <!-- 小地图 Canvas（固定在右下角） -->
-    <canvas
-        ref="minimapCanvas"
-        class="minimap"
-        width="160"
-        height="160"
-        style="
-        position: absolute;
-        bottom: 10px;
-        right: 10px;
-        border: 1px solid rgba(255,255,255,0.6);
-        background: rgba(0,0,0,0.55);
-        border-radius: 4px;
-        pointer-events: none;
-        z-index: 10;
-      "
-    ></canvas>
+    <!-- 小地图（独立组件，固定在右下角） -->
+    <MinimapPanel />
 
     <!-- ==================== 背包面板（独立组件） ==================== -->
     <BackpackPanel />
 
-    <!-- ==================== 控制面板覆盖层（ESC 打开/关闭） ==================== -->
-    <div v-if="controlPanelVisible" class="control-overlay" @click.self="closeControlPanel">
-      <div class="control-panel">
-        <button class="control-close-btn" @click="closeControlPanel" title="关闭 (ESC)">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-        <h2 class="control-title">⚙ 游戏控制</h2>
-        <div class="control-body">
-          <button class="control-btn control-btn-restart" @click="handleRestart">🔄 重新开始</button>
-          <button class="control-btn control-btn-save" @click="handleSaveGame">💾 保存游戏</button>
-          <button class="control-btn control-btn-menu" @click="handleBackToMenu">🚪 返回菜单</button>
-        </div>
-      </div>
-    </div>
+    <!-- ==================== 控制面板（独立组件，ESC 打开/关闭） ==================== -->
+    <ControlPanel
+      @restart="emit('resetGame')"
+      @save="emit('showSaveSlots')"
+      @back-to-menu="emit('backToMenu')"
+    />
   </div>
 </template>
 
@@ -58,11 +32,12 @@ import { createApi } from '../composables/useApi.js'
 import { createKeyboardManager } from '../composables/useKeyboard.js'
 import { useBackpack } from '../composables/useBackpack.js'
 import BackpackPanel from './BackpackPanel.vue'
+import ControlPanel from './ControlPanel.vue'
+import MinimapPanel from './MinimapPanel.vue'
 import { ATTACK_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
-const minimapCanvas = ref(null)
 let game = null
 
 const backpack = useBackpack()
@@ -77,40 +52,6 @@ function getScene() {
   return null
 }
 
-// ==================== 控制面板 UI 响应式状态 ====================
-const controlPanelVisible = ref(false)
-
-function openControlPanel() {
-  // 暂停 Phaser 场景，防止 ESC 关闭面板时触发其他行为
-  if (game && game.scene && game.scene.scenes) {
-    game.scene.scenes.forEach(s => { if (s.scene.isActive()) s.scene.pause() })
-  }
-  controlPanelVisible.value = true
-}
-
-function closeControlPanel() {
-  controlPanelVisible.value = false
-  // 恢复 Phaser 场景
-  if (game && game.scene && game.scene.scenes) {
-    game.scene.scenes.forEach(s => { if (s.scene.isPaused()) s.scene.resume() })
-  }
-}
-
-function handleRestart() {
-  closeControlPanel()
-  emit('resetGame')
-}
-
-function handleSaveGame() {
-  closeControlPanel()
-  emit('showSaveSlots')
-}
-
-function handleBackToMenu() {
-  closeControlPanel()
-  emit('backToMenu')
-}
-
 // ==================== 键盘管理器 ====================
 const keyboardManager = createKeyboardManager({
   isInputFocused: () => {
@@ -120,199 +61,9 @@ const keyboardManager = createKeyboardManager({
   toggleBackpack: () => {
     backpack.toggle()
   },
-  toggleControlPanel: () => {
-    if (controlPanelVisible.value) {
-      closeControlPanel()
-    } else {
-      openControlPanel()
-    }
-  },
   getBackpackVisible: () => backpack.visible,
-  getControlPanelVisible: () => controlPanelVisible.value
 })
 
-// ---------- 小地图状态 ----------
-let mapLayout = null          // { rooms, roomMap, coords }
-let currentRoomName = ''      // 当前玩家所在房间名
-// --------------------------------
-
-// ---------- 小地图核心函数 ----------
-
-function buildMapLayout(mapData) {
-  const { rooms, startRoomName } = mapData
-  const roomMap = new Map(rooms.map(r => [r.name, r]))
-  const coords = new Map()   // roomName -> {x, y}
-  const visited = new Set()
-
-  const queue = [startRoomName]
-  coords.set(startRoomName, { x: 0, y: 0 })
-  visited.add(startRoomName)
-
-  const dirVec = {
-    north: { dx: 0, dy: -1 },
-    south: { dx: 0, dy: 1 },
-    west:  { dx: -1, dy: 0 },
-    east:  { dx: 1, dy: 0 }
-  }
-
-  while (queue.length > 0) {
-    const curName = queue.shift()
-    const curRoom = roomMap.get(curName)
-    if (!curRoom) continue
-    const { x, y } = coords.get(curName)
-    const exits = curRoom.exits || {}
-    for (const [dir, neighborName] of Object.entries(exits)) {
-      if (!neighborName || visited.has(neighborName)) continue
-      const vec = dirVec[dir]
-      if (!vec) continue
-      const nx = x + vec.dx
-      const ny = y + vec.dy
-      coords.set(neighborName, { x: nx, y: ny })
-      visited.add(neighborName)
-      queue.push(neighborName)
-    }
-  }
-  return { rooms, roomMap, coords }
-}
-
-function drawMinimap(highlightRoomName) {
-  const canvas = minimapCanvas.value
-  if (!canvas || !mapLayout) return
-
-  const ctx = canvas.getContext('2d')
-  const { rooms, coords } = mapLayout
-  if (coords.size === 0) return
-
-  // 计算边界
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  for (const [, pos] of coords) {
-    if (pos.x < minX) minX = pos.x
-    if (pos.x > maxX) maxX = pos.x
-    if (pos.y < minY) minY = pos.y
-    if (pos.y > maxY) maxY = pos.y
-  }
-
-  const margin = 14
-  const availW = canvas.width - margin * 2
-  const availH = canvas.height - margin * 2
-  const rangeX = maxX - minX + 1
-  const rangeY = maxY - minY + 1
-  const cellSize = Math.min(availW / rangeX, availH / rangeY, 36)
-  const rectW = cellSize * 0.75
-  const rectH = cellSize * 0.75
-  const offsetX = margin + (availW - rangeX * cellSize) / 2
-  const offsetY = margin + (availH - rangeY * cellSize) / 2
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-  // 获取房间矩形坐标
-  const getRoomRect = (name) => {
-    const pos = coords.get(name)
-    if (!pos) return null
-    const x = offsetX + (pos.x - minX) * cellSize + (cellSize - rectW) / 2
-    const y = offsetY + (pos.y - minY) * cellSize + (cellSize - rectH) / 2
-    return { x, y, w: rectW, h: rectH }
-  }
-
-  // 1. 绘制连线（去重）
-  const drawnEdges = new Set()
-  for (const room of rooms) {
-    const rectA = getRoomRect(room.name)
-    if (!rectA) continue
-    const exits = room.exits || {}
-    for (const [dir, neighborName] of Object.entries(exits)) {
-      if (!neighborName) continue
-      const edgeId = room.name < neighborName ? `${room.name}->${neighborName}` : `${neighborName}->${room.name}`
-      if (drawnEdges.has(edgeId)) continue
-      drawnEdges.add(edgeId)
-
-      const rectB = getRoomRect(neighborName)
-      if (!rectB) continue
-
-      let x1, y1, x2, y2
-      switch (dir) {
-        case 'north':
-          x1 = rectA.x + rectA.w / 2; y1 = rectA.y
-          x2 = rectB.x + rectB.w / 2; y2 = rectB.y + rectB.h
-          break
-        case 'south':
-          x1 = rectA.x + rectA.w / 2; y1 = rectA.y + rectA.h
-          x2 = rectB.x + rectB.w / 2; y2 = rectB.y
-          break
-        case 'west':
-          x1 = rectA.x; y1 = rectA.y + rectA.h / 2
-          x2 = rectB.x + rectB.w; y2 = rectB.y + rectB.h / 2
-          break
-        case 'east':
-          x1 = rectA.x + rectA.w; y1 = rectA.y + rectA.h / 2
-          x2 = rectB.x; y2 = rectB.y + rectB.h / 2
-          break
-        default: continue
-      }
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.strokeStyle = 'rgba(200,200,200,0.7)'
-      ctx.lineWidth = 1
-      ctx.stroke()
-    }
-  }
-
-  // 2. 绘制房间矩形（按房间类型不同颜色）
-  const roomTypeColors = {
-    START_HALL:      { fill: 'rgba(255, 215, 0, 0.85)', stroke: '#FFD700' },
-    SHOP:            { fill: 'rgba(0, 191, 255, 0.75)', stroke: '#00BFFF' },
-    ENCOUNTER:       { fill: 'rgba(186, 85, 211, 0.75)', stroke: '#BA55D3' },
-    CAMPFIRE:        { fill: 'rgba(255, 140, 0, 0.75)', stroke: '#FF8C00' },
-    BOSS:            { fill: 'rgba(220, 20, 60, 0.80)', stroke: '#DC143C' },
-    ELITE_MONSTER:   { fill: 'rgba(255, 99, 71, 0.75)', stroke: '#FF6347' },
-    NORMAL_MONSTER:  { fill: 'rgba(100, 149, 237, 0.7)', stroke: 'rgba(255,255,255,0.8)' }
-  }
-  for (const room of rooms) {
-    const rect = getRoomRect(room.name)
-    if (!rect) continue
-    const isCurrent = room.name === highlightRoomName
-    const roomType = room.roomType || 'NORMAL_MONSTER'
-    const typeColor = roomTypeColors[roomType] || roomTypeColors.NORMAL_MONSTER
-    if (isCurrent) {
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)'
-      ctx.strokeStyle = '#FFD700'
-      ctx.lineWidth = 2
-    } else {
-      ctx.fillStyle = typeColor.fill
-      ctx.strokeStyle = typeColor.stroke
-      ctx.lineWidth = 1
-    }
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h)
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
-    // 房间编号（提取完整数字后缀，支持多位数）
-    ctx.fillStyle = '#fff'
-    const label = (room.name.match(/\d+$/) || [room.name.charAt(room.name.length - 1) || '?'])[0]
-    const fontSize = Math.max(7, rect.w * (label.length > 1 ? 0.28 : 0.4))
-    ctx.font = `${fontSize}px Arial`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2)
-  }
-}
-
-async function initMinimap() {
-  // 立即清空旧地图布局，防止并发的 drawMinimap 调用使用过期数据绘制
-  mapLayout = null
-  try {
-    const res = await fetch('/api/map')
-    const data = await res.json()
-    console.log('[Minimap] API response rooms:', data.rooms ? data.rooms.map(r => ({ name: r.name, roomType: r.roomType })) : 'none')
-    mapLayout = buildMapLayout(data)
-    drawMinimap(currentRoomName)
-  } catch (e) {
-    console.warn('无法获取地图数据，小地图不可用', e)
-  }
-}
-
-function onMinimapUpdate(e) {
-  drawMinimap(e.detail.roomName)
-}
 
 // ---------- Phaser 游戏场景 ----------
 
@@ -1305,8 +1056,7 @@ onMounted(() => {
 
           // ---------- 小地图更新通知 ----------
           try {
-            currentRoomName = roomInfo.name || ''
-            window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: currentRoomName } }))
+            window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: roomInfo.name || '' } }))
           } catch (e) {}
         }
 
@@ -1968,6 +1718,16 @@ onMounted(() => {
           // 停止所有时间事件
           scene.time.removeAllEvents()
         })
+        // 控制面板打开→暂停 Phaser 场景
+        window.addEventListener('game:pause-scene', function() {
+          scene.sys.events.pause()
+          scene.tweens.killAll()
+          scene.time.removeAllEvents()
+        })
+        // 控制面板关闭→恢复 Phaser 场景
+        window.addEventListener('game:resume-scene', function() {
+          scene.sys.events.resume()
+        })
 
         // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条
         window.__zuul_game_update_handler = function(e) {
@@ -2098,9 +1858,8 @@ onMounted(() => {
                   }
                   // 通知小地图
                   try {
-                    currentRoomName = j.data.name || ''
                     if (j.data.name) {
-                      window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: currentRoomName } }))
+                      window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: j.data.name } }))
                     }
                   } catch (e) {}
                 }
@@ -3344,13 +3103,6 @@ onMounted(() => {
 
   game = new Phaser.Game(config)
 
-  // 初始化小地图并监听更新事件
-  initMinimap()
-  window.addEventListener('minimap:update', onMinimapUpdate)
-
-  // 监听游戏重置事件，重新获取地图数据实现小地图同步更新
-  window.addEventListener('game:reset', initMinimap)
-
   // 注册键盘管理器（B 键背包 / ESC 控制面板）
   keyboardManager.attach()
 })
@@ -3360,8 +3112,6 @@ onBeforeUnmount(() => {
     try { game.destroy(true) } catch (e) {}
     game = null
   }
-  window.removeEventListener('minimap:update', onMinimapUpdate)
-  window.removeEventListener('game:reset', initMinimap)
   keyboardManager.detach()
   // 清理其他全局事件
   try {
@@ -3378,124 +3128,4 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.minimap {
-  /* 可根据需要微调样式 */
-}
-
-/* ==================== 控制面板样式 ==================== */
-
-
-/* ==================== 控制面板样式 ==================== */
-.control-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2000;
-  background: rgba(0, 0, 0, 0.65);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: auto;
-}
-
-.control-panel {
-  position: relative;
-  width: 300px;
-  background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
-  border: 2px solid rgba(180, 150, 80, 0.5);
-  border-radius: 16px;
-  overflow: hidden;
-  padding: 32px 28px 28px;
-}
-
-/* 右上角关闭按钮 */
-.control-close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid rgba(180, 150, 80, 0.3);
-  color: #998866;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  padding: 0;
-  z-index: 2;
-}
-.control-close-btn:hover {
-  background: rgba(200, 60, 60, 0.12);
-  border-color: rgba(200, 60, 60, 0.4);
-  color: #cc6666;
-}
-
-/* 标题 */
-.control-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: #e8d8b0;
-  text-align: center;
-  letter-spacing: 2px;
-  margin: 0 0 20px;
-  padding-top: 8px;
-}
-
-/* 按钮容器 */
-.control-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* 按钮通用 */
-.control-btn {
-  padding: 12px 20px;
-  font-size: 15px;
-  font-weight: bold;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: center;
-  letter-spacing: 1px;
-  border: 1px solid;
-}
-
-/* 重新开始 */
-.control-btn-restart {
-  background: #1e2a38;
-  color: #c8d8e8;
-  border-color: rgba(140, 170, 210, 0.25);
-}
-.control-btn-restart:hover {
-  background: #2a3a4e;
-  border-color: rgba(160, 190, 220, 0.4);
-}
-
-/* 保存游戏 */
-.control-btn-save {
-  background: #1a2418;
-  color: #aaccaa;
-  border-color: rgba(100, 180, 100, 0.35);
-  cursor: pointer;
-}
-.control-btn-save:hover {
-  background: #2a3a28;
-  color: #ccddcc;
-  border-color: rgba(120, 200, 120, 0.5);
-  box-shadow: 0 0 12px rgba(80, 160, 80, 0.3);
-}
-
-/* 返回菜单 */
-.control-btn-menu {
-  background: #2a1a0e;
-  color: #e0c898;
-  border-color: rgba(200, 160, 80, 0.3);
-}
-.control-btn-menu:hover {
-  background: #3a2510;
-  border-color: rgba(220, 180, 100, 0.45);
-}
 </style>

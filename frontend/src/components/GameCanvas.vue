@@ -21,151 +21,8 @@
       "
     ></canvas>
 
-    <!-- ==================== 背包 UI 覆盖层 ==================== -->
-    <div v-if="backpackVisible" class="backpack-overlay" @click.self="closeBackpack">
-      <div class="backpack-panel">
-        <!-- 标题栏 -->
-        <div class="backpack-header">
-          <span class="backpack-title">🎒 背包</span>
-          <span class="backpack-close" @click="closeBackpack">✕</span>
-        </div>
-
-        <div class="backpack-body">
-          <!-- 左侧：5x3 物品格子 -->
-          <div class="backpack-left">
-            <div
-                v-for="i in 15"
-                :key="'slot-' + i"
-                class="backpack-slot"
-                :class="{
-                'has-item': getSlotItem(i - 1),
-                'slot-selected': selectedSlot === (i - 1),
-                'slot-hovered': hoveredSlot === (i - 1)
-              }"
-                @click="selectSlot(i - 1)"
-                @mouseenter="hoveredSlot = (i - 1)"
-                @mouseleave="hoveredSlot = null"
-            >
-              <!-- 物品简略图标 -->
-              <!-- 生命浆果：三个红色重叠圆点 -->
-              <div v-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('生命浆果')" class="slot-icon slot-icon-lifeberry">
-                <span class="berry-dot" style="left:10px;top:14px;"></span>
-                <span class="berry-dot" style="left:20px;top:10px;"></span>
-                <span class="berry-dot" style="left:28px;top:18px;"></span>
-              </div>
-              <!-- 魔力浆果：三个蓝色重叠椭圆 -->
-              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('魔力浆果')" class="slot-icon slot-icon-manaberry">
-                <span class="mana-ellipse" style="left:10px;top:16px;"></span>
-                <span class="mana-ellipse" style="left:18px;top:10px;"></span>
-                <span class="mana-ellipse" style="left:26px;top:18px;"></span>
-              </div>
-              <!-- 铁剑图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('铁剑') || (getSlotItem(i - 1).name.includes('剑') && getSlotItem(i - 1).name.includes('铁')))" class="slot-icon slot-icon-sword">
-                <span class="sword-blade"></span>
-              </div>
-              <!-- 铁盾图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('铁盾') || (getSlotItem(i - 1).name.includes('盾') && getSlotItem(i - 1).name.includes('铁')))" class="slot-icon slot-icon-shield">
-                <span class="shield-body"></span>
-              </div>
-              <!-- 暗影披风图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('暗影披风') || getSlotItem(i - 1).name.includes('披风'))" class="slot-icon slot-icon-cloak">
-                <span class="cloak-body"></span>
-              </div>
-              <!-- 生命戒指图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('生命戒指') || getSlotItem(i - 1).name.includes('戒指'))" class="slot-icon slot-icon-ring">
-                <span class="ring-circle"></span>
-              </div>
-              <!-- 元素项链图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('元素项链') || getSlotItem(i - 1).name.includes('项链'))" class="slot-icon slot-icon-necklace">
-                <span class="necklace-chain"></span>
-              </div>
-              <!-- 药水图标 -->
-              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('药水')" class="slot-icon slot-icon-potion">
-                <span class="potion-bottle"></span>
-              </div>
-              <!-- 其他物品：显示名称首字母 -->
-              <div v-else-if="getSlotItem(i - 1)" class="slot-icon">
-                {{ getSlotItem(i - 1).name.charAt(0) }}
-              </div>
-              <!-- 已佩戴标记 -->
-              <span v-if="getSlotItem(i - 1) && getSlotItem(i - 1).equipped" class="slot-equipped-badge">已佩戴</span>
-              <!-- 物品数量角标 -->
-              <span v-if="getSlotItem(i - 1) && !getSlotItem(i - 1).equipped" class="slot-qty">x{{ getSlotItem(i - 1).quantity }}</span>
-            </div>
-          </div>
-
-          <!-- 右侧：物品详情 -->
-          <div class="backpack-right">
-            <!-- 上方大图像框 -->
-            <div class="detail-image-frame">
-              <span v-if="!selectedItem" class="placeholder-text">选择物品查看详情</span>
-              <div v-else class="detail-image-placeholder">
-                {{ selectedItem.name.charAt(0) }}
-              </div>
-            </div>
-
-            <!-- 下方物品信息 -->
-            <div class="detail-info">
-              <template v-if="selectedItem">
-                <!-- 第一行：名称 + 编号 + 数量 -->
-                <div class="detail-row1">
-                  <span class="detail-name" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    {{ selectedItem.name }}
-                  </span>
-                  <span class="detail-id" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    NO.{{ String(selectedItem.itemId).padStart(2, '0') }}
-                  </span>
-                  <span class="detail-qty" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    拥有：{{ selectedItem.quantity }}
-                  </span>
-                </div>
-                <!-- 功能描述 -->
-                <div class="detail-func">
-                  {{ selectedItem.functionDesc }}
-                </div>
-                <!-- 空行间距 -->
-                <div class="detail-spacer"></div>
-                <!-- 背景描述（斜体） -->
-                <div class="detail-lore">
-                  "{{ selectedItem.loreDesc }}"
-                </div>
-              </template>
-              <template v-else>
-                <div class="detail-empty">← 点击左侧物品查看详情</div>
-              </template>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div class="detail-buttons">
-              <!-- 饰品已佩戴 → 显示"卸下"按钮 -->
-              <button
-                  v-if="selectedItem && selectedItem.equipped"
-                  class="btn-unequip"
-                  @click="unequipItem"
-              >卸下</button>
-              <!-- 饰品未佩戴 → 显示"佩戴"按钮 -->
-              <button
-                  v-else-if="selectedItem && isAccessory(selectedItem)"
-                  class="btn-use"
-                  @click="useItem"
-              >佩戴</button>
-              <!-- 普通消耗品 → 显示"使用"按钮 -->
-              <button
-                  v-else
-                  class="btn-use"
-                  :disabled="!selectedItem"
-                  @click="useItem"
-              >使用</button>
-              <button
-                  class="btn-discard"
-                  :disabled="!selectedItem"
-                  @click="discardItem"
-              >丢弃</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- ==================== 背包面板（独立组件） ==================== -->
+    <BackpackPanel />
 
     <!-- ==================== 控制面板覆盖层（ESC 打开/关闭） ==================== -->
     <div v-if="controlPanelVisible" class="control-overlay" @click.self="closeControlPanel">
@@ -197,17 +54,28 @@ import {
   drawShopMerchant,
   getItemDrawer
 } from '../entity/EntityDrawer.js'
+import { createApi } from '../composables/useApi.js'
+import { createKeyboardManager } from '../composables/useKeyboard.js'
+import { useBackpack } from '../composables/useBackpack.js'
+import BackpackPanel from './BackpackPanel.vue'
+import { ATTACK_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
 
-// ==================== 背包 UI 响应式状态 ====================
-const backpackVisible = ref(false)
-const selectedSlot = ref(null)      // 选中的格子索引 (0-14)
-const hoveredSlot = ref(null)       // 鼠标悬停的格子索引
-const backpackItems = ref([])       // 背包物品列表 [{itemId, name, rarity, functionDesc, loreDesc, quantity, ...}]
+const backpack = useBackpack()
+
+let api = null
+api = createApi(emit, getScene)
+function getScene() {
+  if (!game || !game.scene || !game.scene.scenes) return null
+  for (const s of game.scene.scenes) {
+    if (s.scene && s.scene.isActive && s.scene.isActive()) return s
+  }
+  return null
+}
 
 // ==================== 控制面板 UI 响应式状态 ====================
 const controlPanelVisible = ref(false)
@@ -243,190 +111,25 @@ function handleBackToMenu() {
   emit('backToMenu')
 }
 
-// 稀有度对应颜色
-function rarityColor(rarity) {
-  switch (rarity) {
-    case 'legendary': return '#FF6600'
-    case 'epic': return '#CC44FF'
-    case 'rare': return '#4488FF'
-    default: return '#FFD700' // common -> 金色
-  }
-}
-
-// 获取某个格子对应的物品
-function getSlotItem(slotIndex) {
-  return slotIndex < backpackItems.value.length ? backpackItems.value[slotIndex] : null
-}
-
-// 当前选中的物品
-const selectedItem = ref(null)
-
-// 选中格子
-function selectSlot(slotIndex) {
-  const item = getSlotItem(slotIndex)
-  if (item) {
-    selectedSlot.value = slotIndex
-    selectedItem.value = item
-  } else {
-    selectedSlot.value = null
-    selectedItem.value = null
-  }
-}
-
-// 从后端刷新背包数据
-async function refreshBackpack() {
-  try {
-    const res = await fetch('/api/backpack')
-    const j = await res.json()
-    console.log('[Backpack] API full response:', JSON.stringify(j, null, 2))
-    if (j && j.data && j.data.backpack) {
-      backpackItems.value = j.data.backpack
-      console.log('[Backpack] items loaded:', backpackItems.value.length,
-        backpackItems.value.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
-    } else {
-      console.warn('[Backpack] No backpack data in response. data keys:', j.data ? Object.keys(j.data) : 'null')
-    }
-  } catch (e) {
-    console.warn('[Backpack] 无法获取背包数据', e)
-  }
-}
-
-// 判断是否为饰品
-function isAccessory(item) {
-  if (!item || !item.name) return false
-  const name = item.name
-  return name.includes('暗影披风') || name.includes('生命戒指') || name.includes('元素项链')
-}
-
-// 使用物品（饰品则为佩戴）
-async function useItem() {
-  if (!selectedItem.value) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag use ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      // 通知游戏场景更新渲染
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    // 重置选择
-    if (selectedItem.value) {
-      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
-      if (!stillExists) {
-        selectedSlot.value = null
-        selectedItem.value = null
-      } else {
-        const idx = backpackItems.value.indexOf(stillExists)
-        selectedSlot.value = idx
-        selectedItem.value = stillExists
-      }
-    }
-  } catch (e) {
-    console.warn('使用物品失败', e)
-  }
-}
-
-// 卸下饰品
-async function unequipItem() {
-  if (!selectedItem.value) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag unequip ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    if (selectedItem.value) {
-      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
-      if (stillExists) {
-        const idx = backpackItems.value.indexOf(stillExists)
-        selectedSlot.value = idx
-        selectedItem.value = stillExists
-      }
-    }
-  } catch (e) {
-    console.warn('卸下饰品失败', e)
-  }
-}
-
-// 丢弃物品
-async function discardItem() {
-  if (!selectedItem.value) return
-  if (!confirm('确定要丢弃全部 "' + selectedItem.value.name + '" 吗？')) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag discard ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    selectedSlot.value = null
-    selectedItem.value = null
-  } catch (e) {
-    console.warn('丢弃物品失败', e)
-  }
-}
-
-// 关闭背包（同时通知 Phaser 恢复游戏）
-function closeBackpack() {
-  backpackVisible.value = false
-  window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: false } }))
-}
-
-// B 键切换背包（全局监听）
-function onKeyDown(e) {
-  if (e.key === 'b' || e.key === 'B') {
-    // 避免在输入框中误触发
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    e.preventDefault()
-    backpackVisible.value = !backpackVisible.value
-    if (backpackVisible.value) {
-      refreshBackpack()
-      selectedSlot.value = null
-      selectedItem.value = null
-    }
-    // 通知 Phaser 场景暂停/恢复
-    window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: backpackVisible.value } }))
-  }
-  // ESC 键：切换控制面板
-  if (e.key === 'Escape') {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    // 如果背包打开，先关闭背包
-    if (backpackVisible.value) {
-      closeBackpack()
-      return
-    }
-    // 切换控制面板
-    e.preventDefault()
+// ==================== 键盘管理器 ====================
+const keyboardManager = createKeyboardManager({
+  isInputFocused: () => {
+    const activeEl = document.activeElement
+    return activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+  },
+  toggleBackpack: () => {
+    backpack.toggle()
+  },
+  toggleControlPanel: () => {
     if (controlPanelVisible.value) {
       closeControlPanel()
     } else {
       openControlPanel()
     }
-  }
-  // 背包打开时阻止其他按键进入游戏
-  if (backpackVisible.value) {
-    if (['w','W','a','A','s','S','d','D','j','J',' ', 'h','H','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-      e.stopPropagation()
-      e.stopImmediatePropagation()
-    }
-  }
-}
+  },
+  getBackpackVisible: () => backpack.visible,
+  getControlPanelVisible: () => controlPanelVisible.value
+})
 
 // ---------- 小地图状态 ----------
 let mapLayout = null          // { rooms, roomMap, coords }
@@ -1142,27 +845,8 @@ onMounted(() => {
 
         scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
-        scene.sendCommand = async function (cmd, fromDir = null) {
-          scene._lastMoveDir = fromDir
-          try {
-            const res = await fetch('/api/command', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: cmd })
-            })
-            const j = await res.json()
-            emit('update', j)
-            // if response contains room data, re-render (跳过商店/祭坛浮层)
-            if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-              scene.renderRoom(j.data)
-            }
-            // check for game over from backend response
-            if (j && j.status === 'error' && j.message && j.message.includes('Game is over')) {
-              scene.showGameOver()
-            }
-          } catch (e) {
-            emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-          }
+        scene.sendCommand = function (cmd, fromDir = null) {
+          return api.sendCommand(cmd, fromDir)
         }
 
         // show game over overlay
@@ -2036,21 +1720,8 @@ onMounted(() => {
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 120,
-          angleDeg: 135,
-          segments: 96,
-          sweepDuration: 140,
-          ghostFade: 120,
-          finalFade: 60,
-          ghostSpacing: 0.035,
-          mainAlpha: 0.95,
-          ghostAlpha: 0.92,
-          ghostMinFade: 40,
-          pierceDistance: 120,
-          pierceDistanceExpand: 1.15,
-          pierceDuration: 100,
-          pierceFade: 180,
-          pierceWidth: 14
+          ...ATTACK_CONFIG.SWEEP,
+          ...ATTACK_CONFIG.PIERCE
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         scene._piercing = false          // 突刺移动中：禁止WASD移动输入
@@ -3680,8 +3351,8 @@ onMounted(() => {
   // 监听游戏重置事件，重新获取地图数据实现小地图同步更新
   window.addEventListener('game:reset', initMinimap)
 
-  // 注册 B 键背包全局监听
-  window.addEventListener('keydown', onKeyDown, true)
+  // 注册键盘管理器（B 键背包 / ESC 控制面板）
+  keyboardManager.attach()
 })
 
 onBeforeUnmount(() => {
@@ -3691,7 +3362,7 @@ onBeforeUnmount(() => {
   }
   window.removeEventListener('minimap:update', onMinimapUpdate)
   window.removeEventListener('game:reset', initMinimap)
-  window.removeEventListener('keydown', onKeyDown, true)
+  keyboardManager.detach()
   // 清理其他全局事件
   try {
     if (window.__zuul_key_handler) {
@@ -3711,553 +3382,8 @@ onBeforeUnmount(() => {
   /* 可根据需要微调样式 */
 }
 
-/* ==================== 背包 UI 样式 ==================== */
-.backpack-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 800px;
-  height: 600px;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
+/* ==================== 控制面板样式 ==================== */
 
-.backpack-panel {
-  width: 720px;
-  height: 480px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  border: 2px solid #4a6fa5;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 0 40px rgba(0, 100, 200, 0.3), inset 0 0 20px rgba(0, 100, 200, 0.1);
-}
-
-.backpack-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid #4a6fa5;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px 12px 0 0;
-}
-
-.backpack-title {
-  font-size: 22px;
-  font-weight: bold;
-  color: #FFD700;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-}
-
-.backpack-close {
-  font-size: 22px;
-  color: #ff6666;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-.backpack-close:hover {
-  background: rgba(255, 100, 100, 0.3);
-}
-
-.backpack-body {
-  display: flex;
-  flex: 1;
-  padding: 16px;
-  gap: 16px;
-  overflow: hidden;
-}
-
-.backpack-left {
-  display: grid;
-  grid-template-columns: repeat(5, 72px);
-  grid-template-rows: repeat(3, 72px);
-  gap: 8px;
-  padding: 4px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-}
-
-.backpack-slot {
-  width: 72px;
-  height: 72px;
-  background: rgba(30, 40, 60, 0.8);
-  border: 2px solid #3a5a8c;
-  border-radius: 6px;
-  position: relative;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.backpack-slot.has-item {
-  background: rgba(40, 55, 80, 0.9);
-  border-color: #5a7aac;
-}
-
-.backpack-slot.slot-hovered.has-item {
-  transform: scale(1.12);
-  border-color: #88aadd;
-  box-shadow: 0 0 12px rgba(100, 150, 255, 0.4);
-  z-index: 2;
-}
-
-.backpack-slot.slot-selected {
-  border-color: #ffffff;
-  border-width: 3px;
-  box-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
-}
-
-.slot-icon {
-  width: 48px;
-  height: 48px;
-  background: rgba(255, 215, 0, 0.15);
-  border: 1px solid rgba(255, 215, 0, 0.3);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  font-weight: bold;
-  color: #FFD700;
-  position: relative;
-  overflow: visible;
-}
-
-/* 生命浆果图标：三个红色重叠圆点 */
-.slot-icon-lifeberry {
-  background: rgba(68, 204, 68, 0.12);
-  border-color: rgba(68, 204, 68, 0.25);
-}
-
-.berry-dot {
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ff4444, #cc0000);
-  box-shadow: 0 0 4px rgba(255, 50, 50, 0.6);
-}
-
-/* 魔力浆果图标：三个蓝色重叠椭圆 */
-.slot-icon-manaberry {
-  background: rgba(68, 136, 255, 0.12);
-  border-color: rgba(68, 136, 255, 0.25);
-}
-
-.mana-ellipse {
-  display: block;
-  position: absolute;
-  width: 18px;
-  height: 12px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 35% 35%, #66aaff, #2255cc);
-  box-shadow: 0 0 5px rgba(80, 140, 255, 0.6);
-  transform: rotate(-30deg);
-}
-
-/* 药水图标：蓝色玻璃瓶+红色液体 */
-.slot-icon-potion {
-  background: rgba(136, 204, 255, 0.12);
-  border-color: rgba(136, 204, 255, 0.25);
-}
-.potion-bottle {
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 20px;
-  border-radius: 3px;
-  background: linear-gradient(180deg, #88ccff 0%, #88ccff 40%, #ff4444 40%, #ff4444 100%);
-  border: 1px solid #66aadd;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 6px rgba(255, 68, 68, 0.4);
-}
-.potion-bottle::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: #88ccff;
-  border: 1px solid #66aadd;
-  top: -5px;
-  left: 3px;
-  border-radius: 1px;
-}
-
-/* 铁剑图标 */
-.slot-icon-sword {
-  background: rgba(192, 192, 192, 0.12);
-  border-color: rgba(192, 192, 192, 0.25);
-}
-.sword-blade {
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 26px;
-  background: linear-gradient(180deg, #e0e0e0, #888888);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-30deg);
-  border-radius: 1px;
-  box-shadow: 0 0 4px rgba(200, 200, 200, 0.3);
-}
-.sword-blade::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 16px;
-  height: 4px;
-  background: #8B7355;
-  top: 6px;
-  left: -6px;
-  border-radius: 1px;
-}
-.sword-blade::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 10px;
-  background: #654321;
-  top: 10px;
-  left: 0;
-  border-radius: 1px;
-}
-
-/* 铁盾图标 */
-.slot-icon-shield {
-  background: rgba(136, 136, 136, 0.12);
-  border-color: rgba(136, 136, 136, 0.25);
-}
-.shield-body {
-  display: block;
-  position: absolute;
-  width: 22px;
-  height: 26px;
-  border-radius: 4px;
-  background: #888888;
-  border: 2px solid #666666;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 4px rgba(136, 136, 136, 0.3);
-}
-.shield-body::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 2px;
-  height: 20px;
-  background: #AAAAAA;
-  top: 3px;
-  left: 8px;
-}
-.shield-body::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 2px;
-  background: #AAAAAA;
-  top: 11px;
-  left: 2px;
-}
-
-/* 暗影披风图标 */
-.slot-icon-cloak {
-  background: rgba(42, 10, 58, 0.2);
-  border-color: rgba(100, 50, 150, 0.3);
-}
-.cloak-body {
-  display: block;
-  position: absolute;
-  width: 24px;
-  height: 22px;
-  background: linear-gradient(180deg, #2A0A3A, #1A0530);
-  clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 8px rgba(102, 51, 170, 0.3), 0 0 16px rgba(102, 51, 170, 0.15);
-}
-.cloak-body::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: #888888;
-  border-radius: 50%;
-  top: 0;
-  left: 10px;
-}
-
-/* 生命戒指图标 */
-.slot-icon-ring {
-  background: rgba(68, 204, 68, 0.12);
-  border-color: rgba(68, 204, 68, 0.25);
-}
-.ring-circle {
-  display: block;
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 3px solid #88DD88;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 8px rgba(68, 204, 68, 0.3), inset 0 0 8px rgba(68, 204, 68, 0.1);
-}
-.ring-circle::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: #66EE66;
-  border-radius: 50%;
-  top: -4px;
-  left: 5px;
-  box-shadow: 0 0 6px rgba(102, 238, 102, 0.6);
-}
-
-/* 元素项链图标 */
-.slot-icon-necklace {
-  background: rgba(255, 215, 0, 0.08);
-  border-color: rgba(255, 215, 0, 0.2);
-}
-.necklace-chain {
-  display: block;
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-.necklace-chain::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #FF5555, #CC0000);
-  box-shadow: 0 0 4px rgba(255, 50, 50, 0.4);
-  top: 14px;
-  left: 1px;
-}
-.necklace-chain::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #5555FF, #0000CC);
-  box-shadow: 0 0 4px rgba(50, 50, 255, 0.4);
-  top: 14px;
-  left: 16px;
-}
-
-.slot-qty {
-  position: absolute;
-  bottom: 3px;
-  right: 5px;
-  font-size: 11px;
-  color: #FFD700;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-  font-weight: bold;
-}
-
-.backpack-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.detail-image-frame {
-  height: 180px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.placeholder-text {
-  color: #667799;
-  font-size: 16px;
-  font-style: italic;
-}
-
-.detail-image-placeholder {
-  width: 120px;
-  height: 120px;
-  background: rgba(255, 215, 0, 0.08);
-  border: 2px solid rgba(255, 215, 0, 0.3);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  font-weight: bold;
-  color: #FFD700;
-  text-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
-}
-
-.detail-info {
-  flex: 1;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-  overflow-y: auto;
-}
-
-.detail-row1 {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.detail-name {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.detail-id {
-  font-size: 13px;
-}
-
-.detail-qty {
-  font-size: 13px;
-}
-
-.detail-func {
-  font-size: 14px;
-  color: #ccddff;
-  line-height: 1.5;
-  margin-bottom: 4px;
-}
-
-.detail-spacer {
-  height: 16px;
-}
-
-.detail-lore {
-  font-size: 13px;
-  color: #99aacc;
-  font-style: italic;
-  line-height: 1.5;
-}
-
-.detail-empty {
-  color: #667799;
-  font-size: 14px;
-  font-style: italic;
-  text-align: center;
-  padding-top: 20px;
-}
-
-.detail-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.btn-use {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #33cc44 0%, #228833 100%);
-  color: #ffffff;
-  border: 1px solid #2aa033;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-use:hover:not(:disabled) {
-  background: linear-gradient(180deg, #44dd55 0%, #33aa44 100%);
-  box-shadow: 0 0 12px rgba(50, 200, 60, 0.5);
-}
-.btn-use:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* 已佩戴徽章 */
-.slot-equipped-badge {
-  position: absolute;
-  bottom: 3px;
-  left: 3px;
-  font-size: 9px;
-  color: #00ff88;
-  text-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
-  font-weight: bold;
-  background: rgba(0, 40, 20, 0.7);
-  padding: 1px 4px;
-  border-radius: 3px;
-  border: 1px solid rgba(0, 255, 136, 0.4);
-  z-index: 5;
-}
-
-/* 卸下按钮 */
-.btn-unequip {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #ff8800 0%, #cc6600 100%);
-  color: #ffffff;
-  border: 1px solid #cc7700;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-unequip:hover {
-  background: linear-gradient(180deg, #ffaa33 0%, #dd7700 100%);
-  box-shadow: 0 0 12px rgba(255, 136, 0, 0.5);
-}
-
-.btn-discard {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #dd3333 0%, #991111 100%);
-  color: #ffffff;
-  border: 1px solid #bb2222;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-discard:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ee4444 0%, #aa2222 100%);
-  box-shadow: 0 0 12px rgba(220, 40, 40, 0.5);
-}
-.btn-discard:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
 
 /* ==================== 控制面板样式 ==================== */
 .control-overlay {

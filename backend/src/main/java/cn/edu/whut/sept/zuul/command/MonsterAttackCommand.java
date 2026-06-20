@@ -42,11 +42,6 @@ public class MonsterAttackCommand implements Command {
             return GameResponse.error("怪物 '" + targetName + "' 已经死亡。");
         }
 
-        // 爆炸倒计时中的怪物不攻击
-        if (m.isExploding()) {
-            return GameResponse.error("怪物 '" + targetName + "' 正在准备自爆，无法攻击。");
-        }
-
         StringBuilder sb = new StringBuilder();
 
         // 判断是否为火焰史莱姆的特殊攻击

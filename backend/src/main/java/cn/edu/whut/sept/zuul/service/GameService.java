@@ -127,7 +127,6 @@ public class GameService {
             case "interact" -> new InteractCommand(game);
             case "shop" -> new ShopCommand(game);
             case "wave" -> new WaveCommand(game);
-            case "explode" -> new ExplodeCommand(game);
             case "bag" -> new BagCommand(game);
             default -> null;
         };
@@ -304,7 +303,7 @@ public class GameService {
 
             // 防御：确认怪物仍存活且可被攻击后再调用攻击方法
             Monster m = current.getMonster(mp.getName());
-            if (m == null || !m.isAlive() || m.isExploding()) continue;
+            if (m == null || !m.isAlive()) continue;
 
             int dropX = (int) Math.round(mp.getX());
             int dropY = (int) Math.round(mp.getY());

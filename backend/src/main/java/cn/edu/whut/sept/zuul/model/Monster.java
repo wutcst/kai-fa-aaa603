@@ -4,7 +4,7 @@ import lombok.Data;
 
 /**
  * 怪物模型：包含名字、描述、生命值、攻击力、防御、魔抗、移速和分类。
- * 支持特殊怪物类型（如火焰史莱姆）的自爆机制。
+ * 支持特殊怪物类型（如火焰史莱姆）的接触攻击机制。
  */
 @Data
 public class Monster {
@@ -36,14 +36,6 @@ public class Monster {
 
     /** 特殊怪物类型标识，null 表示普通怪物 */
     private String specialType;
-    /** 是否处于自爆倒计时状态（死亡后暂不消失） */
-    private boolean exploding;
-    /** 自爆倒计时是否已到期并已通知前端（防重复） */
-    private boolean explodeNotified;
-    /** 自爆开始时间戳（毫秒），用于后端结算 */
-    private long explodeStartTime;
-    /** 自爆判定范围半径（像素），前端渲染和后端结算共用 */
-    private int explodeRange;
     /** 上次接触攻击时间戳（毫秒），用于1s冷却间隔 */
     private long lastContactAttackTime;
 
@@ -67,15 +59,12 @@ public class Monster {
         this.speed = speed;
         this.type = type;
         this.specialType = null;
-        this.exploding = false;
-        this.explodeStartTime = 0;
-        this.explodeRange = 0;
         this.lastContactAttackTime = 0;
     }
 
     /**
      * 创建火焰史莱姆的静态工厂方法。
-     * 血量 65-85，攻击 15，物防 0，法抗 20，移速 60，自爆范围 80px。
+     * 血量 65-85，攻击 15，物防 0，法抗 20，移速 60。
      */
     public static Monster createFlameSlime(String nameSuffix) {
         int hp = 65 + (int)(Math.random() * 21); // 65-85
@@ -85,7 +74,6 @@ public class Monster {
             hp, 15, 0, 20, 60, TYPE_NORMAL
         );
         m.specialType = SPECIAL_FLAME_SLIME;
-        m.explodeRange = 80;
         return m;
     }
 
@@ -93,26 +81,8 @@ public class Monster {
         return this.hp > 0;
     }
 
-    /** 是否处于活跃状态（存活且未在爆炸倒计时中） */
-    public boolean isActive() {
-        return this.hp > 0 && !this.exploding;
-    }
-
     public void takeDamage(int dmg) {
         this.hp = Math.max(0, this.hp - dmg);
-    }
-
-    /**
-     * 进入自爆倒计时状态。
-     * 调用后怪物停止移动/攻击，3秒后触发爆炸伤害结算。
-     * 如果怪物已在自爆状态，不重置计时器（防止重复调用导致倒计时无限延长）。
-     */
-    public void startExploding() {
-        if (this.exploding) {
-            return; // 已在自爆中，不重置计时器
-        }
-        this.exploding = true;
-        this.explodeStartTime = System.currentTimeMillis();
     }
 
 }

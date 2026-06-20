@@ -1426,11 +1426,7 @@ onMounted(() => {
               hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
               hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
-              specialType: mon.specialType || null,
-              exploding: false,
-              explodeNotified: false,
-              explodeRange: 0,
-              explodeRemaining: 0
+              specialType: mon.specialType || null
             })
             mi++
           })
@@ -1539,19 +1535,25 @@ onMounted(() => {
               const innerCircle = scene.add.circle(ex, ey, eSize / 4, 0x0088aa)
               scene.encounterGroup.add(innerCircle)
             } else if (eventType === 'ELITE_ENEMY') {
-              // 精英敌人：红色感叹号标记（怪物本身已在monsters中渲染）
-              eventSprite = scene.add.star(ex, ey - 30, 5, 8, 16, 0xFF0000).setStrokeStyle(2, 0xffffff)
+              // 精英敌人：怪物本身已在monsters中渲染，不额外绘制标记
+              eventSprite = null
             } else {
               // 通用事件：彩色方块
               eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, eventColor).setStrokeStyle(3, 0xffffff)
             }
-            scene.encounterGroup.add(eventSprite)
 
-            // 事件名称标签
-            const eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
-              font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
-            }).setOrigin(0, 0)
-            scene.encounterGroup.add(eventLabel)
+            if (eventSprite) {
+              scene.encounterGroup.add(eventSprite)
+            }
+
+            // 事件名称标签（精英敌人不额外显示标签，怪物名称已在monsters中展示）
+            let eventLabel = null
+            if (eventType !== 'ELITE_ENEMY') {
+              eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
+                font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+              }).setOrigin(0, 0)
+              scene.encounterGroup.add(eventLabel)
+            }
 
             scene.encounterData = {
               type: eventType,
@@ -2685,8 +2687,6 @@ onMounted(() => {
           rangeGfx.clear()
           for (const mon of scene.monstersData) {
             if (!mon || !mon.circ) continue
-            // 爆炸中的怪物不显示攻击范围
-            if (mon.exploding) continue
             const isBoss = (mon.type === 2)
             const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
             // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
@@ -2724,7 +2724,7 @@ onMounted(() => {
               const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
               const monsterPositions = []
               for (const mon of scene.monstersData) {
-                if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
+                if (mon && mon.name) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
               }
 
               // 突刺起点/终点变量（提升到块外，供异步 fetch 回调访问）
@@ -2763,7 +2763,7 @@ onMounted(() => {
                 // 检查路径上的怪物：不阻挡，但在突刺结束后推开
                 const pushedMonsters = []
                 for (const mon of scene.monstersData) {
-                  if (!mon || !mon.name || mon.exploding) continue
+                  if (!mon || !mon.name) continue
                   const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
                     mon.x, mon.y, 20) // 怪物碰撞半径 ≈20
                   if (t !== null) {
@@ -3005,7 +3005,7 @@ onMounted(() => {
                     // 发送蓄力攻击请求到后端
                     const monsterPositions = []
                     for (const mon of scene.monstersData) {
-                      if (mon && mon.name && !mon.exploding) {
+                      if (mon && mon.name) {
                         monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
                       }
                     }
@@ -3202,8 +3202,6 @@ onMounted(() => {
             if (!proj.hitMonsters) proj.hitMonsters = new Set()
             for (const mon of scene.monstersData) {
               if (!mon || !mon.circ) continue
-              // 爆炸中的怪物不受月光波影响
-              if (mon.exploding) continue
               const mdx = mon.x - proj.x
               const mdy = mon.y - proj.y
               const mdist = Math.sqrt(mdx * mdx + mdy * mdy)

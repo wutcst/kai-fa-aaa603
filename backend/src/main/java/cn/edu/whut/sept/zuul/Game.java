@@ -248,7 +248,6 @@ public class Game {
 
         Monster m = current.getMonster(targetName);
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
-        if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
         StringBuilder sb = new StringBuilder();
 
@@ -283,7 +282,6 @@ public class Game {
 
         Monster m = current.getMonster(targetName);
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
-        if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
         StringBuilder sb = new StringBuilder();
 

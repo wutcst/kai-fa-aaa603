@@ -172,11 +172,23 @@ import {
   getEncounterDrawer,
   drawShopMerchant
 } from '../entity/EntityDrawer.js'
+import { createApi } from '../composables/useApi.js'
+import { createKeyboardManager } from '../composables/useKeyboard.js'
+import { ATTACK_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
 const minimapCanvas = ref(null)
 let game = null
+
+let api = null
+function getScene() {
+  if (!game || !game.scene || !game.scene.scenes) return null
+  for (const s of game.scene.scenes) {
+    if (s.scene && s.scene.isActive && s.scene.isActive()) return s
+  }
+  return null
+}
 
 // ==================== 背包 UI 响应式状态 ====================
 const backpackVisible = ref(false)
@@ -250,19 +262,11 @@ function selectSlot(slotIndex) {
 
 // 从后端刷新背包数据
 async function refreshBackpack() {
-  try {
-    const res = await fetch('/api/backpack')
-    const j = await res.json()
-    console.log('[Backpack] API full response:', JSON.stringify(j, null, 2))
-    if (j && j.data && j.data.backpack) {
-      backpackItems.value = j.data.backpack
-      console.log('[Backpack] items loaded:', backpackItems.value.length,
-        backpackItems.value.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
-    } else {
-      console.warn('[Backpack] No backpack data in response. data keys:', j.data ? Object.keys(j.data) : 'null')
-    }
-  } catch (e) {
-    console.warn('[Backpack] 无法获取背包数据', e)
+  const items = await api.fetchBackpack()
+  if (items.length > 0) {
+    backpackItems.value = items
+    console.log('[Backpack] items loaded:', items.length,
+      items.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
   }
 }
 
@@ -363,45 +367,31 @@ function closeBackpack() {
   window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: false } }))
 }
 
-// B 键切换背包（全局监听）
-function onKeyDown(e) {
-  if (e.key === 'b' || e.key === 'B') {
-    // 避免在输入框中误触发
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    e.preventDefault()
+// ==================== 键盘管理器（替代原 onKeyDown） ====================
+const keyboardManager = createKeyboardManager({
+  isInputFocused: () => {
+    const activeEl = document.activeElement
+    return activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+  },
+  toggleBackpack: () => {
     backpackVisible.value = !backpackVisible.value
     if (backpackVisible.value) {
       refreshBackpack()
       selectedSlot.value = null
       selectedItem.value = null
     }
-    // 通知 Phaser 场景暂停/恢复
     window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: backpackVisible.value } }))
-  }
-  // ESC 键：切换控制面板
-  if (e.key === 'Escape') {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    // 如果背包打开，先关闭背包
-    if (backpackVisible.value) {
-      closeBackpack()
-      return
-    }
-    // 切换控制面板
-    e.preventDefault()
+  },
+  toggleControlPanel: () => {
     if (controlPanelVisible.value) {
       closeControlPanel()
     } else {
       openControlPanel()
     }
-  }
-  // 背包打开时阻止其他按键进入游戏
-  if (backpackVisible.value) {
-    if (['w','W','a','A','s','S','d','D','j','J',' ', 'h','H','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-      e.stopPropagation()
-      e.stopImmediatePropagation()
-    }
-  }
-}
+  },
+  getBackpackVisible: () => backpackVisible.value,
+  getControlPanelVisible: () => controlPanelVisible.value
+})
 
 // ---------- 小地图状态 ----------
 let mapLayout = null          // { rooms, roomMap, coords }
@@ -1117,27 +1107,8 @@ onMounted(() => {
 
         scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
-        scene.sendCommand = async function (cmd, fromDir = null) {
-          scene._lastMoveDir = fromDir
-          try {
-            const res = await fetch('/api/command', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: cmd })
-            })
-            const j = await res.json()
-            emit('update', j)
-            // if response contains room data, re-render (跳过商店/祭坛浮层)
-            if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-              scene.renderRoom(j.data)
-            }
-            // check for game over from backend response
-            if (j && j.status === 'error' && j.message && j.message.includes('Game is over')) {
-              scene.showGameOver()
-            }
-          } catch (e) {
-            emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-          }
+        scene.sendCommand = function (cmd, fromDir = null) {
+          return api.sendCommand(cmd, fromDir)
         }
 
         // show game over overlay
@@ -1976,21 +1947,8 @@ onMounted(() => {
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 120,
-          angleDeg: 135,
-          segments: 96,
-          sweepDuration: 140,
-          ghostFade: 120,
-          finalFade: 60,
-          ghostSpacing: 0.035,
-          mainAlpha: 0.95,
-          ghostAlpha: 0.92,
-          ghostMinFade: 40,
-          pierceDistance: 120,
-          pierceDistanceExpand: 1.15,
-          pierceDuration: 100,
-          pierceFade: 180,
-          pierceWidth: 14
+          ...ATTACK_CONFIG.SWEEP,
+          ...ATTACK_CONFIG.PIERCE
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         scene._piercing = false          // 突刺移动中：禁止WASD移动输入

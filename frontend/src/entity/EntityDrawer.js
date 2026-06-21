@@ -1265,6 +1265,68 @@ export function drawElementNecklace(gfx, s) {
   fillCircle(gfx, S(1.5), S(4), S(1), 0xFFFFFF, 0.3)
 }
 
+// ==================== 七点五、星云传送门绘制 ====================
+
+/**
+ * 绘制星云状传送门
+ * 使用多层半透明椭圆、星点和螺旋流线模拟流动的星云效果
+ * @param {Phaser.GameObjects.Graphics} gfx
+ * @param {number} w - 传送门宽度
+ * @param {number} h - 传送门高度
+ */
+export function drawNebulaPortal(gfx, w, h) {
+  // 从外到内的多层星云椭圆
+  const layers = [
+    { color: 0x6633cc, alpha: 0.20, sw: 1.00, sh: 1.00 },
+    { color: 0xcc44aa, alpha: 0.18, sw: 0.88, sh: 0.88 },
+    { color: 0x4488ff, alpha: 0.22, sw: 0.76, sh: 0.76 },
+    { color: 0xaa66ff, alpha: 0.25, sw: 0.62, sh: 0.62 },
+    { color: 0xff88cc, alpha: 0.20, sw: 0.48, sh: 0.48 },
+    { color: 0xddbbff, alpha: 0.30, sw: 0.32, sh: 0.32 },
+    { color: 0xffffff, alpha: 0.15, sw: 0.18, sh: 0.18 },
+  ]
+
+  layers.forEach(l => {
+    fillEllipse(gfx, 0, 0, w * l.sw, h * l.sh, l.color, l.alpha)
+  })
+
+  // 散落星点
+  const starColors = [0xffffff, 0xaaccff, 0xffddaa, 0xffaaff]
+  const starSeeds = [0.123, 0.456, 0.789, 0.234, 0.567, 0.890, 0.345, 0.678]
+  const hw = w / 2
+  const hh = h / 2
+  starSeeds.forEach((seed, i) => {
+    const x = ((seed * 2.17) % 1 * 2 - 1) * hw * 0.7
+    const y = ((seed * 3.71) % 1 * 2 - 1) * hh * 0.7
+    const radius = 0.8 + ((seed * 5.33) % 3)
+    const color = starColors[i % starColors.length]
+    const alpha = 0.4 + ((seed * 7.19) % 1) * 0.5
+    fillCircle(gfx, x, y, radius, color, alpha)
+  })
+
+  // 螺旋流线（旋转星云轨迹）
+  const arcColor = 0xccaaff
+  const arcAlpha = 0.25
+  gfx.lineStyle(1.5, arcColor, arcAlpha)
+  for (let a = 0; a < 3; a++) {
+    const angleOffset = a * Math.PI * 2 / 3
+    gfx.beginPath()
+    for (let t = 0; t <= 20; t++) {
+      const p = t / 20
+      const ang = angleOffset + p * Math.PI * 1.5
+      const baseRadius = Math.min(hw, hh) * (0.3 + p * 0.6)
+      const px = Math.cos(ang) * baseRadius * (w > h ? 1 : 0.6)
+      const py = Math.sin(ang) * baseRadius * (h > w ? 1 : 0.6)
+      if (t === 0) gfx.moveTo(px, py)
+      else gfx.lineTo(px, py)
+    }
+    gfx.strokePath()
+  }
+
+  // 外部柔光晕
+  fillEllipse(gfx, 0, 0, w * 1.15, h * 1.15, 0x6633cc, 0.06)
+}
+
 // ==================== 八、怪物匹配与渲染调度 ====================
 
 /**

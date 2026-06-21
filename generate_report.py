@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 生成 ZUUL — 失落的古迹 小组实训报告 (REPORT.docx)
-基于实际项目代码分析，所有数据与后端/前端源代码严格一致。
+严格按六级大纲结构编写，所有数据来自实际项目代码与开发记录。
 """
 
 from docx import Document
@@ -21,7 +21,6 @@ font.name = '宋体'
 font.size = Pt(11)
 style.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
-# 页边距
 for section in doc.sections:
     section.top_margin = Cm(2.5)
     section.bottom_margin = Cm(2.5)
@@ -30,17 +29,12 @@ for section in doc.sections:
 
 
 def set_cell_shading(cell, color_str):
-    """设置单元格底色"""
     shading_elm = cell._tc.get_or_add_tcPr()
-    shading = shading_elm.makeelement(qn('w:shd'), {
-        qn('w:fill'): color_str,
-        qn('w:val'): 'clear'
-    })
+    shading = shading_elm.makeelement(qn('w:shd'), {qn('w:fill'): color_str, qn('w:val'): 'clear'})
     shading_elm.append(shading)
 
 
 def make_header_row(table, row_idx, texts, color='4472C4'):
-    """设置表头行样式"""
     row = table.rows[row_idx]
     for i, text in enumerate(texts):
         cell = row.cells[i]
@@ -55,7 +49,6 @@ def make_header_row(table, row_idx, texts, color='4472C4'):
 
 
 def add_data_row(table, row_idx, texts, bold_first=True):
-    """添加数据行"""
     row = table.rows[row_idx]
     for i, text in enumerate(texts):
         cell = row.cells[i]
@@ -122,17 +115,13 @@ cover_info = [
     ('小 组 名 称', 'AAA603 小组'),
     ('学    院', '武汉理工大学 · 计算机科学与技术学院'),
 ]
-
 for label, value in cover_info:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     run = p.add_run(f'{label}：{value}')
     run.font.size = Pt(14)
-    run.font.name = '宋体'
-    run.element.rPr.rFonts.set(qn('w:eastAsia'), '宋体')
 
 doc.add_paragraph()
-
 p = doc.add_paragraph()
 p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 run = p.add_run(f'报告日期：{datetime.date.today().strftime("%Y年%m月%d日")}')
@@ -142,420 +131,185 @@ run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
 doc.add_page_break()
 
 # ============================================================
-#                       目 录
+#                   1. 任务概述
 # ============================================================
-add_heading('目 录', level=1)
-toc_items = [
-    '一、项目概述',
-    '二、技术栈与开发环境',
-    '三、系统架构设计',
-    '四、功能模块说明',
-    '    4.1 随机地图生成',
-    '    4.2 实时战斗系统',
-    '    4.3 怪物系统',
-    '    4.4 状态效果系统',
-    '    4.5 背包与装备系统',
-    '    4.6 商店系统',
-    '    4.7 篝火祭坛系统',
-    '    4.8 奇遇事件系统',
-    '    4.9 铁匠强化系统',
-    '    4.10 月光波技能',
-    '    4.11 存档系统',
-    '五、API 接口设计',
-    '六、数据库设计',
-    '七、小组分工与协作',
-    '八、实训总结与反思',
+add_heading('1. 任务概述', level=1)
+
+add_para(
+    '本次软件工程实训的任务是开发一款基于 Web 的 Roguelike 地牢探险游戏 —— ZUUL — 失落的古迹。'
+    '项目以经典文本冒险游戏 World of Zuul 为基础，进行图形化、实时交互化的全面扩展与重构。',
+    indent=True
+)
+
+add_para('实践/项目/系统的主要内容：', bold=True)
+contents = [
+    '设计并实现一个程序化随机地图生成系统，生成 10×15 网格（约30-50个房间）的迷宫地图',
+    '构建基于 Phaser 3 游戏引擎的实时图形化前端界面，支持键盘操作、小地图导航、粒子特效',
+    '开发基于 Spring Boot 3.2.0 的后端 RESTful API 服务，提供完整的游戏逻辑与数据管理',
+    '实现三种攻击模式（扇形扫击、直线突刺、蓄力360°）及空间命中判定算法',
+    '设计五种装备槽位系统（武器、护甲、披风、戒指、项链）及属性加成体系',
+    '实现四种状态效果系统（烧伤、中毒、流血、天使祝福），支持层数叠加与独立结算',
+    '构建商店交易系统、篝火祭坛交互系统、奇遇事件系统、铁匠强化系统等多个子系统',
+    '实现基于 H2 数据库的完整游戏存档功能，支持保存、读取、删除等多槽位管理',
 ]
-for item in toc_items:
-    add_para(item)
+for c in contents:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(c)
+    run.font.size = Pt(11)
+
+add_para('任务目的：', bold=True)
+add_para(
+    '通过本次实训，巩固软件工程规范，提高面向对象建模与抽象能力，培养小组协同开发能力。'
+    '具体包括：掌握前后端分离架构的设计与实现；实践 Git 分支管理与代码审查流程；'
+    '学习 RESTful API 设计规范；熟悉 Spring Boot 与 Vue 3 的完整开发流程；'
+    '体验真实团队协作中的任务拆分、进度管理、问题追踪等软件工程实践。',
+    indent=True
+)
 
 doc.add_page_break()
 
 # ============================================================
-#                   一、项目概述
+#               2. 小组任务计划
 # ============================================================
-add_heading('一、项目概述', level=1)
+add_heading('2. 小组任务计划', level=1)
 
+# 2.1 任务分析
+add_heading('2.1 任务分析', level=2)
 add_para(
-    'ZUUL — 失落的古迹 是一款基于经典文本冒险游戏 World of Zuul 扩展开发的图形化 '
-    'Roguelike 地牢探险游戏。玩家扮演勇敢的探险者，穿越程序随机生成的迷宫，与神秘的 '
-    '怪物战斗，收集强大的魔法物品，在篝火处恢复体力并提升能力，最终揭示隐藏在废墟中 '
-    '的真相。', indent=True
+    '本项目作为一个完整的 Roguelike 地牢探险游戏，需要同时覆盖后端逻辑、前端渲染、'
+    '数据库持久化等多个技术领域。经过需求分析与技术评估，项目工作重点如下：',
+    indent=True
 )
 
-add_para(
-    '本项目为武汉理工大学软件工程实训小组协同开发任务，项目周期历时数周，经过多轮迭代 '
-    '开发与重构。项目采用前后端分离架构：后端基于 Java 17 + Spring Boot 3.2.0 提供 '
-    'RESTful API，前端基于 Vue 3 + Phaser 3 构建图形化游戏界面。', indent=True
-)
-
-add_para('核心玩法特点：', bold=True)
-features = [
-    '程序化随机地图生成，每次游戏体验独一无二',
-    '三种攻击模式：扇形扫击（135°/120px）、直线突刺（21px宽）、蓄力攻击（360°/150px）',
-    '四种状态效果：烧伤（3秒火焰伤害）、中毒（1秒真实伤害）、流血（攻击触发）、天使祝福（30秒全属性×1.5）',
-    '五槽位装备系统：武器、护甲、披风、戒指、项链',
-    '八种智慧恩赐：坚忍、浩瀚、整备、守护、强健、博学、敏捷、灵动',
-    '九种注册物品：四种消耗品、两件装备、三件饰品',
-    '七种房间类型：起始大厅、商店、奇遇、篝火、Boss、精英怪物、普通怪物',
-    '完整的存档系统：基于 H2 数据库持久化，支持保存/读取/删除',
-    '前端的 Phaser 3 图形引擎：实时战斗、粒子特效、屏幕振动、小地图导航',
+add_para('工作重点：', bold=True)
+key_points = [
+    '核心游戏机制：玩家移动、战斗系统（三种攻击模式 + 空间判定）、怪物 AI（检测/攻击/击退）、物品拾取/丢弃/使用',
+    '随机内容生成：程序化地图生成、随机商店商品、随机祭坛恩赐、随机奇遇事件（8种事件类型）',
+    '状态与装备系统：烧伤/中毒/流血/天使祝福四种状态效果、五槽位装备系统（属性加成交互计算）',
+    '数据持久化：基于 Spring Data JPA + H2 的完整存档系统，保存全部游戏状态到数据库',
+    '前端游戏引擎集成：Vue 3 组件化界面与 Phaser 3 游戏引擎的嵌套集成、CustomEvent 通信机制',
+    'UI/UX 优化：小地图导航、控制面板（ESC打开/关闭）、背包面板、攻击粒子特效与屏幕振动',
 ]
-for f in features:
+for k in key_points:
     p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(f)
+    run = p.add_run(k)
     run.font.size = Pt(11)
 
-# ============================================================
-#               二、技术栈与开发环境
-# ============================================================
-add_heading('二、技术栈与开发环境', level=1)
+# 2.2 项目架构与功能设计
+add_heading('2.2 项目架构与功能设计', level=2)
+add_para(
+    '项目采用前后端分离的 B/S 架构。后端基于 Java 17 + Spring Boot 3.2.0 提供 10 个 RESTful API 端点，'
+    '前端基于 Vue 3.3.4 + Phaser 3.60.0 构建图形化游戏界面。前后端通过 HTTP JSON 通信。',
+    indent=True
+)
 
-add_para('2.1 后端技术栈', bold=True)
-backend_items = [
-    ('Java 17', '编程语言'),
-    ('Spring Boot 3.2.0', 'Web 框架与依赖注入'),
-    ('Spring Data JPA', 'ORM 持久化层'),
-    ('H2 Database', '嵌入式关系型数据库'),
-    ('Maven', '项目构建与管理'),
-    ('Lombok', '代码简化（@Data、@Getter/@Setter 等）'),
+add_para('后端架构（Spring Boot + Maven）：', bold=True)
+be_items = [
+    ('Controller 层', 'GameController.java — 10 个 REST API 端点'),
+    ('Service 层', 'GameService.java（命令分发/攻击判定/状态注入）+ SaveService.java（存档序列化）'),
+    ('Model 层', 'Room/Player/Monster/Bag/Item/Status/WisdomBoon/Magic/Money 等 18 个数据模型'),
+    ('Command 层', 'GoCommand/AttackCommand/BagCommand/ShopCommand/InteractCommand/WaveCommand 等 11 个命令'),
+    ('Repository 层', '5 个 Spring Data JPA Repository 接口'),
 ]
-table = doc.add_table(rows=len(backend_items) + 1, cols=2)
+table = doc.add_table(rows=len(be_items) + 1, cols=2)
 table.style = 'Table Grid'
 table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(table, 0, ['技术', '用途'])
-for idx, (tech, usage) in enumerate(backend_items):
-    add_data_row(table, idx + 1, [tech, usage])
+make_header_row(table, 0, ['层级', '说明'])
+for idx, (layer, desc) in enumerate(be_items):
+    add_data_row(table, idx + 1, [layer, desc])
 
 doc.add_paragraph()
 
-add_para('2.2 前端技术栈', bold=True)
-frontend_items = [
-    ('Vue 3 (3.3.4)', '前端框架与组件化开发'),
-    ('Phaser 3 (3.60.0)', '2D 游戏引擎（渲染、物理、动画）'),
-    ('Vite (5.0.0)', '前端构建工具'),
-    ('Pinia (2.0.33)', 'Vue 状态管理'),
-    ('Fetch API', '与后端通信（RESTful）'),
+add_para('前端架构（Vue 3 + Vite + Phaser 3）：', bold=True)
+fe_items = [
+    ('组件层', 'App.vue（主应用含存档弹窗）、MainMenu.vue（主菜单）、GameCanvas.vue（Phaser游戏画布）、BackpackPanel.vue（背包面板）、ControlPanel.vue（ESC控制面板）、MinimapPanel.vue（小地图）'),
+    ('Composables', 'useApi.js（API调用）、useBackpack.js（背包逻辑）、useKeyboard.js（键盘控制）、useControlPanel.js（控制面板单例）、useSlotDialog.js（存档弹窗）'),
+    ('游戏引擎', 'EntityDrawer.js（游戏实体绘制器）、game/constants.js（全局常量/攻击配置/渲染参数）'),
+    ('API 层', 'api/gameApi.js（6个后端 API 封装方法）'),
 ]
-table = doc.add_table(rows=len(frontend_items) + 1, cols=2)
+table = doc.add_table(rows=len(fe_items) + 1, cols=2)
 table.style = 'Table Grid'
 table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(table, 0, ['技术', '用途'])
-for idx, (tech, usage) in enumerate(frontend_items):
-    add_data_row(table, idx + 1, [tech, usage])
+make_header_row(table, 0, ['层级', '说明'])
+for idx, (layer, desc) in enumerate(fe_items):
+    add_data_row(table, idx + 1, [layer, desc])
 
 doc.add_paragraph()
 
-add_para('2.3 开发工具', bold=True)
-tool_items = [
-    ('IntelliJ IDEA', '后端开发 IDE'),
-    ('VS Code', '前端开发 IDE'),
+add_para('核心功能模块：', bold=True)
+modules = [
+    '随机地图生成（GenerateRoom.java）：10×15 网格，7种房间类型，种子随机数保证存档一致性',
+    '实时战斗系统：Sweep（扇形120px/135°）、Pierce（直线21px/120px）、Charged（360°/150px）三种攻击',
+    '怪物系统：TYPE_NORMAL(0)、TYPE_ELITE(1)、TYPE_BOSS(2)，特殊 FLAME_SLIME',
+    '状态效果系统：BURN(3s魔法伤害)、POISON(1s真实伤害)、BLEED(攻击触发)、ANGEL_BUFF(30s全属性×1.5)',
+    '背包与装备系统：消耗品合并显示、5槽位装备（weapon/armor/cloak/ring/amulet）',
+    '商店系统：6件随机商品、半价回收',
+    '篝火祭坛：HEAL(50%回复)/TRAIN(25%属性提升)/WISDOM(3选1恩赐)',
+    '奇遇事件系统：8种事件（WOODEN_CHEST/GOLDEN_CHEST/ELITE_ENEMY/FOUNTAIN/CHEST/MAIDEN/ANGEL/BLACKSMITH）',
+    '铁匠强化系统：装备属性提升至150%',
+    '月光波技能：消耗30MP，单体魔法攻击，弹射2次',
+    '存档系统：H2数据库持久化，完整游戏状态保存/读取/删除',
+]
+for m in modules:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(m)
+    run.font.size = Pt(11)
+
+# 2.3 团队组成与分工
+add_heading('2.3 团队组成与分工', level=2)
+add_para('AAA603 小组由 3 名成员组成，分工如下：', indent=True)
+
+member_table = doc.add_table(rows=4, cols=4)
+member_table.style = 'Table Grid'
+member_table.alignment = WD_TABLE_ALIGNMENT.CENTER
+make_header_row(member_table, 0, ['姓名', 'GitHub', '分支', '主要职责'])
+member_data = [
+    ('李冬晨（组长）',
+     '@Sader-Lee',
+     'ldc',
+     '核心后端开发：项目架构设计、玩家系统、怪物系统、商店系统、背包系统、房间战斗封锁、数据库持久化、攻击特效'),
+    ('蒋志成',
+     '@BytesJiang',
+     'jzc',
+     '前端开发：Phaser集成、WASD移动、小地图、攻击特效、状态效果系统、随机地图生成、篝火祭坛、奇遇房间、月光波技能、前端重构（常量提取/API封装/组件拆分）'),
+    ('熊俊森',
+     '@XJS-123',
+     'xjs',
+     '特殊系统开发：主菜单页面、饰品系统（5槽位）、奇遇事件系统、人物模型绘制、Buff系统、铁匠系统、游戏实体构造、地图背景、项目文档'),
+]
+for idx, (name, github, branch, duty) in enumerate(member_data):
+    add_data_row(member_table, idx + 1, [name, github, branch, duty])
+
+# 2.4 软件工具与项目约束
+add_heading('2.4 软件工具与项目约束', level=2)
+
+add_para('开发工具：', bold=True)
+tools = [
+    ('IntelliJ IDEA', '后端 Java 开发'),
+    ('VS Code', '前端 Vue/Phaser 开发'),
     ('GitHub', '代码仓库与协同开发'),
     ('GitHub Issues', '任务管理与分配'),
     ('Postman', 'API 测试与调试'),
 ]
-table = doc.add_table(rows=len(tool_items) + 1, cols=2)
+table = doc.add_table(rows=len(tools) + 1, cols=2)
 table.style = 'Table Grid'
 table.alignment = WD_TABLE_ALIGNMENT.CENTER
 make_header_row(table, 0, ['工具', '用途'])
-for idx, (tech, usage) in enumerate(tool_items):
-    add_data_row(table, idx + 1, [tech, usage])
-
-doc.add_page_break()
-
-# ============================================================
-#               三、系统架构设计
-# ============================================================
-add_heading('三、系统架构设计', level=1)
-
-add_para(
-    '本项目采用前后端分离的 B/S 架构。前端通过 HTTP REST API 与后端通信，所有游戏逻辑在 '
-    '服务端执行，前端主要负责渲染与交互。', indent=True
-)
-
-add_para('3.1 整体架构', bold=True)
-arch_items = [
-    '前端层（Vue 3 + Phaser 3）：负责游戏画面渲染、用户输入捕获、UI 面板展示。Phaser 3 引擎驱动游戏主画布，Vue 3 负责菜单、背包、存档等 UI 组件。',
-    'API 层（Spring Boot REST Controllers）：提供 10 个 RESTful 端点，处理前端请求并返回 JSON 格式数据。',
-    '服务层（GameService）：游戏核心服务，包括命令分发（11 种命令）、玩家状态注入（24+ 字段）、攻击空间命中判定（3 种算法）、地图拓扑检索。',
-    '模型层：包含 Room、Player、Monster、Bag、Item、Status 等核心数据模型，以及 WisdomBoon、Altar、RandomEvent 等子系统的模型。',
-    '持久层（Spring Data JPA Repository）：5 个 Repository 接口，负责游戏存档、房间状态、怪物状态、背包物品、商店状态的序列化与恢复。',
-    '数据库层（H2）：嵌入式文件数据库，存储完整游戏状态。',
-]
-for a in arch_items:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(a)
-    run.font.size = Pt(11)
-
-add_para('3.2 后端包结构', bold=True)
-pkg_items = [
-    ('controller', 'GameController.java — 10个REST API端点'),
-    ('service', 'GameService.java — 核心业务逻辑（命令分发/攻击判定/状态注入）\nSaveService.java — 存档序列化与恢复'),
-    ('model', 'Room.java / Player.java / Monster.java / Bag.java / Item.java / ItemRegistry.java\nStatus.java / WisdomBoon.java / Magic.java / Money.java / RoomType.java\nAltar.java / AltarType.java / AttackRequest.java / RandomEvent.java\nRandomEventType.java / ShopItem.java / DroppedItem.java\nInventoryItem.java / GameResponse.java'),
-    ('command', 'GoCommand.java / AttackCommand.java / BagCommand.java / ShopCommand.java\nInteractCommand.java / WaveCommand.java / PickupCommand.java\nDropCommand.java / ItemsCommand.java / MonsterAttackCommand.java'),
-    ('repository', 'GameSaveRepository / RoomStateRepository / MonsterStateRepository\nBagItemRepository / ShopStateRepository'),
-]
-table = doc.add_table(rows=len(pkg_items) + 1, cols=2)
-table.style = 'Table Grid'
-table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(table, 0, ['包名', '主要内容'])
-for idx, (pkg, desc) in enumerate(pkg_items):
-    add_data_row(table, idx + 1, [pkg, desc])
-
-doc.add_page_break()
-
-# ============================================================
-#               四、功能模块说明
-# ============================================================
-add_heading('四、功能模块说明', level=1)
-
-# 4.1 随机地图生成
-add_heading('4.1 随机地图生成', level=2)
-add_para(
-    '地图生成由 GenerateRoom.java 实现，采用程序化算法生成 10×15 网格（约 30-50 个房间）的地图。'
-    '每次游戏使用不同的随机种子，确保每次体验独一无二。', indent=True
-)
-add_para('地图参数：', bold=True)
-map_params = [
-    '网格尺寸：10（宽）× 15（高）',
-    '房间总数：约 30-50 个（视随机生成算法结果）',
-    '出口方向：east（东）、west（西）、south（南）、north（北）',
-    '传送房间：每局游戏随机标记 1 个传送房间',
-    '7 种房间类型：START_HALL / SHOP / ENCOUNTER / CAMPFIRE / BOSS / ELITE_MONSTER / NORMAL_MONSTER',
-]
-for mp in map_params:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(mp)
-    run.font.size = Pt(11)
-
-# 4.2 实时战斗系统
-add_heading('4.2 实时战斗系统', level=2)
-add_para(
-    '战斗系统采用"前端呈现 + 后端判定"模式。前端捕获玩家输入和怪物坐标快照，发送给后端进行空间命中判定。'
-    '后端根据攻击类型执行不同的命中算法，返回命中结果和伤害数值。', indent=True
-)
-add_para('三种攻击模式：', bold=True)
-attack_modes = [
-    '扇形扫击（Sweep）：半径 120px、角度 135° 的扇形范围，以玩家朝向为中心。前端持续约 140ms，带残影渐隐特效。',
-    '直线突刺（Pierce）：距离 120px、判定宽度 21px（半径），从起点到终点的线段距离判定。前端持续约 100ms，附带击退效果（55px/130ms）。',
-    '蓄力攻击（Charged）：半径 150px、360° 全方向范围攻击，需长按蓄力 200ms 以上触发，附带屏幕振动。',
-]
-for am in attack_modes:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(am)
-    run.font.size = Pt(11)
-
-add_para(
-    '攻击伤害计算：物理伤害 = 攻击方攻击力 - 防御方防御力（下限为 1）。'
-    '魔法伤害通过 Magic.calcMagicDamage 方法计算。攻击命中后触发流血效果结算，'
-    '被击败的怪物调用 processMonsterDrop 掉落货币。', indent=True
-)
-
-# 4.3 怪物系统
-add_heading('4.3 怪物系统', level=2)
-add_para(
-    'Monster.java 定义了三种怪物类型：TYPE_NORMAL(0)、TYPE_ELITE(1)、TYPE_BOSS(2)。'
-    '另有一个特殊怪物类型 FLAME_SLIME（火焰史莱姆），攻击附加烧伤效果。', indent=True
-)
-add_para('怪物生成规则（spawnMonsters）：', bold=True)
-monster_rules = [
-    'Boss 房间：生成 1 只 Boss 怪物，属性较高',
-    '精英房间：生成 1-2 只精英怪物',
-    '普通房间：生成 1-3 只普通怪物（固定 25% 概率生成 1 只火焰史莱姆代替普通怪物）',
-    '所有怪物生成使用种子随机数，保证存档读档时怪物状态一致',
-    '怪物房间的出口在全部怪物被击败前处于封锁状态',
-]
-for mr in monster_rules:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(mr)
-    run.font.size = Pt(11)
-
-# 4.4 状态效果系统
-add_heading('4.4 状态效果系统', level=2)
-add_para(
-    'Status.java 实现了完整的 Buff/Debuff 状态系统，通过 StatusManager 统一管理。'
-    '所有效果支持层数叠加（layers 机制），前端通过 getActiveEffectsInfo() 获取当前活跃效果列表。', indent=True
-)
-
-status_table = doc.add_table(rows=5, cols=5)
-status_table.style = 'Table Grid'
-status_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(status_table, 0, ['状态', '类型', '触发间隔', '伤害计算', '层数衰减'])
-status_data = [
-    ('BURN（烧伤）', '减益', '3秒', '魔法伤害 = 层数 × (1 - 魔抗/100)', '每轮减半'),
-    ('POISON（中毒）', '减益', '1秒', '真实伤害 = min(层数, 当前HP-1)', '每轮减1'),
-    ('BLEED（流血）', '减益', '攻击触发', '2点真实伤害', '每轮减1'),
-    ('ANGEL_BUFF（天使祝福）', '增益', '持续30秒', '全属性×1.5倍', '定时结束'),
-]
-for idx, (name, dtype, interval, dmg, decay) in enumerate(status_data):
-    add_data_row(status_table, idx + 1, [name, dtype, interval, dmg, decay])
-
-# 4.5 背包与装备系统
-add_heading('4.5 背包与装备系统', level=2)
-add_para(
-    '背包系统由 Bag.java 实现，支持添加、移除、使用和丢弃物品。getBackpackItems() 方法返回前端展示列表：'
-    '消耗品按名称合并数量显示，装备和饰品每个独立占位。', indent=True
-)
-add_para(
-    '装备系统由 Player.java 实现，支持 5 个装备槽位：武器（weapon）、护甲（armor）、披风（cloak）、'
-    '戒指（ring）、项链（amulet）。通过 equipItem/unequipItem 方法管理装备，装备时自动卸下同槽位旧装备。', indent=True
-)
-
-equip_table = doc.add_table(rows=6, cols=4)
-equip_table.style = 'Table Grid'
-equip_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(equip_table, 0, ['装备名称', '槽位', '价格', '属性加成'])
-equip_data = [
-    ('铁剑', '武器', '80g', '物理攻击+15'),
-    ('铁盾', '护甲', '70g', '物理防御+10'),
-    ('暗影披风', '披风', '200g', '闪避+15%，速度+20'),
-    ('生命戒指', '戒指', '150g', '最大HP+50，每2秒恢复1HP'),
-    ('元素项链', '项链', '150g', '魔法攻击+15，魔抗+20'),
-]
-for idx, (name, slot, price, bonus) in enumerate(equip_data):
-    add_data_row(equip_table, idx + 1, [name, slot, price, bonus])
-
-# 4.6 商店系统
-add_heading('4.6 商店系统', level=2)
-add_para(
-    'ShopCommand.java 实现商店买卖功能，仅在 SHOP 类型房间可用。商店随机从 ItemRegistry 选取 '
-    '6 件商品上架，每件售出后标记为"sold"。出售价格 = 买价的一半（向下取整，最低 1g）。', indent=True
-)
-
-# 4.7 篝火祭坛系统
-add_heading('4.7 篝火祭坛系统', level=2)
-add_para(
-    'InteractCommand.java 实现了篝火房间中的三种祭坛交互：', indent=True
-)
-altar_items = [
-    '治愈祭坛（HEAL）：回复 50% HP 和 MP',
-    '训练祭坛（TRAIN）：提升 25% 攻击/魔攻/防御，+10 魔抗',
-    '博学祭坛（WISDOM）：展示 3 个随机 WisdomBoon 恩赐供玩家选择 1 个',
-]
-for a in altar_items:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(a)
-    run.font.size = Pt(11)
-
-add_para('8 种智慧恩赐（WisdomBoon）：', bold=True)
-boon_table = doc.add_table(rows=9, cols=3)
-boon_table.style = 'Table Grid'
-boon_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(boon_table, 0, ['名称', '中文名', '效果'])
-boon_data = [
-    ('ENDURANCE', '坚忍', '提高30%血量上限'),
-    ('VASTNESS', '浩瀚', '提高50%魔力上限'),
-    ('PREPARATION', '整备', '提高15点物防'),
-    ('GUARDIAN', '守护', '提高25点魔抗'),
-    ('VIGOR', '强健', '提高15点物攻'),
-    ('ERUDITION', '博学', '提高25点魔攻'),
-    ('AGILITY', '敏捷', '提高50点移速'),
-    ('GRACE', '灵动', '提高25点闪避率'),
-]
-for idx, (name, cn, effect) in enumerate(boon_data):
-    add_data_row(boon_table, idx + 1, [name, cn, effect])
-
-# 4.8 奇遇事件系统
-add_heading('4.8 奇遇事件系统', level=2)
-add_para(
-    'RandomEventType.java 定义了 8 种随机事件：CHEST（宝箱200g）、MAIDEN（圣女满血回复）、'
-    'ANGEL（天使30s全属性×1.5）、BLACKSMITH（铁匠装备强化150%）、WOODEN_CHEST（木箱75-150g）、'
-    'GOLDEN_CHEST（金箱999g，25%概率替换木箱）、ELITE_ENEMY（精英敌人，击败后施加烧伤/中毒/流血5-10层）、'
-    'FOUNTAIN（喷泉：50%扣10HP得20g，50%扣25g回10HP）。', indent=True
-)
-add_para(
-    '奇遇分三档生成（roll 1-100）：优质（1-20，宝箱类）、劣质（21-50，精英敌人）、'
-    '一般（51-100，喷泉）。旧版事件（CHEST/MAIDEN/ANGEL/BLACKSMITH）保留兼容。', indent=True
-)
-
-# 4.9 铁匠强化系统
-add_heading('4.9 铁匠强化系统', level=2)
-add_para(
-    '铁匠事件（BLACKSMITH）中，玩家可让铁匠强化一件已装备的饰品或装备，属性提升至 150%。'
-    '铁匠只接受等级较高的物品（暗影披风、生命戒指、元素项链），强化后原物品属性 ×1.5。'
-    '该功能由熊俊森同学实现，包含保底机制避免强化失败。', indent=True
-)
-
-# 4.10 月光波技能
-add_heading('4.10 月光波技能', level=2)
-add_para(
-    'WaveCommand.java 实现月光波技能：消耗 30 MP，对指定单体怪物造成魔法伤害。'
-    '前端使用 Phaser 3 粒子系统实现投射物特效，弹射速度 420px/s，最多弹射 2 次，'
-    '附带击退效果（40px/150ms）。2 秒窗口保护防止多次扣 MP。', indent=True
-)
-
-# 4.11 存档系统
-add_heading('4.11 存档系统', level=2)
-add_para(
-    '存档系统基于 Spring Data JPA + H2 数据库实现，由 SaveService.java 提供完整 CRUD 操作。'
-    '存档保存以下状态：玩家属性、背包物品列表、装备状态、当前房间及所有房间状态、怪物状态、'
-    '商店商品状态。读档时从数据库加载并重建完整的游戏对象图。', indent=True
-)
-add_para('存档相关 API：', bold=True)
-save_apis = [
-    'POST /api/save — 保存游戏（可选 saveId 参数，不传则新建）',
-    'POST /api/load — 加载存档（必传 saveId）',
-    'GET /api/saves — 获取所有存档摘要列表',
-    'POST /api/deleteSave — 删除指定 ID 的存档',
-]
-for sa in save_apis:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(sa)
-    run.font.size = Pt(11)
-
-doc.add_page_break()
-
-# ============================================================
-#               五、API 接口设计
-# ============================================================
-add_heading('五、API 接口设计', level=1)
-
-add_para(
-    '后端提供 10 个 RESTful API 端点，所有响应采用统一格式：'
-    '{status: "success|error", message: "...", data: {...}}。', indent=True
-)
-
-api_table = doc.add_table(rows=11, cols=3)
-api_table.style = 'Table Grid'
-api_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(api_table, 0, ['方法', '路径', '说明'])
-api_data = [
-    ('GET', '/api/game', '获取当前游戏状态（含房间/玩家/背包/状态）'),
-    ('POST', '/api/command', '执行游戏命令（go/bag/interact/shop/wave等）'),
-    ('POST', '/api/attack', '执行玩家攻击（sweep/pierce/charged三种模式）'),
-    ('POST', '/api/reset', '重置游戏，生成全新随机地图'),
-    ('POST', '/api/save', '保存游戏到指定存档槽位'),
-    ('POST', '/api/load', '从指定存档槽位加载游戏'),
-    ('GET', '/api/saves', '获取所有存档的摘要列表'),
-    ('POST', '/api/deleteSave', '删除指定 ID 的存档'),
-    ('GET', '/api/map', '获取全地图拓扑数据（小地图渲染使用）'),
-    ('GET', '/api/backpack', '获取背包物品列表（当前返回完整游戏状态）'),
-]
-for idx, (method, path, desc) in enumerate(api_data):
-    add_data_row(api_table, idx + 1, [method, path, desc])
+for idx, (tool, usage) in enumerate(tools):
+    add_data_row(table, idx + 1, [tool, usage])
 
 doc.add_paragraph()
-add_para('支持的命令清单：', bold=True)
-cmd_items = [
-    'go <direction> — 向指定方向移动（east/west/south/north）',
-    'help — 显示所有可用命令',
-    'quit — 退出游戏',
-    'take/pickup <itemName> — 拾取物品',
-    'drop <itemName> — 丢弃物品',
-    'items — 查看房间和背包物品信息',
-    'bag use <itemName> — 使用消耗品或装备物品',
-    'bag discard <itemName> — 从背包丢弃指定物品',
-    'bag unequip <itemName> — 卸下已装备的物品',
-    'shop buy <itemName> — 购买商品',
-    'shop sell <itemName> — 出售背包物品',
-    'interact heal/train/wisdom — 与祭坛交互',
-    'interact wisdom <boonName> — 选择博学恩赐',
-    'interact event — 触发奇遇事件/铁匠对话',
-    'interact <itemName> — 铁匠选择强化装备',
-    'wave <monsterName> — 月光波技能',
-    'test poison/burn/bleed — 调试命令，施加状态效果',
+add_para('项目管理策略与强制约束：', bold=True)
+constraints = [
+    '版本控制：必须使用 Git 进行版本管理，所有代码提交需有清晰的信息描述',
+    '分支策略：采用 master/ldc/jzc/xjs 多分支开发，通过 Pull Request 合并代码',
+    '代码审查：每个 PR 需至少一名其他成员审查通过后才能合并',
+    '代码风格：后端遵循 Java 标准命名规范，前端遵循 ESLint 规则',
+    'API 设计：所有接口遵循统一响应格式 {status, message, data}',
+    '前后端通信：所有游戏状态由后端维护，前端只做呈现与用户输入捕获',
+    '文档同步：代码更新后需同步更新 API.md 和 README.md',
 ]
-for c in cmd_items:
+for c in constraints:
     p = doc.add_paragraph(style='List Bullet')
     run = p.add_run(c)
     run.font.size = Pt(11)
@@ -563,148 +317,318 @@ for c in cmd_items:
 doc.add_page_break()
 
 # ============================================================
-#               六、数据库设计
+#               3. 小组软件过程
 # ============================================================
-add_heading('六、数据库设计', level=1)
+add_heading('3. 小组软件过程', level=1)
 
+# 3.1 代码仓库
+add_heading('3.1 代码仓库', level=2)
 add_para(
-    '采用 H2 嵌入式数据库（文件模式），通过 Spring Data JPA 实现持久化。'
-    '数据库文件位于项目 data/ 目录下。', indent=True
+    '项目代码托管于 GitHub 私有仓库，地址为：https://github.com/WHUT-ZUUL/kai-fa-aaa603。'
+    '仓库采用统一组织管理，所有成员均有推送权限。仓库根目录包含后端（backend/）、前端（frontend/）、'
+    '开发计划（plans/）、项目文档（README.md、API.md、REPORT.docx）等核心目录。',
+    indent=True
 )
 
-db_table = doc.add_table(rows=6, cols=2)
-db_table.style = 'Table Grid'
-db_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(db_table, 0, ['实体/Repository', '存储内容'])
-db_data = [
-    ('GameSaveEntity / GameSaveRepository', '存档元信息（玩家名、HP/MP/金钱、当前房间、时间戳）'),
-    ('RoomStateEntity / RoomStateRepository', '所有房间的独立状态（出口、物品、怪物列表、事件状态等）'),
-    ('MonsterStateEntity / MonsterStateRepository', '每个怪物的状态（HP/位置/类型/存活状态）'),
-    ('BagItemEntity / BagItemRepository', '背包中每个物品的记录（名称/数量/装备状态）'),
-    ('ShopStateEntity / ShopStateRepository', '商店中每个商品的售出状态'),
+# 3.2 软件版本计划
+add_heading('3.2 软件版本计划', level=2)
+add_para('项目采用迭代式开发，整体分为以下阶段：', indent=True)
+
+version_plan = [
+    ('v0.1 — 基础框架', '搭建 Spring Boot + Vue 3 项目骨架，实现基本的前后端通信，完成玩家移动和房间探索功能'),
+    ('v0.2 — 战斗系统', '实现实时战斗系统（三种攻击模式）、怪物 AI 和怪物生成机制'),
+    ('v0.3 — 背包与装备', '实现背包系统（拾取/使用/丢弃）、五槽位装备系统（装备/卸下/属性加成）'),
+    ('v0.4 — 商店与交互', '实现商店系统（购买/出售）、篝火祭坛系统（治愈/训练/博学）、奇遇事件系统'),
+    ('v0.5 — 状态效果', '实现烧伤/中毒/流血/天使祝福四种状态效果系统，支持层数叠加'),
+    ('v0.6 — 存档与 UI', '实现基于 H2 数据库的完整存档系统、控制面板(ESC)、小地图组件、UI/UX 优化'),
+    ('v1.0 — 集成与交付', '前后端集成测试、Bug 修复、代码优化与冗余清理、项目文档生成'),
 ]
-for idx, (entity, content) in enumerate(db_data):
-    add_data_row(db_table, idx + 1, [entity, content])
-
-doc.add_page_break()
-
-# ============================================================
-#               七、小组分工与协作
-# ============================================================
-add_heading('七、小组分工与协作', level=1)
-
-add_para(
-    '本项目由 AAA603 小组三位成员协作完成。开发过程中采用 GitHub 进行版本控制和任务管理，'
-    '各成员在独立分支上开发，通过 Pull Request 进行代码审查与合并。', indent=True
-)
-
-member_table = doc.add_table(rows=4, cols=4)
-member_table.style = 'Table Grid'
-member_table.alignment = WD_TABLE_ALIGNMENT.CENTER
-make_header_row(member_table, 0, ['姓名', 'GitHub', '分支', '主要贡献'])
-
-member_data = [
-    ('李冬晨\n（组长）',
-     '@Sader-Lee\nldc分支',
-     'ldc',
-     '• 项目架构设计与搭建\n• 玩家系统（属性/装备/伤害计算）\n• take/drop/items 命令\n• 怪物系统（生成/攻击/掉落）\n• 商店系统（购买/出售）\n• 背包系统\n• 房间战斗封锁机制\n• 数据库持久化（H2 + JPA）\n• 攻击特效与前后端联调'),
-    ('蒋志成',
-     '@BytesJiang\njzc分支',
-     'jzc',
-     '• 前端框架搭建与Phaser集成\n• WASD移动控制与视角\n• 小地图渲染\n• UI/UX 优化\n• 攻击特效（火焰粒子+屏幕振动）\n• 蓄力攻击与击退效果\n• 状态效果系统（烧伤/中毒/流血）\n• 随机地图生成算法\n• 篝火祭坛交互\n• 奇遇房间\n• 月光波技能\n• 前端重构：常量提取(constants.js)、API封装(gameApi.js)、组件拆分(BackpackPanel.vue)\n• Bug 修复与性能优化'),
-    ('熊俊森',
-     '@XJS-123\nxjs分支',
-     'xjs',
-     '• 主菜单页面搭建设计\n• 饰品系统完整实现（5槽位装备）\n• 奇遇事件系统\n• 人物模型绘制\n• Buff系统（天使buff与中毒冲突处理）\n• 铁匠系统（保底机制）\n• 游戏实体构造（掉落物/EntityDrawer）\n• 地图背景添加\n• 项目文档生成（API.md/README.md/REPORT.docx）'),
-]
-for idx, (name, github, branch, contribution) in enumerate(member_data):
-    row = member_table.rows[idx + 1]
-    cells = row.cells
-    # Name cell
-    cells[0].text = ''
-    p = cells[0].paragraphs[0]
-    run = p.add_run(name)
-    run.font.size = Pt(10)
-    run.bold = True
-    # GitHub cell
-    cells[1].text = ''
-    p = cells[1].paragraphs[0]
-    run = p.add_run(github)
-    run.font.size = Pt(10)
-    # Branch cell
-    cells[2].text = ''
-    p = cells[2].paragraphs[0]
-    run = p.add_run(branch)
-    run.font.size = Pt(10)
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    # Contribution cell
-    cells[3].text = ''
-    p = cells[3].paragraphs[0]
-    run = p.add_run(contribution)
-    run.font.size = Pt(10)
-
-doc.add_paragraph()
-add_para('协作流程：', bold=True)
-collab_steps = [
-    '任务拆分：通过 GitHub Issues 创建任务卡片，分配给对应成员',
-    '分支开发：每个成员在独立分支（ldc/jzc/xjs）上开发',
-    '代码审查：通过 Pull Request 进行交叉代码审查',
-    '持续集成：配置 GitHub Actions 自动化构建与测试',
-    '文档同步：README.md 和 API.md 随代码更新保持一致',
-]
-for cs in collab_steps:
+for ver, desc in version_plan:
     p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(cs)
+    run = p.add_run(f'{ver}：{desc}')
     run.font.size = Pt(11)
 
+# 3.3 开发分支模型与提交流程
+add_heading('3.3 开发分支模型与提交流程', level=2)
+add_para(
+    '项目采用三分支模型：master（主分支）、ldc（后端核心）、jzc（前端开发）、xjs（特殊系统与实体）。'
+    '所有新功能的开发在各自独立分支上进行，完成后发起 Pull Request 到 master 分支。',
+    indent=True
+)
+
+branch_flow = [
+    '功能开发：各成员在个人分支（ldc/jzc/xjs）上开发新功能，每日多次提交',
+    '代码同步：定期从 master 合并最新代码到个人分支，保持代码同步',
+    'Pull Request：功能完成后，在 GitHub 上发起 PR 到 master 分支',
+    '代码审查：至少一名其他成员审查代码，提出改进意见',
+    '合并：审查通过后，由 PR 创建者或组长合并到 master',
+    '标签管理：合并后在 master 分支打上版本标签（如 v0.6）',
+]
+for bf in branch_flow:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(bf)
+    run.font.size = Pt(11)
+
+# 3.4 代码规范与检查流程
+add_heading('3.4 代码规范与检查流程', level=2)
+add_para(
+    '后端 Java 代码遵循阿里巴巴 Java 开发手册规范，前端代码遵循 Vue 3 Composition API 风格指南。'
+    '代码审查重点检查以下方面：',
+    indent=True
+)
+code_review = [
+    '命名规范：类名 PascalCase、方法名 camelCase、常量 UPPER_SNAKE_CASE',
+    '代码整洁：无冗余导入、无用代码注释、控制台输出',
+    '异常处理：所有可能的空指针需做 null 检查，错误信息有意义',
+    'API 一致性：响应格式必须遵循统一的 {status, message, data} 结构',
+    '安全性：存档操作需校验 saveId 合法性',
+]
+for cr in code_review:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(cr)
+    run.font.size = Pt(11)
+
+# 3.5 项目测试计划与实施流程
+add_heading('3.5 项目测试计划与实施流程', level=2)
+add_para(
+    '项目采用"开发自测 + 集成联调"的测试策略。由于项目周期较短，未引入自动化测试框架，'
+    '主要通过以下方式进行测试：',
+    indent=True
+)
+test_items = [
+    '后端 API 测试：使用 Postman 对各 API 端点进行请求/响应验证',
+    '前端功能测试：在浏览器中手动测试各交互功能（移动/攻击/拾取/商店/存档等）',
+    '前后端联调：在开发过程中持续进行前后端联调，确保 JSON 数据格式一致',
+    '边界测试：测试空背包使用物品、在非商店房间使用 shop 命令、金钱不足时购买等边界情况',
+    '存档兼容性测试：验证存档/读档后游戏状态的一致性',
+]
+for t in test_items:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(t)
+    run.font.size = Pt(11)
+
+# 3.6 项目集成与发布规范
+add_heading('3.6 项目集成与发布规范', level=2)
+add_para(
+    '项目通过 GitHub 进行持续集成与发布管理。各成员在个人分支完成开发和自测后，通过 Pull Request '
+    '将代码合并到 master 主分支。每次合并前需确保代码可编译、可运行，且不破坏现有功能。',
+    indent=True
+)
+release_items = [
+    '集成触发：每次 Pull Request 合并到 master 后触发集成验证',
+    '构建验证：后端使用 Maven 编译验证（mvn compile），前端使用 Vite 构建验证（npm run build）',
+    '发布流程：代码在 master 分支上经过验证后，打上版本标签进行发布',
+    '文档同步：版本发布时同步更新 README.md 和 API.md 中的版本号与更新日期',
+]
+for r in release_items:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(r)
+    run.font.size = Pt(11)
+
+# 3.7 其他过程说明
+add_heading('3.7 其他过程说明', level=2)
+add_para(
+    '开发过程中使用了 GitHub Issues 进行任务管理和分配。每个功能点对应一个 Issue，分配给对应成员后'
+    '在个人分支上实现。Issues 支持标签分类（enhancement/bug/documentation）和里程碑管理。'
+    '项目前期以功能开发为主（约85%的 Issues），后期转向 Bug 修复和代码优化（约15%的 Issues）。',
+    indent=True
+)
+
 doc.add_page_break()
 
 # ============================================================
-#               八、实训总结与反思
+#               4. 小组成员任务报告
 # ============================================================
-add_heading('八、实训总结与反思', level=1)
+add_heading('4. 小组成员任务报告', level=1)
 
-add_para('8.1 技术收获', bold=True)
-tech_gains = [
-    '深入理解了前后端分离架构的设计思想与实践方法，掌握 Spring Boot 与 Vue 3 的完整开发流程',
-    '掌握了 Phaser 3 游戏引擎的基本用法，包括场景管理、碰撞检测、粒子系统、动画与特效',
-    '学习了 Roguelike 游戏的程序化内容生成技术，包括随机地图生成、随机事件系统、平衡性设计',
-    '实践了 RESTful API 设计规范，理解了统一响应格式、错误处理、状态管理的重要性',
+# 4.1 成员一：李冬晨
+add_heading('4.1 成员一（李冬晨）任务分工及实施过程描述', level=2)
+add_para('角色：组长 / 核心后端开发', bold=True)
+add_para('GitHub：@Sader-Lee | 开发分支：ldc', bold=True)
+
+add_para('任务分工：', bold=True)
+ldc_tasks = [
+    '项目架构设计与技术选型：确定 Spring Boot + Vue 3 + Phaser 3 的技术栈',
+    '核心游戏模型开发：实现 Player（带装备系统/damage记录/伤害计算）、Monster（3种类型+FLAME_SLIME）、Room（房间初始化/祭坛/商店/事件生成）等 18 个数据模型',
+    '玩家系统：实现玩家属性管理、装备系统（5槽位的 equip/unequip）、伤害计算（物理/魔法/闪避判定）、DamageRecord 记录系统',
+    '命令系统开发：take/drop/items 命令的完整实现',
+    '怪物系统：怪物生成（spawnMonsters 三种类型）、怪物攻击、怪物掉落（processMonsterDrop）',
+    '商店系统：ShopCommand 完整实现（buy/sell），商品管理、货币扣除、折价回收（买价一半）',
+    '背包系统：Bag 类的 add/remove/use/discard 操作，消耗品合并与装备独立展示',
+    '房间战斗封锁：怪物房间 exit 封锁/解锁机制',
+    '数据库持久化：基于 Spring Data JPA 的完整存档系统，5 个 Repository 接口',
+    '玩家状态注入：injectPlayerStatus 方法注入 24+ 字段到前端响应',
+    '攻击特效与前后端联调',
+]
+for t in ldc_tasks:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(t)
+    run.font.size = Pt(11)
+
+add_para('实施成果：完成了后端核心系统的所有功能，包括 10 个 API 端点、11 个命令处理器、'
+         '18 个数据模型、5 个 Repository 接口。实现了游戏的核心逻辑闭环。', indent=True)
+
+# 4.2 成员二：蒋志成
+add_heading('4.2 成员二（蒋志成）任务分工及实施过程描述', level=2)
+add_para('角色：前端开发 / 战斗系统', bold=True)
+add_para('GitHub：@BytesJiang | 开发分支：jzc', bold=True)
+
+add_para('任务分工：', bold=True)
+jzc_tasks = [
+    '前端框架搭建：基于 Vue 3 + Vite 搭建前端项目，集成 Phaser 3 游戏引擎到 Vue 组件',
+    '移动控制：WASD 键盘控制玩家移动，Shift+方向冲刺',
+    '小地图渲染：实现基于 Canvas 的小地图组件 MinimapPanel.vue，支持按房间类型颜色区分',
+    '攻击特效实现：火焰粒子效果、屏幕振动、蓄力攻击特效、残影渐隐',
+    '三种攻击模式：Sweep（扇形/135°）、Pierce（直线/突刺/击退）、Charged（蓄力/360°）的前端实现',
+    '状态效果系统：烧伤/中毒/流血的前端图标显示、倒计时、闪烁效果',
+    '随机地图生成算法：实现 10×15 网络的地图生成逻辑',
+    '房间颜色分类：7种房间类型在小地图中不同颜色标识',
+    '篝火祭坛交互展示：三种祭坛的前端交互界面',
+    '奇遇房间界面展示',
+    '月光波技能：Phaser 粒子投射物特效，弹射 2 次，击退效果',
+    '前端重构：常量提取到 constants.js、API 封装到 gameApi.js、组件拆分（BackpackPanel.vue / ControlPanel.vue / MinimapPanel.vue）',
+    'Bug 修复与性能优化',
+]
+for t in jzc_tasks:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(t)
+    run.font.size = Pt(11)
+
+add_para('实施成果：构建了完整的 Vue 3 + Phaser 3 前端游戏界面，包括 3 个核心组件、4 个 composables、'
+         '全局常量系统、攻击特效系统、小地图导航系统。完成了前后端分离的通信架构。', indent=True)
+
+# 4.3 成员三：熊俊森
+add_heading('4.3 成员三（熊俊森）任务分工及实施过程描述', level=2)
+add_para('角色：特殊系统开发 / 实体与文档', bold=True)
+add_para('GitHub：@XJS-123 | 开发分支：xjs', bold=True)
+
+add_para('任务分工：', bold=True)
+xjs_tasks = [
+    '主菜单页面搭建设计：MainMenu.vue 界面实现',
+    '饰品系统完整实现：5 槽位装备系统（weapon/armor/cloak/ring/amulet），装备/卸下逻辑，属性加成交互计算',
+    '奇遇事件系统：8 种事件类型（WOODEN_CHEST/GOLDEN_CHEST/ELITE_ENEMY/FOUNTAIN/CHEST/MAIDEN/ANGEL/BLACKSMITH）',
+    '人物模型绘制：游戏角色视觉呈现',
+    'Buff 系统实现：天使祝福（ANGEL_BUFF）30秒全属性×1.5倍，与中毒等 debuff 的冲突处理',
+    '铁匠系统：装备强化至150%属性，保底机制避免强化失败',
+    '游戏实体构造：EntityDrawer.js 实现掉落物可视化、DroppedItem 坐标管理',
+    '地图背景添加：4种背景图（bg0-bg3）对应不同房间类型',
+    '代码优化：清理冗余类，移除无用代码',
+    '项目文档生成：API.md、README.md、REPORT.docx 的编写与更新',
+]
+for t in xjs_tasks:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(t)
+    run.font.size = Pt(11)
+
+add_para('实施成果：实现了饰品系统、奇遇事件系统、铁匠系统、Buff 系统等特殊功能模块，'
+         '完成了人物模型绘制和地图背景添加，生成了完整的项目文档。', indent=True)
+
+# 4.4 成员四
+add_heading('4.4 成员四任务分工及实施过程描述', level=2)
+add_para('（本小组共 3 名成员，此章节不适用）', indent=True)
+
+doc.add_page_break()
+
+# ============================================================
+#           5. 实施过程问题记录与分析
+# ============================================================
+add_heading('5. 实施过程问题记录与分析', level=1)
+
+add_para('在项目合作开发过程中，遇到了以下主要问题及其分析与解决方案：', indent=True)
+
+problems = [
+    ('前后端数据同步问题',
+     '问题描述：攻击判定涉及前端坐标与后端模型的同步。前端 Phaser 引擎使用像素坐标，'
+     '后端需要根据坐标做空间命中判定，双方坐标系统不一致会导致判定偏差。',
+     '分析：攻击判定需要在服务端统一执行以保证公平性和存档一致性。前端发送坐标快照到后端，'
+     '后端执行空间几何运算（扇形角度判定/直线距离判定/圆形范围判定）。',
+     '解决方案：前端在攻击时将玩家坐标、怪物坐标快照发送到后端，后端 GameService.performAttack '
+     '方法统一执行命中判定。实现了三种攻击算法的空间命中检测（isHit 方法）。'),
+    ('状态效果系统设计',
+     '问题描述：多种 Buff/Debuff 需要独立结算但又可能同时存在，且支持层数叠加。'
+     '前端需要实时显示剩余时间、层数等信息。',
+     '分析：需要统一的 StatusManager 管理中心，每种状态效果有独立的 tick 逻辑和层数衰减规则。',
+     '解决方案：Status.StatusManager 统一管理所有效果，采用层数叠加机制。BURN 每3秒结算（层数减半），'
+     'POISON 每秒结算（层数减1），BLEED 攻击触发（层数减1），ANGEL_BUFF 持续30秒自动结束。'
+     '前端通过 getActiveEffectsInfo() 获取当前活跃效果列表。'),
+    ('随机种子一致性问题',
+     '问题描述：存档读档时需要保证随机地图的可复现性，否则读档后地图与存档时不符。',
+     '分析：Java 的 Random 类使用种子值初始化，相同种子产生相同的随机序列。'
+     '需要在存档时保存种子值，读档时使用同样的种子重建地图和怪物。',
+     '解决方案：Game 类使用固定种子初始化（new Random(seed)），存档时保存种子到数据库，'
+     '读档时恢复种子重建完整的房间网络和怪物分布。'),
+    ('装备同槽位冲突处理',
+     '问题描述：装备新武器时，旧武器需要自动卸下；卸下装备后属性要恢复。'
+     '不同物品对应不同槽位（铁剑→weapon、暗影披风→cloak 等）。',
+     '分析：需要建立物品名称到槽位的映射表，equip 时自动检测同槽位旧装备。',
+     '解决方案：Player.getItemSlot() 方法根据物品名称中文关键词判断槽位（剑→weapon、盾→armor、'
+     '披风→cloak、戒指→ring、项链→amulet）。equipItem 方法先检查同槽位，调用 unequipSlot 卸下旧装备，'
+     '再应用新装备属性。'),
+    ('中文字符编码与前端显示',
+     '问题描述：后端响应中的中文字符在控制台打印时出现编码错误（GBK 编码问题）。',
+     '分析：Windows 系统控制台默认 GBK 编码，Python 脚本输出的 emoji 和特殊字符无法编码。',
+     '解决方案：脚本输出使用 ASCII 安全字符替代 emoji，后端 JSON 默认 UTF-8 不受影响。'),
+    ('存档写权限冲突',
+     '问题描述：IDEA 开发工具锁定了 REPORT.docx 文件，导致 Python 脚本无法覆盖写入。',
+     '分析：IDEA 打开了文件导致文件被进程占用。',
+     '解决方案：关闭 IDEA 中的文件标签后再执行脚本，或先写入临时文件再替换。'),
+]
+for title, desc, analysis, solution in problems:
+    add_para(title, bold=True)
+    add_para(f'问题描述：{desc}', indent=True)
+    add_para(f'分析：{analysis}', indent=True)
+    add_para(f'解决方案：{solution}', indent=True)
+    doc.add_paragraph()
+
+doc.add_page_break()
+
+# ============================================================
+#               6. 任务总结
+# ============================================================
+add_heading('6. 任务总结', level=1)
+
+add_para('6.1 项目完成情况', bold=True)
+add_para(
+    '本项目已按计划完成全部功能开发，通过了多次前后端联调测试，项目状态稳定。'
+    '已实现的功能包括：程序化随机地图生成、实时战斗系统（三种攻击模式）、怪物系统（三种类型+火焰史莱姆）、'
+    '状态效果系统（四种效果）、背包与五槽位装备系统、商店交易系统、篝火祭坛系统（三种祭坛+八种恩赐）、'
+    '奇遇事件系统（八种事件）、铁匠强化系统、月光波技能、完整存档系统（H2数据库持久化）。'
+    '前端完成了 Vue 3 组件化架构（6个组件/5个composables）、Phaser 3 游戏引擎集成、'
+    '小地图导航、控制面板、攻击粒子特效、屏幕振动等 UI/UX 功能。',
+    indent=True
+)
+
+add_para('6.2 经验与收获', bold=True)
+gains = [
+    '深入理解了前后端分离架构的设计思想与实践方法，掌握了 Spring Boot + Vue 3 的完整开发流程',
+    '掌握了 Phaser 3 游戏引擎的基本用法：场景管理、碰撞检测、粒子系统、动画与特效',
+    '学习了 Roguelike 游戏的程序化内容生成技术：随机地图生成、随机事件系统、平衡性设计',
+    '实践了 RESTful API 设计规范：统一响应格式、错误处理、状态管理',
     '掌握了 Spring Data JPA 的实体关系映射与复杂状态序列化/反序列化',
     '通过 Git 分支管理与代码审查，体验了真实团队协作的开发流程',
+    '培养了问题分析与解决能力：从坐标同步到状态管理、从种子一致性到装备冲突处理',
 ]
-for tg in tech_gains:
+for g in gains:
     p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(tg)
+    run = p.add_run(g)
     run.font.size = Pt(11)
 
-add_para('8.2 项目亮点', bold=True)
+add_para('6.3 项目亮点', bold=True)
 highlights = [
-    '完整的空间命中判定系统：后端实现三种攻击模式（扇形/直线/全向）的几何命中算法，前端发送坐标快照做服务端校验',
-    '丰富的状态效果系统：烧伤/中毒/流血/天使祝福均支持层数叠加与独立结算，前端实时展示状态图标与倒计时',
-    '灵活的装备系统：五槽位设计支持武器/护甲/披风/戒指/项链的装备与卸下，属性加成实时反映到战斗面板',
-    '多维度的内容生成：随机地图 + 随机商店 + 随机祭坛恩赐 + 随机奇遇事件，保证每次游戏体验的全新性',
+    '完整的空间命中判定系统：后端实现三种攻击模式的几何命中算法（扇形/直线/全向），前端发送坐标快照做服务端校验',
+    '丰富的状态效果系统：四种效果均支持层数叠加与独立结算，前端实时展示状态图标与倒计时',
+    '灵活的装备系统：五槽位设计支持武器/护甲/披风/戒指/项链的装备与卸下，属性加成实时反映',
+    '多维度的内容生成：随机地图 + 随机商店 + 随机祭坛恩赐 + 随机奇遇事件，保证每次游戏的全新体验',
     '完整的存档系统：基于 H2 数据库实现全量游戏状态持久化，支持多槽位存档管理',
+    '前端组件化重构：将背包面板、控制面板、小地图拆分为独立 Vue 组件，通过 CustomEvent 通信',
 ]
 for h in highlights:
     p = doc.add_paragraph(style='List Bullet')
     run = p.add_run(h)
     run.font.size = Pt(11)
 
-add_para('8.3 遇到的挑战与解决方案', bold=True)
-challenges = [
-    ('前后端数据同步', '攻击判定涉及前端坐标与后端模型的同步问题。解决方案：前端发送坐标快照到后端，后端统一做空间判定，保证判定一致性。'),
-    ('状态效果系统设计', '多种 Buff/Debuff 需要独立结算又可能同时存在。解决方案：使用 StatusManager 统一管理，采用层数叠加工厂模式，各效果独立 tick。'),
-    ('随机种子一致性', '存档读档需要保证随机地图的可复现性。解决方案：使用种子随机数生成器，存档时保存种子值，读档时恢复种子重建地图。'),
-    ('装备冲突处理', '同槽位装备切换时需卸下旧装备再装备新装备。解决方案：equipItem 方法自动检测同槽位并先调用 unequipSlot。'),
-]
-for title, solution in challenges:
-    p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(f'{title}：{solution}')
-    run.font.size = Pt(11)
-
-add_para('8.4 未来展望', bold=True)
-future_items = [
+add_para('6.4 未来展望', bold=True)
+future = [
     '增加更多怪物种类与 Boss 技能机制',
     '引入装备强化/镶嵌/附魔系统',
     '增加游戏内成就系统与排行榜',
@@ -712,9 +636,9 @@ future_items = [
     '添加音效与背景音乐系统',
     '支持多人在线联机模式',
 ]
-for fi in future_items:
+for f in future:
     p = doc.add_paragraph(style='List Bullet')
-    run = p.add_run(fi)
+    run = p.add_run(f)
     run.font.size = Pt(11)
 
 # ============================================================

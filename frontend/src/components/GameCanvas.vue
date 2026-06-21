@@ -26,7 +26,8 @@ import {
   getMonsterDrawer,
   getEncounterDrawer,
   drawShopMerchant,
-  getItemDrawer
+  getItemDrawer,
+  drawNebulaPortal
 } from '../entity/EntityDrawer.js'
 import { createApi } from '../composables/useApi.js'
 import { createKeyboardManager } from '../composables/useKeyboard.js'
@@ -759,11 +760,18 @@ onMounted(() => {
             if (dir === 'west')  { posx = rectLeft - w / 2 - outsideOffset; posy = rectCenterY }
             if (dir === 'east')  { posx = rectLeft + roomW + w / 2 + outsideOffset; posy = rectCenterY }
 
-            const rect = scene.add.rectangle(posx, posy, w, h, 0x664422).setStrokeStyle(2, 0x222222)
+            // 星云状传送门视觉
+            const portalGfx = scene.add.graphics()
+            portalGfx.setPosition(posx, posy)
+            drawNebulaPortal(portalGfx, w * 1.25, h * 1.25)
+            portalGfx.setDepth(10)
+            // 不可见的碰撞检测矩形（保持原有门检测逻辑不变）
+            const rect = scene.add.rectangle(posx, posy, w, h, 0x000000, 0)
             const label = scene.add.text(posx - 20, posy - 10, dir.toUpperCase(), { font: '14px Arial', fill: '#ffffff' })
+            scene.exitButtons.push(portalGfx)
             scene.exitButtons.push(rect)
             scene.exitButtons.push(label)
-            scene.doorRects.push({ dir, rect, label })
+            scene.doorRects.push({ dir, rect, label, portalGfx })
           })
 
           scene._roomBounds = { left: rectLeft, top: rectTop, right: rectLeft + roomW, bottom: rectTop + roomH }

@@ -30,6 +30,7 @@ public class Game {
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.setOnDeath(() -> setGameOver(true));  // 注册死亡信号：HP 归零 → gameOver
         player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
@@ -121,6 +122,7 @@ public class Game {
         this.mapSeed = new Random().nextLong();
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.setOnDeath(() -> setGameOver(true));  // 注册死亡信号
         player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {

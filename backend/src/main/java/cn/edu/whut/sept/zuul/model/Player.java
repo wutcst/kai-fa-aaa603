@@ -11,41 +11,51 @@ import java.util.List;
  * 增益/减益状态委托给 {@link Status.StatusManager} 处理。
  */
 @Getter
-@Setter
 public class Player {
-    private String name;
-    private Room currentRoom;
-    private Bag bag;
-    private Money money;
-    private Status.StatusManager statusManager;
+    @Setter private String name;
+    @Setter private Room currentRoom;
+    @Setter private Bag bag;
+    @Setter private Money money;
+    @Setter private Status.StatusManager statusManager;
+
+    /** HP 归零时触发的死亡信号回调。由 Game 在构造时注入。 */
+    private Runnable onDeath;
 
     // -- 基础战斗属性 --
-    private int hp;
-    private int mp;
-    private int maxHp;
-    private int maxMp;
-    private int attack;
-    private int magicAttack;
-    private int defense;
-    private int magicResist;   // 0-100，超出按100计
-    private int speed;
-    private int dodge;         // 0-100
+    private int hp;  // setter 由下方手动提供（含死亡信号发射）
+
+    /** 注册死亡回调。Game 构造时调用 {@code player.setOnDeath(() -> game.setGameOver(true))} */
+    public void setOnDeath(Runnable callback) { this.onDeath = callback; }
+
+    /**
+     * 手动 setHp：HP 归零时向外发射死亡信号。
+     * 不使用 Lombok @Setter，确保信号逻辑不被字节码冲突覆盖。
+     */
+    public void setHp(int hp) {
+        this.hp = Math.max(0, hp);
+        if (this.hp <= 0 && onDeath != null) {
+            onDeath.run();
+        }
+    }
+    @Setter private int mp;
+    @Setter private int maxHp;
+    @Setter private int maxMp;
+    @Setter private int attack;
+    @Setter private int magicAttack;
+    @Setter private int defense;
+    @Setter private int magicResist;   // 0-100，超出按100计
+    @Setter private int speed;
+    @Setter private int dodge;         // 0-100
 
     // -- 装备/饰品槽位（已装备的物品名称，null表示空） --
-    /** 披风槽位 */
-    private String equippedCloak;
-    /** 戒指槽位 */
-    private String equippedRing;
-    /** 项链槽位 */
-    private String equippedAmulet;
-    /** 武器槽位（铁剑等） */
-    private String equippedWeapon;
-    /** 护甲槽位（铁盾等） */
-    private String equippedArmor;
+    @Setter private String equippedCloak;
+    @Setter private String equippedRing;
+    @Setter private String equippedAmulet;
+    @Setter private String equippedWeapon;
+    @Setter private String equippedArmor;
 
     // -- 伤害计数器 --
-    /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
-    private List<DamageRecord> damageRecords;
+    @Setter private List<DamageRecord> damageRecords;
 
     /**
      * 伤害记录：记录单次受击的时间戳与经过防御/魔抗结算后的最终伤害量。
@@ -301,7 +311,7 @@ public class Player {
         }
         int effDef = statusManager.getModifiedDefense();
         int actual = Math.max(0, dmg - effDef);
-        hp = Math.max(0, hp - actual);
+        setHp(hp - actual); // 通过 setHp 自动触发死亡检测
         recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
@@ -313,7 +323,7 @@ public class Player {
         }
         int resist = Math.min(100, statusManager.getModifiedMagicResist());
         int actual = (int) Math.floor(dmg * (1.0 - resist / 100.0));
-        hp = Math.max(0, hp - actual);
+        setHp(hp - actual); // 通过 setHp 自动触发死亡检测
         recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
@@ -384,5 +394,21 @@ public class Player {
 
     public boolean isAlive() {
         return hp > 0;
+    }
+
+    /**
+     * 通用死亡检查：不绑定任何具体负面状态。
+     * 当任意负面状态（流血/烧伤/中毒等）使玩家血量降至 0 时，此方法返回 true。
+     * 调用方负责先执行各状态 tick，再调用此方法判定死亡。
+     *
+     * @param sb 消息构建器，死亡文本追加到此
+     * @return true 表示玩家已死亡，false 表示存活
+     */
+    public boolean checkAndMarkDeath(StringBuilder sb) {
+        if (!isAlive()) {
+            sb.append("你因持续伤害而死亡！");
+            return true;
+        }
+        return false;
     }
 }

@@ -33,23 +33,18 @@ public class GameService {
 
     /**
      * 将玩家状态注入到响应数据 Map 中。
-     * 同时驱动烧伤结算计时（tickBurn），确保无论前端以多高频率轮询，
-     * 烧伤每3秒都至少被结算一次。
+     * 同时驱动所有负面状态计时（烧伤/中毒），确保无论前端以多高频率轮询，
+     * 各状态都能按固定间隔结算。
      */
     private void injectPlayerStatus(Map<String, Object> data) {
         Player player = game.getPlayer();
         if (player != null) {
-            // ---- 驱动烧伤计时 ----
+            // ---- 驱动烧伤/中毒/流血等状态计时 ----
             if (player.getStatusManager() != null) {
                 int burnDmg = player.getStatusManager().tickBurn();
                 if (burnDmg > 0) {
                     data.put("burnDamage", burnDmg);
                     data.put("burnLayers", player.getStatusManager().getBurnLayers());
-                }
-                // ---- 驱动天使祝福计时 ----
-                boolean angelActive = player.getStatusManager().tickAngelBuff();
-                if (angelActive) {
-                    data.put("angelBuffRemainingMs", player.getStatusManager().getAngelBuffRemainingMs());
                 }
                 // ---- 驱动中毒计时 ----
                 int poisonDmg = player.getStatusManager().tickPoison();
@@ -61,9 +56,20 @@ public class GameService {
                 if (player.getStatusManager().hasBleed()) {
                     data.put("bleedLayers", player.getStatusManager().getBleedLayers());
                 }
+                // ---- 驱动迟缓过期检查 ----
+                player.getStatusManager().tickSlow();
+                // ---- 驱动束缚过期检查 ----
+                player.getStatusManager().tickBind();
+                // ---- 注入迟缓/束缚状态信息 ----
+                if (player.getStatusManager().hasSlow()) {
+                    data.put("hasSlow", true);
+                }
+                if (player.getStatusManager().hasBind()) {
+                    data.put("hasBind", true);
+                }
             }
 
-            // ---- 检查玩家是否因烧伤死亡 ----
+            // ---- 通用死亡检查：任一负面状态使 HP 降至 0 即判死 ----
             if (!player.isAlive() && !game.isGameOver()) {
                 game.setGameOver(true);
                 data.put("gameOver", true);
@@ -142,13 +148,21 @@ public class GameService {
             return GameResponse.error("Game is over! Please reset the game.");
         }
 
+        // ---- 检查玩家是否因持续伤害（流血/烧伤/中毒）已经死亡 ----
+        // 若 gameOver 尚未被设置（例如攻击响应尚未到达前端，前端就发来了 go 命令），
+        // 此处的存活检查可防止已死亡玩家继续移动或执行其他命令。
+        Player player = game.getPlayer();
+        if (player != null && !player.isAlive()) {
+            game.setGameOver(true);
+            return GameResponse.error("你因持续伤害而死亡，游戏结束。");
+        }
+
         // 解析命令（分割命令词和参数）
         String[] parts = commandStr.trim().split("\\s+");
         String commandWord = parts[0];
 
         // ---- 测试命令：test poison - 施加一层中毒 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "poison".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyPoison(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -160,7 +174,6 @@ public class GameService {
 
         // ---- 测试命令：test burn - 施加一层烧伤 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "burn".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyBurn(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -172,7 +185,6 @@ public class GameService {
 
         // ---- 测试命令：test bleed - 施加一层流血 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "bleed".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyBleed(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -180,6 +192,28 @@ public class GameService {
                 return GameResponse.success("测试：施加 1 层流血", data);
             }
             return GameResponse.error("施加流血失败");
+        }
+
+        // ---- 测试命令：test slow - 施加一次迟缓 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "slow".equalsIgnoreCase(parts[1])) {
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applySlow(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加迟缓", data);
+            }
+            return GameResponse.error("施加迟缓失败");
+        }
+
+        // ---- 测试命令：test bind - 施加一次束缚 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "bind".equalsIgnoreCase(parts[1])) {
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applyBind(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加束缚", data);
+            }
+            return GameResponse.error("施加束缚失败");
         }
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
@@ -248,7 +282,7 @@ public class GameService {
         StringBuilder sb = new StringBuilder();
         int hitCount = 0;
 
-        // ---- 流血：每次主动攻击触发一次（在怪物命中判定之前，支持空挥） ----
+        // ---- 流血：每次主动攻击触发一次 ----
         Player player = game.getPlayer();
         if (player != null && player.getStatusManager() != null) {
             int bleedDmg = player.getStatusManager().tickBleedOnAttack();
@@ -257,14 +291,13 @@ public class GameService {
             }
         }
 
-        // ---- 如果玩家因流血死亡，立即返回死亡结果 ----
-        if (player != null && !player.isAlive()) {
+        // ---- 通用死亡检查（不绑定特定状态） ----
+        if (player != null && player.checkAndMarkDeath(sb)) {
             game.setGameOver(true);
             Map<String, Object> data = new HashMap<>(current.getFullInfo());
             data.put("hitCount", 0);
             data.put("gameOver", true);
             injectPlayerStatus(data);
-            sb.append("你因流血过多而死亡！");
             return GameResponse.success(sb.toString().trim(), data);
         }
 

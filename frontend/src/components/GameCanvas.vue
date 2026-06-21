@@ -94,6 +94,7 @@ onMounted(() => {
         create: async function () {
           const scene = this
 
+        // ==================== 1. 基础状态初始化 ====================
         // game over state
         scene.gameOver = false
         scene.gameOverOverlay = null
@@ -117,6 +118,7 @@ onMounted(() => {
         scene.bgColor = 0x6bbf3a
         scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
 
+        // ==================== 2. 随机工具与草地纹理生成 ====================
         // 随机数工具
         const mulberry32 = (a) => {
           return function() {
@@ -187,6 +189,7 @@ onMounted(() => {
           const v0 = createSeamlessGrass('grass_v0', tileSize, 12345, 260)
           const v1 = createSeamlessGrass('grass_v1', tileSize, 54321, 200)
 
+          // ==================== 3. 背景系统 ====================
           // Create background — use Image (单张不重复) for user-provided bg images; fallback to tileSprite for procedural grass
           const availableBgKeys = []
           for (let i = 0; i < 4; i++) { if (scene.textures.exists(`bg${i}`)) availableBgKeys.push(`bg${i}`) }
@@ -211,6 +214,7 @@ onMounted(() => {
           scene.bgFar = bgFar
           scene.bgNear = bgNear
 
+          // ==================== 4. 房间边界框遮罩系统 ====================
           // ---------- 房间边界框遮罩（将背景裁剪到传送门围成的矩形内） ----------
           scene.roomMaskShape = scene.add.graphics()
           scene.roomMaskShape.setPosition(0, 0)
@@ -268,6 +272,8 @@ onMounted(() => {
               try { scene.bgNear.setAlpha(0); scene.bgFar.setAlpha(1.0); scene.bgNear.setScale(1.02) } catch (e) {}
             } catch (e) {}
           }
+
+        // ==================== 5. 玩家属性与状态条UI ====================
         scene._prevPlayerX = 400
         scene._prevPlayerY = 320
 
@@ -301,25 +307,6 @@ onMounted(() => {
         scene.mpText = scene.add.text(barX + barW / 2, mpY + barH / 2, '100/100', {
           font: 'bold 12px Arial', fill: '#ffffff'
         }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
-
-        // ---------- Buff/Debuff 显示状态初始化 ----------
-        scene._activeEffects = []          // 后端传来的活跃状态列表
-        scene._burnFlameGfx = null         // 火焰 Graphics 对象
-        scene._burnLayersText = null       // 层数文字
-        scene._burnTimerText = null        // 倒计时文字
-        scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
-        scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
-
-        // 中毒状态相关
-        scene._poisonIconGfx = null        // 中毒图标（💀）
-        scene._poisonLayersText = null     // 中毒层数文字
-        scene._poisonTimerText = null      // 中毒倒计时文字
-        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
-        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
-
-        // 流血状态相关
-        scene._bleedIconGfx = null         // 流血图标（🩸）
-        scene._bleedLayersText = null      // 流血层数文字
 
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -374,8 +361,25 @@ onMounted(() => {
           }
         }
 
-        // ---------- 烧伤火焰显示区域（魔力条下方 到 房间方框上缘 之间） ----------
-        // buff 栏区域：mpY + barH + 4 ~ roomTop（由 renderRoom 更新 roomTop）
+        // ==================== 6. Buff/Debuff 状态系统 ====================
+        // ---------- Buff/Debuff 显示状态初始化 ----------
+        scene._activeEffects = []          // 后端传来的活跃状态列表
+        scene._burnFlameGfx = null         // 火焰 Graphics 对象
+        scene._burnLayersText = null       // 层数文字
+        scene._burnTimerText = null        // 倒计时文字
+        scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
+        scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
+
+        // 中毒状态相关
+        scene._poisonIconGfx = null        // 中毒图标（💀）
+        scene._poisonLayersText = null     // 中毒层数文字
+        scene._poisonTimerText = null      // 中毒倒计时文字
+        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
+        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
+
+        // 流血状态相关
+        scene._bleedIconGfx = null         // 流血图标（🩸）
+        scene._bleedLayersText = null      // 流血层数文字
 
         /**
          * 绘制一朵动态火焰与层数标注。
@@ -418,97 +422,6 @@ onMounted(() => {
             strokeThickness: 2
           }).setDepth(121).setOrigin(0.5, 0)
           scene._burnTimerText = timerText
-        }
-
-        /**
-         * 根据后端 activeEffects 数据更新 buff 显示。
-         * 位置：HP/MP 条下方，房间方框上缘之间的空隙。
-         * @param {Array} activeEffects  后端传来的活跃状态列表
-         */
-        scene.updateBuffDisplay = function (activeEffects) {
-          scene._activeEffects = activeEffects || []
-
-          // 获取房间边界上缘（用于计算 buff 栏下边界）
-          const rb = scene._roomBounds
-          const roomTop = rb ? rb.top : 100   // 默认100（通常约75+）
-
-          // buff 栏位置参数
-          const barDepth = 100
-          const mpY = 39          // MP 条 Y（与 create 中一致）
-          const barH = 18          // MP 条高度
-          const barX = 570
-          const barW = 210
-
-          // buff 栏范围：mpY + barH + 4 到 roomTop - 4
-          const buffTop = mpY + barH - 7      // MP条下缘
-          const buffBottom = roomTop - 4
-          const buffLeft = barX - 105        // HP/MP label 左边缘
-          const buffRight = barX + barW       // HP/MP 条右边缘
-          const buffMidY = (buffTop + buffBottom) / 2
-
-          // ---- 先清理所有旧的状态显示 ----
-          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
-          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
-          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
-          scene._burnNextTickMs = 0
-          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
-          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
-          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
-          scene._poisonNextTickMs = 0
-          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
-          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
-
-          // ---- 收集所有活跃状态，按固定顺序排列 ----
-          // 排序规则：先减益后增益，同类型按名称排序
-          const typeOrder = { 'BURN': 0, 'POISON': 1, 'BLEED': 2 }
-          const orderedEffects = scene._activeEffects
-            .filter(eff => eff && eff.layers > 0)
-            .sort((a, b) => {
-              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
-              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
-              if (orderA !== orderB) return orderA - orderB
-              return (a.name || a.type).localeCompare(b.name || b.type)
-            })
-
-          if (orderedEffects.length === 0) return
-
-          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
-          const cellWidth = 40    // 每个状态格子的宽度
-          const startX = 580      // 第一个格子中心X（固定）
-
-          for (let i = 0; i < orderedEffects.length; i++) {
-            const eff = orderedEffects[i]
-            const cellCX = startX + i * cellWidth
-            const cellCY = buffMidY + 6
-
-            if (eff.type === 'BURN') {
-              const layers = eff.layers || 0
-              const nextTickIn = eff.nextTickIn || 3000
-
-              // 记录用于实时倒计时
-              scene._burnLastTickMs = Date.now()
-              scene._burnNextTickMs = nextTickIn
-
-              const flameSize = Math.min(3, 1 + layers * 0.5)
-              const timerSec = nextTickIn / 1000
-
-              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
-            } else if (eff.type === 'POISON') {
-              const layers = eff.layers || 0
-              const nextTickIn = eff.nextTickIn || 1000
-
-              // 记录用于实时倒计时
-              scene._poisonLastTickMs = Date.now()
-              scene._poisonNextTickMs = nextTickIn
-
-              const timerSec = nextTickIn / 1000
-
-              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
-            } else if (eff.type === 'BLEED') {
-              const layers = eff.layers || 0
-              scene.drawBleedIcon(cellCX, cellCY, layers)
-            }
-          }
         }
 
         /**
@@ -583,6 +496,158 @@ onMounted(() => {
           scene._bleedLayersText = layersText
         }
 
+        /**
+         * 绘制迟缓状态图标（🐢），不显示层数。
+         */
+        scene.drawSlowIcon = function (cx, cy, timerSec) {
+          if (scene._slowIconGfx) { try { scene._slowIconGfx.destroy() } catch (e) {}; scene._slowIconGfx = null }
+          if (scene._slowTimerText) { try { scene._slowTimerText.destroy() } catch (e) {}; scene._slowTimerText = null }
+
+          const iconText = scene.add.text(cx, cy, '🐢', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._slowIconGfx = iconText
+
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#88CCFF',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._slowTimerText = timerText
+        }
+
+        /**
+         * 绘制束缚状态图标（🕸️），不显示层数。
+         */
+        scene.drawBindIcon = function (cx, cy, timerSec) {
+          if (scene._bindIconGfx) { try { scene._bindIconGfx.destroy() } catch (e) {}; scene._bindIconGfx = null }
+          if (scene._bindTimerText) { try { scene._bindTimerText.destroy() } catch (e) {}; scene._bindTimerText = null }
+
+          const iconText = scene.add.text(cx, cy, '🕸️', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._bindIconGfx = iconText
+
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#CCCCCC',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._bindTimerText = timerText
+        }
+
+        /**
+         * 根据后端 activeEffects 数据更新 buff 显示。
+         * 位置：HP/MP 条下方，房间方框上缘之间的空隙。
+         * @param {Array} activeEffects  后端传来的活跃状态列表
+         */
+        scene.updateBuffDisplay = function (activeEffects) {
+          scene._activeEffects = activeEffects || []
+
+          // 获取房间边界上缘（用于计算 buff 栏下边界）
+          const rb = scene._roomBounds
+          const roomTop = rb ? rb.top : 100   // 默认100（通常约75+）
+
+          // buff 栏位置参数
+          const barDepth = 100
+          const mpY = 39          // MP 条 Y（与 create 中一致）
+          const barH = 18          // MP 条高度
+          const barX = 570
+          const barW = 210
+
+          // buff 栏范围：mpY + barH + 4 到 roomTop - 4
+          const buffTop = mpY + barH - 7      // MP条下缘
+          const buffBottom = roomTop - 4
+          const buffLeft = barX - 105        // HP/MP label 左边缘
+          const buffRight = barX + barW       // HP/MP 条右边缘
+          const buffMidY = (buffTop + buffBottom) / 2
+
+          // ---- 先清理所有旧的状态显示 ----
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+          scene._burnNextTickMs = 0
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+          scene._poisonNextTickMs = 0
+          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
+          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
+          if (scene._slowIconGfx) { try { scene._slowIconGfx.destroy() } catch (e) {}; scene._slowIconGfx = null }
+          if (scene._slowTimerText) { try { scene._slowTimerText.destroy() } catch (e) {}; scene._slowTimerText = null }
+          scene._slowNextTickMs = 0
+          if (scene._bindIconGfx) { try { scene._bindIconGfx.destroy() } catch (e) {}; scene._bindIconGfx = null }
+          if (scene._bindTimerText) { try { scene._bindTimerText.destroy() } catch (e) {}; scene._bindTimerText = null }
+          scene._bindNextTickMs = 0
+
+          // ---- 收集所有活跃状态，按固定顺序排列 ----
+          // 排序规则：先减益后增益，同类型按名称排序
+          const typeOrder = { 'BURN': 0, 'POISON': 1, 'BLEED': 2, 'SLOW': 3, 'BIND': 4 }
+          const orderedEffects = scene._activeEffects
+            .filter(eff => eff && eff.layers > 0)
+            .sort((a, b) => {
+              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
+              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
+              if (orderA !== orderB) return orderA - orderB
+              return (a.name || a.type).localeCompare(b.name || b.type)
+            })
+
+          if (orderedEffects.length === 0) return
+
+          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
+          const cellWidth = 40    // 每个状态格子的宽度
+          const startX = 580      // 第一个格子中心X（固定）
+
+          for (let i = 0; i < orderedEffects.length; i++) {
+            const eff = orderedEffects[i]
+            const cellCX = startX + i * cellWidth
+            const cellCY = buffMidY + 6
+
+            if (eff.type === 'BURN') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 3000
+
+              // 记录用于实时倒计时
+              scene._burnLastTickMs = Date.now()
+              scene._burnNextTickMs = nextTickIn
+
+              const flameSize = Math.min(3, 1 + layers * 0.5)
+              const timerSec = nextTickIn / 1000
+
+              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
+            } else if (eff.type === 'POISON') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 1000
+
+              // 记录用于实时倒计时
+              scene._poisonLastTickMs = Date.now()
+              scene._poisonNextTickMs = nextTickIn
+
+              const timerSec = nextTickIn / 1000
+
+              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
+            } else if (eff.type === 'BLEED') {
+              const layers = eff.layers || 0
+              scene.drawBleedIcon(cellCX, cellCY, layers)
+            } else if (eff.type === 'SLOW') {
+              const nextTickIn = eff.nextTickIn || 10000
+              scene._slowLastTickMs = Date.now()
+              scene._slowNextTickMs = nextTickIn
+              const timerSec = nextTickIn / 1000
+              scene.drawSlowIcon(cellCX, cellCY, timerSec)
+            } else if (eff.type === 'BIND') {
+              const nextTickIn = eff.nextTickIn || 3000
+              scene._bindLastTickMs = Date.now()
+              scene._bindNextTickMs = nextTickIn
+              const timerSec = nextTickIn / 1000
+              scene.drawBindIcon(cellCX, cellCY, timerSec)
+            }
+          }
+        }
+
+        // ==================== 7. 标题/描述/玩家/帮助文本 ====================
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
@@ -595,6 +660,7 @@ onMounted(() => {
 
         scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
 
+        // ==================== 8. 命令发送与游戏结束 ====================
         scene.sendCommand = function (cmd, fromDir = null) {
           return api.sendCommand(cmd, fromDir)
         }
@@ -631,8 +697,8 @@ onMounted(() => {
           scene.gameOverOverlay = overlay
         }
 
+        // ==================== 9. renderRoom 核心函数 ====================
         // render room view given backend room info
-        // renderRoom 核心函数
         scene.renderRoom = function (roomInfo) {
           // 更新 HP/MP 状态条
           const hp = roomInfo.playerHp !== undefined ? roomInfo.playerHp : scene.playerStats.hp
@@ -1034,6 +1100,7 @@ onMounted(() => {
           } catch (e) {}
         }
 
+        // ==================== 10. 祭坛系统 ====================
         // ---------- 祭坛光芒特效和博学选项浮层 ----------
         scene.spawnAltarGlow = function (cx, cy, size, color, duration) {
           const glowGfx = scene.add.graphics()
@@ -1130,6 +1197,7 @@ onMounted(() => {
           scene.wisdomOverlay = overlay
         }
 
+        // ==================== 11. 商店系统 ====================
         // ---------- 商店菜单浮层（购物/售卖选项） ----------
         scene.showShopMenu = function () {
           if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {} }
@@ -1429,8 +1497,9 @@ onMounted(() => {
           loadAndShowSellItems()
         }
 
+        // ==================== 12. 键盘控制与攻击配置 ====================
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE,FOUR,FIVE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -1439,6 +1508,8 @@ onMounted(() => {
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         scene._piercing = false          // 突刺移动中：禁止WASD移动输入
+
+        // ==================== 13. 攻击特效辅助函数 ====================
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -1553,16 +1624,13 @@ onMounted(() => {
             })
           }
         }
+
+        // ==================== 14. 月光波系统 ====================
         scene._ghostCounter = 0
         // 月光波蓄力状态
         scene._waveCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false, directionGfx: null }
         scene._waveProjectiles = []
         scene._wavePendingSend = false  // prevent duplicate sends
-
-        // 蓄力攻击状态（长按J键）
-        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
-        scene._chargeAttackPendingSend = false
-        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
 
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
@@ -1640,6 +1708,13 @@ onMounted(() => {
           })
         }
 
+        // ==================== 15. 蓄力攻击系统 ====================
+        // 蓄力攻击状态（长按J键）
+        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
+        scene._chargeAttackPendingSend = false
+        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
+
+        // ==================== 16. 补充状态初始化 ====================
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
@@ -1670,6 +1745,8 @@ onMounted(() => {
         scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
+
+        // ==================== 17. 事件监听 ====================
         window.addEventListener('backpack:toggle', function(e) {
           scene._backpackPaused = e.detail.visible
         })
@@ -1717,6 +1794,7 @@ onMounted(() => {
         }
         window.addEventListener('game:update', window.__zuul_game_update_handler)
 
+        // ==================== 18. update 循环 ====================
         // update 循环
         this.sys.events.on('update', function (time, delta) {
           const dt = delta / 1000
@@ -1996,24 +2074,45 @@ onMounted(() => {
               }
             } catch (e) {}
             if (!isWaveAiming) {
-              let speed = scene.baseMoveSpeed
-              // 蓄力攻击期间移速减半
-              if (scene._chargeAttack.active) speed = speed * 0.5
+              // 束缚状态下禁止移动
+              let hasBind = false
               try {
-                if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
+                const bindEff = (scene._activeEffects || []).find(e => e && e.type === 'BIND' && e.layers > 0)
+                if (bindEff) hasBind = true
               } catch (e) {}
-              scene.player.x += vx * speed * dt
-              scene.player.y += vy * speed * dt
+              if (!hasBind) {
+                let speed = scene.baseMoveSpeed
+                // 蓄力攻击期间移速减半
+                if (scene._chargeAttack.active) speed = speed * 0.5
+                // 迟缓状态下移速减半
+                let hasSlow = false
+                try {
+                  const slowEff = (scene._activeEffects || []).find(e => e && e.type === 'SLOW' && e.layers > 0)
+                  if (slowEff) hasSlow = true
+                } catch (e) {}
+                if (hasSlow) speed = speed * 0.5
+                // 迟缓状态下禁止疾跑（shift）
+                if (!hasSlow) {
+                  try {
+                    if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
+                  } catch (e) {}
+                }
+                scene.player.x += vx * speed * dt
+                scene.player.y += vy * speed * dt
+              }
             }
           }
           }
 
           // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------
-          const MONSTER_DETECT_RANGE = 280   // 发现玩家的距离
-          const MONSTER_ATTACK_RANGE = 45    // 普通怪物攻击距离
-          const MONSTER_ATTACK_COOLDOWN = 1500 // 普通怪物攻击间隔 (ms)
-          // Boss 特殊参数
-          const BOSS_ATTACK_RANGE = 90       // Boss攻击距离（普通怪物的2倍）
+          const MONSTER_DETECT_RANGE = 350   // 普通怪物发现玩家的距离
+          const ELITE_DETECT_RANGE = 500     // 精英怪物发现玩家的距离
+          const MONSTER_ATTACK_RANGE = 50    // 普通怪物攻击距离
+          const MONSTER_ATTACK_COOLDOWN = 1200 // 普通怪物攻击间隔 (ms)
+          // 精英/Boss 特殊参数
+          const ELITE_ATTACK_RANGE = 60      // 精英怪物攻击距离
+          const ELITE_ATTACK_COOLDOWN = 1000 // 精英怪物攻击间隔 (ms)
+          const BOSS_ATTACK_RANGE = 75       // Boss攻击距离
           const BOSS_ATTACK_COOLDOWN = 750   // Boss攻击间隔（普通怪物的一半）
           const pr = scene.playerRadius || 10
 
@@ -2023,8 +2122,9 @@ onMounted(() => {
             if (!mon || !mon.circ) continue
 
             const isBoss = (mon.type === 2)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
-            const attackCooldown = isBoss ? BOSS_ATTACK_COOLDOWN : MONSTER_ATTACK_COOLDOWN
+            const isElite = (mon.type === 1)
+            const attackRange = isBoss ? BOSS_ATTACK_RANGE : (isElite ? ELITE_ATTACK_RANGE : MONSTER_ATTACK_RANGE)
+            const attackCooldown = isBoss ? BOSS_ATTACK_COOLDOWN : (isElite ? ELITE_ATTACK_COOLDOWN : MONSTER_ATTACK_COOLDOWN)
 
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
@@ -2053,7 +2153,7 @@ onMounted(() => {
                   }
                 })()
               }
-            } else if (dist <= MONSTER_DETECT_RANGE || mon.type === 2) {
+            } else if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || mon.type === 2) {
               // 在索敌范围内 → 向玩家移动
               // Boss（type===2）不受距离限制，全图索敌
               const speed = mon.speed || 100
@@ -2081,13 +2181,14 @@ onMounted(() => {
           for (const mon of scene.monstersData) {
             if (!mon || !mon.circ) continue
             const isBoss = (mon.type === 2)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
+            const isElite = (mon.type === 1)
+            const attackRange = isBoss ? BOSS_ATTACK_RANGE : (isElite ? ELITE_ATTACK_RANGE : MONSTER_ATTACK_RANGE)
             // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
             const dist = Math.sqrt(dx * dx + dy * dy)
-            if (dist <= MONSTER_DETECT_RANGE || isBoss) {
-              // Boss 全图显示，普通怪物在索敌范围内才显示
+            if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || isBoss) {
+              // Boss/精英全图显示，普通怪物在索敌范围内才显示
               rangeGfx.lineStyle(1, 0xff4444, 0.25)
               rangeGfx.strokeCircle(mon.x, mon.y, attackRange)
               // 填充色（极淡）
@@ -2114,7 +2215,13 @@ onMounted(() => {
               // 短按（<200ms）→ 触发横扫或突刺
               scene._attackOnCooldown = true
               const cfg = scene.attackConfig || {}
-              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              // 束缚状态下禁止突刺
+              let hasBindForPierce = false
+              try {
+                const bindEff = (scene._activeEffects || []).find(e => e && e.type === 'BIND' && e.layers > 0)
+                if (bindEff) hasBindForPierce = true
+              } catch (e) {}
+              const isShiftMove = !hasBindForPierce && (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
               const monsterPositions = []
               for (const mon of scene.monstersData) {
                 if (mon && mon.name) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
@@ -2931,6 +3038,48 @@ onMounted(() => {
             }
           } catch (e) {}
 
+          // ---- 4 键测试：施加一次迟缓 ----
+          try {
+            if (scene.keys.FOUR && Phaser.Input.Keyboard.JustDown(scene.keys.FOUR) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test slow' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
+          // ---- 5 键测试：施加一次束缚 ----
+          try {
+            if (scene.keys.FIVE && Phaser.Input.Keyboard.JustDown(scene.keys.FIVE) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test bind' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
           // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
@@ -3049,6 +3198,7 @@ onMounted(() => {
 
         })
 
+        // ==================== 19. 初始游戏状态获取 ====================
         // 获取初始游戏状态
         try {
           const res = await fetch('/api/game')

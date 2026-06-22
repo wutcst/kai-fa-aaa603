@@ -185,7 +185,7 @@ add_para('工作重点：', bold=True)
 key_points = [
     '核心游戏机制：玩家移动、战斗系统（三种攻击模式 + 空间判定）、怪物 AI（检测/攻击/击退）、物品拾取/丢弃/使用',
     '随机内容生成：程序化地图生成、随机商店商品、随机祭坛恩赐、随机奇遇事件（8种事件类型）',
-    '状态与装备系统：烧伤/中毒/流血/天使祝福四种状态效果、五槽位装备系统（属性加成交互计算）',
+    '状态与装备系统：烧伤/中毒/流血/迟缓/束缚/天使祝福六种状态效果、五槽位装备系统（属性加成交互计算）',
     '数据持久化：基于 Spring Data JPA + H2 的完整存档系统，保存全部游戏状态到数据库',
     '前端游戏引擎集成：Vue 3 组件化界面与 Phaser 3 游戏引擎的嵌套集成、CustomEvent 通信机制',
     'UI/UX 优化：小地图导航、控制面板（ESC打开/关闭）、背包面板、攻击粒子特效与屏幕振动',
@@ -198,17 +198,17 @@ for k in key_points:
 # 2.2 项目架构与功能设计
 add_heading('2.2 项目架构与功能设计', level=2)
 add_para(
-    '项目采用前后端分离的 B/S 架构。后端基于 Java 17 + Spring Boot 3.2.0 提供 10 个 RESTful API 端点，'
+    '项目采用前后端分离的 B/S 架构。后端基于 Java 17 + Spring Boot 3.2.0 提供 13 个 RESTful API 端点（含风隐/寒冰风暴），'
     '前端基于 Vue 3.3.4 + Phaser 3.60.0 构建图形化游戏界面。前后端通过 HTTP JSON 通信。',
     indent=True
 )
 
 add_para('后端架构（Spring Boot + Maven）：', bold=True)
 be_items = [
-    ('Controller 层', 'GameController.java — 10 个 REST API 端点'),
-    ('Service 层', 'GameService.java（命令分发/攻击判定/状态注入）+ SaveService.java（存档序列化）'),
+    ('Controller 层', 'GameController.java — 13 个 REST API 端点（含风隐/寒冰风暴）'),
+    ('Service 层', 'GameService.java（命令分发/攻击判定/风隐/寒冰风暴/状态驱动）+ SaveService.java（存档序列化）'),
     ('Model 层', 'Room/Player/Monster/Bag/Item/Status/WisdomBoon/Magic/Money 等 18 个数据模型'),
-    ('Command 层', 'GoCommand/AttackCommand/BagCommand/ShopCommand/InteractCommand/WaveCommand 等 11 个命令'),
+    ('Command 层', 'GoCommand/AttackCommand/BagCommand/ShopCommand/InteractCommand/WaveCommand/MonsterAttackCommand 等 11 个命令'),
     ('Repository 层', '5 个 Spring Data JPA Repository 接口'),
 ]
 table = doc.add_table(rows=len(be_items) + 1, cols=2)
@@ -223,9 +223,9 @@ doc.add_paragraph()
 add_para('前端架构（Vue 3 + Vite + Phaser 3）：', bold=True)
 fe_items = [
     ('组件层', 'App.vue（主应用含存档弹窗）、MainMenu.vue（主菜单）、GameCanvas.vue（Phaser游戏画布）、BackpackPanel.vue（背包面板）、ControlPanel.vue（ESC控制面板）、MinimapPanel.vue（小地图）'),
-    ('Composables', 'useApi.js（API调用）、useBackpack.js（背包逻辑）、useKeyboard.js（键盘控制）、useControlPanel.js（控制面板单例）、useSlotDialog.js（存档弹窗）'),
-    ('游戏引擎', 'EntityDrawer.js（游戏实体绘制器）、game/constants.js（全局常量/攻击配置/渲染参数）'),
-    ('API 层', 'api/gameApi.js（6个后端 API 封装方法）'),
+    ('Composables', 'useApi.js（API调用+风隐/寒冰风暴封装）、useBackpack.js（背包逻辑）、useKeyboard.js（键盘控制+B/F/ESC键管理）、useControlPanel.js（控制面板单例）、useSlotDialog.js（存档弹窗）'),
+    ('游戏引擎', 'EntityDrawer.js（游戏实体绘制器：人物/怪物/掉落物/祭坛/商人）、game/constants.js（全局常量/攻击/技能/怪物/渲染配置）'),
+    ('API 层', 'api/gameApi.js（存档CRUD封装）'),
 ]
 table = doc.add_table(rows=len(fe_items) + 1, cols=2)
 table.style = 'Table Grid'
@@ -239,15 +239,17 @@ doc.add_paragraph()
 add_para('核心功能模块：', bold=True)
 modules = [
     '随机地图生成（GenerateRoom.java）：10×15 网格，7种房间类型，种子随机数保证存档一致性',
-    '实时战斗系统：Sweep（扇形120px/135°）、Pierce（直线21px/120px）、Charged（360°/150px）三种攻击',
-    '怪物系统：TYPE_NORMAL(0)、TYPE_ELITE(1)、TYPE_BOSS(2)，特殊 FLAME_SLIME',
-    '状态效果系统：BURN(3s魔法伤害)、POISON(1s真实伤害)、BLEED(攻击触发)、ANGEL_BUFF(30s全属性×1.5)',
+    '实时战斗系统：Sweep（扇形120px/135°）、Pierce（直线21px/120px，无敌帧180ms）、Charged（360°/150px）三种攻击',
+    '怪物系统：TYPE_NORMAL(0)、TYPE_ELITE(1)、TYPE_BOSS(2)，特殊 FLAME_SLIME（死后自爆烧伤）/ SLIME（触碰迟缓）/ 骷髅（中毒）/ 狼人（流血）/ 食人魔（吸血）',
+    '状态效果系统：BURN(3s魔法伤害)、POISON(1s真实伤害)、BLEED(攻击触发)、SLOW(10s移速减半)、BIND(3s无法移动)、ANGEL_BUFF(30s全属性×1.5)',
     '背包与装备系统：消耗品合并显示、5槽位装备（weapon/armor/cloak/ring/amulet）',
     '商店系统：6件随机商品、半价回收',
     '篝火祭坛：HEAL(50%回复)/TRAIN(25%属性提升)/WISDOM(3选1恩赐)',
     '奇遇事件系统：8种事件（WOODEN_CHEST/GOLDEN_CHEST/ELITE_ENEMY/FOUNTAIN/CHEST/MAIDEN/ANGEL/BLACKSMITH）',
     '铁匠强化系统：装备属性提升至150%',
-    '月光波技能：消耗30MP，单体魔法攻击，弹射2次',
+    '月光波技能：消耗20MP，单体魔法攻击，弹射2次，击退效果',
+    '风隐形态：移速+100%、免疫负面状态，每秒消耗2MP',
+    '寒冰风暴：消耗25MP，全房间AOE 3次100%法伤+10秒迟缓',
     '存档系统：H2数据库持久化，完整游戏状态保存/读取/删除',
 ]
 for m in modules:
@@ -267,15 +269,15 @@ member_data = [
     ('李冬晨（组长）',
      '@Sader-Lee',
      'ldc',
-     '核心后端开发：项目架构设计、玩家系统、怪物系统、商店系统、背包系统、房间战斗封锁、数据库持久化、攻击特效'),
+     '核心后端开发：项目架构设计、前后端分离、怪物系统（生成/攻击/掉落）、商店系统（购买/出售）、背包系统、房间战斗封锁、数据库持久化（H2+JPA）、前后端联调'),
     ('蒋志成',
      '@BytesJiang',
      'jzc',
-     '前端开发：Phaser集成、WASD移动、小地图、攻击特效、状态效果系统、随机地图生成、篝火祭坛、奇遇房间、月光波技能、前端重构（常量提取/API封装/组件拆分）'),
+     '前端开发：玩家属性系统设计与开发、小地图模块开发、UI/UX 优化与视觉提升、玩家攻击系统设计与实现、玩家技能系统设计与实现、状态效果系统设计与实现、随机地图生成系统开发、多类型房间功能开发、前端架构重构与优化、缺陷修复与性能调优'),
     ('熊俊森',
      '@XJS-123',
      'xjs',
-     '特殊系统开发：主菜单页面、饰品系统（5槽位）、奇遇事件系统、人物模型绘制、Buff系统、铁匠系统、游戏实体构造、地图背景、项目文档'),
+     '特殊系统开发：主菜单页面搭建设计、饰品系统完整实现、人物模型绘制、游戏实体构造（掉落物实体、EntityDrawer）、地图背景添加、项目文档生成（API.md/README.md/REPORT.docx）'),
 ]
 for idx, (name, github, branch, duty) in enumerate(member_data):
     add_data_row(member_table, idx + 1, [name, github, branch, duty])
@@ -448,24 +450,21 @@ add_para('GitHub：@Sader-Lee | 开发分支：ldc', bold=True)
 
 add_para('任务分工：', bold=True)
 ldc_tasks = [
-    '项目架构设计与技术选型：确定 Spring Boot + Vue 3 + Phaser 3 的技术栈',
-    '核心游戏模型开发：实现 Player（带装备系统/damage记录/伤害计算）、Monster（3种类型+FLAME_SLIME）、Room（房间初始化/祭坛/商店/事件生成）等 18 个数据模型',
-    '玩家系统：实现玩家属性管理、装备系统（5槽位的 equip/unequip）、伤害计算（物理/魔法/闪避判定）、DamageRecord 记录系统',
-    '命令系统开发：take/drop/items 命令的完整实现',
+    '项目架构设计与技术选型：确定 Spring Boot + Vue 3 + Phaser 3 的技术栈，实现前后端分离架构',
+    '核心游戏模型开发：实现 Player、Monster、Room 等 18 个数据模型',
     '怪物系统：怪物生成（spawnMonsters 三种类型）、怪物攻击、怪物掉落（processMonsterDrop）',
     '商店系统：ShopCommand 完整实现（buy/sell），商品管理、货币扣除、折价回收（买价一半）',
     '背包系统：Bag 类的 add/remove/use/discard 操作，消耗品合并与装备独立展示',
     '房间战斗封锁：怪物房间 exit 封锁/解锁机制',
     '数据库持久化：基于 Spring Data JPA 的完整存档系统，5 个 Repository 接口',
-    '玩家状态注入：injectPlayerStatus 方法注入 24+ 字段到前端响应',
-    '攻击特效与前后端联调',
+    '前后端联调与攻击特效',
 ]
 for t in ldc_tasks:
     p = doc.add_paragraph(style='List Bullet')
     run = p.add_run(t)
     run.font.size = Pt(11)
 
-add_para('实施成果：完成了后端核心系统的所有功能，包括 10 个 API 端点、11 个命令处理器、'
+add_para('实施成果：完成了后端核心系统的所有功能，包括 13 个 API 端点、11 个命令处理器、'
          '18 个数据模型、5 个 Repository 接口。实现了游戏的核心逻辑闭环。', indent=True)
 
 # 4.2 成员二：蒋志成
@@ -475,26 +474,23 @@ add_para('GitHub：@BytesJiang | 开发分支：jzc', bold=True)
 
 add_para('任务分工：', bold=True)
 jzc_tasks = [
-    '前端框架搭建：基于 Vue 3 + Vite 搭建前端项目，集成 Phaser 3 游戏引擎到 Vue 组件',
-    '移动控制：WASD 键盘控制玩家移动，Shift+方向冲刺',
-    '小地图渲染：实现基于 Canvas 的小地图组件 MinimapPanel.vue，支持按房间类型颜色区分',
-    '攻击特效实现：火焰粒子效果、屏幕振动、蓄力攻击特效、残影渐隐',
-    '三种攻击模式：Sweep（扇形/135°）、Pierce（直线/突刺/击退）、Charged（蓄力/360°）的前端实现',
-    '状态效果系统：烧伤/中毒/流血的前端图标显示、倒计时、闪烁效果',
-    '随机地图生成算法：实现 10×15 网络的地图生成逻辑',
-    '房间颜色分类：7种房间类型在小地图中不同颜色标识',
-    '篝火祭坛交互展示：三种祭坛的前端交互界面',
-    '奇遇房间界面展示',
-    '月光波技能：Phaser 粒子投射物特效，弹射 2 次，击退效果',
-    '前端重构：常量提取到 constants.js、API 封装到 gameApi.js、组件拆分（BackpackPanel.vue / ControlPanel.vue / MinimapPanel.vue）',
-    'Bug 修复与性能优化',
+    '玩家属性系统设计与开发：实现玩家属性管理、装备加成计算、伤害计算等核心机制',
+    '小地图模块开发：实现 MinimapPanel.vue 组件，支持按房间类型颜色区分',
+    'UI/UX 优化与视觉提升：攻击特效（火焰粒子、屏幕振动、蓄力特效、残影渐隐）、Buff/Debuff 图标显示',
+    '玩家攻击系统设计与实现：Sweep（扇形/135°）、Pierce（直线/突刺/击退）、Charged（蓄力/360°）三种攻击模式',
+    '玩家技能系统设计与实现：月光波技能（弹射 2 次、击退）、风隐形态、寒冰风暴',
+    '状态效果系统设计与实现：烧伤/中毒/流血/迟缓/束缚的前端图标显示、倒计时、闪烁效果',
+    '随机地图生成系统开发：实现 10×15 网络的地图生成逻辑，7种房间类型分布',
+    '多类型房间功能开发：篝火祭坛交互展示、奇遇房间界面、商店界面',
+    '前端架构重构与优化：常量提取到 constants.js、API 封装到 gameApi.js、组件拆分（BackpackPanel.vue / ControlPanel.vue / MinimapPanel.vue）',
+    '缺陷修复与性能调优',
 ]
 for t in jzc_tasks:
     p = doc.add_paragraph(style='List Bullet')
     run = p.add_run(t)
     run.font.size = Pt(11)
 
-add_para('实施成果：构建了完整的 Vue 3 + Phaser 3 前端游戏界面，包括 3 个核心组件、4 个 composables、'
+add_para('实施成果：构建了完整的 Vue 3 + Phaser 3 前端游戏界面，包括 5 个核心组件、5 个 composables、'
          '全局常量系统、攻击特效系统、小地图导航系统。完成了前后端分离的通信架构。', indent=True)
 
 # 4.3 成员三：熊俊森
@@ -506,13 +502,9 @@ add_para('任务分工：', bold=True)
 xjs_tasks = [
     '主菜单页面搭建设计：MainMenu.vue 界面实现',
     '饰品系统完整实现：5 槽位装备系统（weapon/armor/cloak/ring/amulet），装备/卸下逻辑，属性加成交互计算',
-    '奇遇事件系统：8 种事件类型（WOODEN_CHEST/GOLDEN_CHEST/ELITE_ENEMY/FOUNTAIN/CHEST/MAIDEN/ANGEL/BLACKSMITH）',
     '人物模型绘制：游戏角色视觉呈现',
-    'Buff 系统实现：天使祝福（ANGEL_BUFF）30秒全属性×1.5倍，与中毒等 debuff 的冲突处理',
-    '铁匠系统：装备强化至150%属性，保底机制避免强化失败',
-    '游戏实体构造：EntityDrawer.js 实现掉落物可视化、DroppedItem 坐标管理',
+    '游戏实体构造：EntityDrawer.js 实现掉落物可视化、DroppedItem 坐标管理、祭坛/商人绘制',
     '地图背景添加：4种背景图（bg0-bg3）对应不同房间类型',
-    '代码优化：清理冗余类，移除无用代码',
     '项目文档生成：API.md、README.md、REPORT.docx 的编写与更新',
 ]
 for t in xjs_tasks:
@@ -520,8 +512,8 @@ for t in xjs_tasks:
     run = p.add_run(t)
     run.font.size = Pt(11)
 
-add_para('实施成果：实现了饰品系统、奇遇事件系统、铁匠系统、Buff 系统等特殊功能模块，'
-         '完成了人物模型绘制和地图背景添加，生成了完整的项目文档。', indent=True)
+add_para('实施成果：完成了主菜单页面、饰品系统、人物模型绘制、地图背景添加等前端模块，'
+         '生成了完整的项目文档。', indent=True)
 
 # 4.4 成员四
 add_heading('4.4 成员四任务分工及实施过程描述', level=2)

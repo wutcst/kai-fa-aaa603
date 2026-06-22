@@ -1,8 +1,8 @@
 # ZUUL 游戏 API 文档
 
 > **项目**: ZUUL — 失落的古迹  
-> **版本**: v1.0.0  
-> **更新日期**: 2026-06-20
+> **版本**: v1.1.0
+> **更新日期**: 2026-06-22
 
 ---
 
@@ -23,7 +23,7 @@
 
 ### 统一房间响应数据字段
 
-以下字段会在 `data` 中返回（除特别说明外，`GET /api/game`、`POST /api/command`、`POST /api/attack`、`POST /api/reset`、`POST /api/load` 均共用此格式）：
+以下字段会在 `data` 中返回（除特别说明外，`GET /api/game`、`POST /api/command`、`POST /api/attack`、`POST /api/reset`、`POST /api/load`、`POST /api/windcloak/activate`、`POST /api/windcloak/deactivate`、`POST /api/icestorm` 均共用此格式）：
 
 #### 房间信息
 
@@ -65,6 +65,7 @@
 | `effectiveMagicResist` | number | 修正后魔法抗性 |
 | `effectiveSpeed` | number | 修正后速度 |
 | `effectiveDodge` | number | 修正后闪避率 |
+| `windCloakActive` | boolean | 风隐形态是否激活 |
 
 #### 状态结算字段（攻击/命令响应中可能出现）
 
@@ -78,6 +79,9 @@
 | `poisonLayers` | number | （可选）当前中毒层数 |
 | `bleedLayers` | number | （可选）当前流血层数 |
 | `angelBuffRemainingMs` | number | （可选）天使增益剩余毫秒数 |
+| `hasSlow` | boolean | （可选）玩家当前是否处于迟缓状态 |
+| `hasBind` | boolean | （可选）玩家当前是否处于束缚状态 |
+| `windCloakAutoDeactivate` | boolean | （可选）风隐形态是否因MP不足自动解除 |
 | `ringRegen` | number | （可选）生命戒指被动回血量 |
 
 ---
@@ -86,7 +90,7 @@
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `name` | string | 怪物全名（含唯一后缀，如 `"goblin#1234"`） |
+| `name` | string | 怪物全名（含唯一后缀，如 `"哥布林#1234"`、`"史莱姆#5678"`） |
 | `description` | string | 怪物描述 |
 | `hp` | number | 当前生命值 |
 | `maxHp` | number | 最大生命值 |
@@ -95,7 +99,10 @@
 | `magicResist` | number | 魔法抗性 |
 | `speed` | number | 移动速度 |
 | `type` | number | 怪物类型：`0`=普通, `1`=精英, `2`=Boss |
-| `specialType` | string/null | 特殊类型（如 `"FLAME_SLIME"`） |
+| `specialType` | string/null | 特殊类型（如 `"FLAME_SLIME"` 火焰史莱姆、`"SLIME"` 普通史莱姆） |
+| `slowedUntil` | number | 怪物迟缓状态截止时间戳（毫秒，0=不处于迟缓） |
+| `attackCooldown` | number | 怪物个体攻击冷却时间（毫秒） |
+| `attackRange` | number | 怪物个体攻击范围（像素） |
 
 #### 祭坛字段 (altars[].Altar)
 
@@ -179,12 +186,22 @@
 | 生命戒指 | 饰品(戒指) | 150g | 最大生命值+50，每2秒恢复1点生命 | rare |
 | 元素项链 | 饰品(项链) | 150g | 魔法攻击力+15，魔法抗性+20% | epic |
 
+#### 怪物种类说明
+| 种类 | 特殊机制 |
+|------|----------|
+| 哥布林 | 普通近战怪物，HP 90-110，攻击 15-20 |
+| 史莱姆(SLIME) | 不主动攻击，触碰造成物理伤害+迟缓，HP 130-140 |
+| 骷髅 | 攻击附加2层中毒，HP 60-80，移速125 |
+| 狼人 | 攻击间隔0.6s，范围35px，附加2层流血，HP 80-100 |
+| 食人魔 | 攻击间隔2s，50%吸血，HP 110-130 |
+| 火焰史莱姆(FLAME_SLIME) | 死后自爆大范围烧伤，HP 65-85 |
+
 #### 活跃状态效果字段 (activeEffects[].StatusEffect)
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `type` | string | 效果类型：`BURN` / `POISON` / `BLEED` / `ANGEL_BUFF` |
-| `name` | string | 显示名称：`"烧伤"` / `"中毒"` / `"流血"` / `"天使祝福"` |
+| `type` | string | 效果类型：`BURN` / `POISON` / `BLEED` / `ANGEL_BUFF` / `SLOW` / `BIND` |
+| `name` | string | 显示名称：`"烧伤"` / `"中毒"` / `"流血"` / `"天使祝福"` / `"迟缓"` / `"束缚"` |
 | `isDebuff` | boolean | 是否为减益效果 |
 | `layers` | number | 当前层数 |
 | `nextTickIn` | number | 下次触发间隔（毫秒） |
@@ -196,6 +213,8 @@
 | `POISON` (中毒) | 每秒触发 | 真实伤害 = min(层数, 当前HP-1)，层数每轮减1 | 可叠加层数 |
 | `BLEED` (流血) | 攻击怪物时触发 | 2点真实伤害，层数每轮减1 | 可叠加层数 |
 | `ANGEL_BUFF` (天使祝福) | 持续30秒 | 全属性×1.5倍增益 | 定时结束 |
+| `SLOW` (迟缓) | 无伤害 | 移速减半，不可叠加 | 持续10秒自动消失 |
+| `BIND` (束缚) | 无伤害 | 无法移动和突刺，不可叠加 | 持续3秒自动消失 |
 
 ---
 
@@ -313,6 +332,7 @@
 |------|------|------|
 | go | `go <direction>` | 向指定方向移动（east / west / south / north） |
 | help | `help` | 显示所有可用命令 |
+| monsterattack | `monsterattack <monsterName>` | 怪物主动攻击玩家（前端AI调用） |
 | quit | `quit` | 退出游戏（标记游戏结束） |
 | take / pickup | `take <itemName>` | 从当前房间拾取物品放入背包 |
 | drop | `drop <itemName>` | 从背包丢弃物品到当前房间 |
@@ -321,8 +341,8 @@
 | interact | `interact <target>` | 与场景交互（见下方交互命令表） |
 | shop | `shop buy <itemName>` / `shop sell <itemName>` | 商店购买/出售物品 |
 | bag | `bag use <itemName>` / `bag discard <itemName>` / `bag unequip <itemName>` | 背包操作 |
-| wave | `wave <monsterName>` | 月光波技能（消耗30MP，单体魔法攻击） |
-| test | `test poison` / `test burn` / `test bleed` | 调试命令：施加一层状态效果 |
+| wave | `wave <monsterName>` | 月光波技能（消耗20MP，单体魔法攻击，弹射2次） |
+| test | `test poison` / `test burn` / `test bleed` / `test slow` / `test bind` | 调试命令：施加一层/一次状态效果 |
 
 ##### 交互命令 (interact) 详情
 
@@ -334,6 +354,7 @@
 | `interact wisdom <boonName>` | CAMPFIRE | 选择指定的恩赐（如 `interact wisdom ENDURANCE`） |
 | `interact event` | ENCOUNTER(-BLACKSMITH) | 触发奇遇事件/与铁匠对话 |
 | `interact <itemName>` | ENCOUNTER(BLACKSMITH) | 选择铁匠要强化的装备（150%属性提升） |
+| `interact wisdom <boonName>` | CAMPFIRE | 选择指定恩赐（如 `interact wisdom ENDURANCE`） |
 
 ##### 背包命令 (bag) 详情
 
@@ -609,7 +630,98 @@
 
 ---
 
-### 9. `GET /api/map` — 获取全地图数据
+### 9. `POST /api/windcloak/activate` — 激活风隐形态
+
+激活风隐形态：移速翻倍、免疫负面状态，持续消耗MP（每秒2点）。
+
+无参数。
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "message": "风隐形态开启！移速提高100%，免疫负面状态。",
+  "data": { "... 房间数据同上，额外含 windCloakActive: true ..." }
+}
+```
+
+**响应错误**（MP不足或已激活）:
+```json
+{
+  "status": "error",
+  "message": "风隐形态已激活",
+  "data": null
+}
+```
+
+---
+
+### 10. `POST /api/windcloak/deactivate` — 解除风隐形态
+
+解除风隐形态，恢复正常状态。
+
+无参数。
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "message": "风隐形态已解除。",
+  "data": { "... 房间数据同上，额外含 windCloakActive: false ..." }
+}
+```
+
+---
+
+### 11. `POST /api/icestorm` — 释放寒冰风暴
+
+消耗25MP，对房间内所有存活怪物造成3次100%魔法攻击力的法术伤害，并施加迟缓状态（10秒内移速为0）。
+
+**请求体**:
+```json
+{
+  "monsters": [
+    { "name": "哥布林#1234", "x": 300.0, "y": 160.0 }
+  ]
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| monsters | array | 是 | 当前房间存活怪物的名称与坐标快照列表 |
+
+**monsters[].MonsterPosition 字段**:
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| name | string | 怪物名称（与后端一致） |
+| x | number | 怪物 X 坐标 |
+| y | number | 怪物 Y 坐标 |
+
+**响应示例**:
+```json
+{
+  "status": "success",
+  "message": "寒冰风暴释放！\n哥布林#1234 受到3次冰霜冲击，共 45 点法术伤害，并被迟缓！\n你击败了 哥布林#1234！\n获得了 $20 货币！(余额: $70)",
+  "data": {
+    "iceStormDamage": 15,
+    "iceStormTotalHits": 3,
+    "hitCount": 1,
+    "...": "其他房间字段同上"
+  }
+}
+```
+
+#### 寒冰风暴响应附加字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `iceStormDamage` | number | 每次冰霜冲击的魔法伤害值 |
+| `iceStormTotalHits` | number | 总命中次数（怪物数×3） |
+| `hitCount` | number | 命中的怪物数量 |
+
+---
+
+### 12. `GET /api/map` — 获取全地图数据
 
 获取整个游戏地图的拓扑结构，供前端小地图渲染使用。
 
@@ -646,7 +758,7 @@
 
 ---
 
-### 10. `GET /api/backpack` — 获取背包数据
+### 13. `GET /api/backpack` — 获取背包数据
 
 获取玩家背包中的完整物品列表。
 
@@ -718,8 +830,17 @@ curl -X POST http://localhost:8080/api/attack -H "Content-Type: application/json
 # 攻击（蓄力360°）
 curl -X POST http://localhost:8080/api/attack -H "Content-Type: application/json" -d "{\"attackType\":\"charged\",\"playerX\":400,\"playerY\":320,\"facingAngle\":0,\"monsters\":[{\"name\":\"goblin#1234\",\"x\":350,\"y\":280}]}"
 
-# 月光波技能
-curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"wave goblin#1234\"}"
+# 月光波技能（消耗20MP）
+curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"wave 哥布林#1234\"}"
+
+# 开启风隐形态
+curl -X POST http://localhost:8080/api/windcloak/activate
+
+# 解除风隐形态
+curl -X POST http://localhost:8080/api/windcloak/deactivate
+
+# 释放寒冰风暴（全房间AOE）
+curl -X POST http://localhost:8080/api/icestorm -H "Content-Type: application/json" -d "{\"monsters\":[{\"name\":\"哥布林#1234\",\"x\":300,\"y\":160}]}"
 
 # 与治愈祭坛交互
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"interact heal\"}"
@@ -736,8 +857,10 @@ curl -X POST http://localhost:8080/api/command -H "Content-Type: application/jso
 # 商店出售
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"shop sell 生命浆果\"}"
 
-# 测试状态效果
+# 测试状态效果（烧伤/中毒/流血/迟缓/束缚）
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"test poison\"}"
+curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"test slow\"}"
+curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"test bind\"}"
 
 # 重置游戏
 curl -X POST http://localhost:8080/api/reset

@@ -38,7 +38,7 @@ export function createKeyboardManager(options) {
     if (getBackpackVisible() || cp.visible) {
       const gameKeys = [
         'w', 'W', 'a', 'A', 's', 'S', 'd', 'D',
-        'j', 'J', ' ', 'h', 'H', 'f', 'F',
+        'j', 'J', ' ', 'h', 'H', 'f', 'F', 'g', 'G',
         'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
       ]
       if (gameKeys.includes(key)) {

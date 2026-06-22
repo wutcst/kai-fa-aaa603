@@ -10,6 +10,7 @@ import cn.edu.whut.sept.zuul.command.*;
 import cn.edu.whut.sept.zuul.model.AttackRequest;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.GameSaveEntity;
+import cn.edu.whut.sept.zuul.model.Magic;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
@@ -479,6 +480,84 @@ public class GameService {
         Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
         injectPlayerStatus(data);
         return GameResponse.success("风隐形态已解除。", data);
+    }
+
+    // ======================== 寒冰风暴技能接口 ========================
+
+    /** 寒冰风暴迟缓持续时间（毫秒）：10秒 */
+    private static final long ICE_STORM_SLOW_DURATION = 10000L;
+
+    /**
+     * 释放寒冰风暴：消耗25MP，对房间内全体敌人造成3次100%法伤，并施加迟缓。
+     * @param monsterPositions 怪物名称和坐标列表（供掉落坐标同步）
+     * @return 含更新后房间数据、命中怪物数量和伤害信息的响应
+     */
+    public GameResponse castIceStorm(List<Map<String, Object>> monsterPositions) {
+        if (game.isGameOver()) {
+            return GameResponse.error("Game is over! Please reset the game.");
+        }
+
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+
+        Room current = game.getCurrentRoom();
+        if (current == null) return GameResponse.error("当前不在任何房间");
+
+        // 检查并消耗MP
+        if (!Magic.canCast(player, Magic.Skill.ICE_STORM)) {
+            return GameResponse.error("魔力不足" + Magic.Skill.ICE_STORM.getMpCost() + "，无法释放寒冰风暴！");
+        }
+        player.consumeMp(Magic.Skill.ICE_STORM.getMpCost());
+
+        int magicDmg = Magic.calcMagicDamage(player, Magic.Skill.ICE_STORM);
+        StringBuilder sb = new StringBuilder();
+        sb.append("寒冰风暴释放！\n");
+
+        // 同步怪物坐标
+        if (monsterPositions != null) {
+            for (Map<String, Object> mp : monsterPositions) {
+                String name = (String) mp.get("name");
+                if (name == null) continue;
+                Monster m = current.getMonster(name);
+                if (m == null) continue;
+                try { m.setX(((Number) mp.get("x")).intValue()); } catch (Exception e) {}
+                try { m.setY(((Number) mp.get("y")).intValue()); } catch (Exception e) {}
+            }
+        }
+
+        int hitCount = 0;
+        // 对房间内所有存活怪物造成3次法伤（使用快照避免在迭代中修改列表）
+        List<Monster> snapshot = new java.util.ArrayList<>(current.getMonsters());
+        for (Monster m : snapshot) {
+            if (m == null || !m.isAlive()) continue;
+            hitCount++;
+            int totalDmg = 0;
+            for (int hit = 0; hit < 3; hit++) {
+                Magic.dealMagicDamage(m, magicDmg);
+                totalDmg += magicDmg;
+            }
+            // 施加迟缓状态（10秒内移速为0）
+            m.applySlow(ICE_STORM_SLOW_DURATION);
+
+            sb.append(m.getName()).append(" 受到3次冰霜冲击，共 ").append(totalDmg).append(" 点法术伤害，并被迟缓！");
+            if (!m.isAlive()) {
+                current.removeMonster(m);
+                sb.append("\n你击败了 ").append(m.getName()).append("！");
+                sb.append(game.processMonsterDrop(m));
+            }
+            sb.append("\n");
+        }
+
+        if (hitCount == 0) {
+            sb.append("房间内没有怪物。");
+        }
+
+        Map<String, Object> data = new HashMap<>(current.getFullInfo());
+        data.put("hitCount", hitCount);
+        data.put("iceStormDamage", magicDmg);
+        data.put("iceStormTotalHits", hitCount * 3);
+        injectPlayerStatus(data);
+        return GameResponse.success(sb.toString().trim(), data);
     }
 
     // ======================== 存档接口 ========================

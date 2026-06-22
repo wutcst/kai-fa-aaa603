@@ -33,7 +33,7 @@ import { useBackpack } from '../composables/useBackpack.js'
 import BackpackPanel from './BackpackPanel.vue'
 import ControlPanel from './ControlPanel.vue'
 import MinimapPanel from './MinimapPanel.vue'
-import { ATTACK_CONFIG, WAVE_CONFIG, WIND_CLOAK_CONFIG } from '../game/constants.js'
+import { ATTACK_CONFIG, WAVE_CONFIG, WIND_CLOAK_CONFIG, ICE_STORM_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
@@ -658,7 +658,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波 | F 风隐', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波 | F 风隐 | G 寒冰风暴', { font: '14px Arial', fill: '#cccccc' })
 
         // ==================== 8. 命令发送与游戏结束 ====================
         scene.sendCommand = function (cmd, fromDir = null) {
@@ -945,6 +945,7 @@ onMounted(() => {
               hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
               hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
+              effectiveSpeed: mon.effectiveSpeed !== undefined ? mon.effectiveSpeed : (mon.speed || 100),
               specialType: mon.specialType || null,
               attackCooldown: mon.attackCooldown || 0,
               attackRange: mon.attackRange || 0
@@ -1534,7 +1535,7 @@ onMounted(() => {
 
         // ==================== 12. 键盘控制与攻击配置 ====================
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,F,ONE,TWO,THREE,FOUR,FIVE')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,F,G,ONE,TWO,THREE,FOUR,FIVE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -1671,6 +1672,10 @@ onMounted(() => {
         scene._windCloakCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false }
         scene._windCloakActive = false
         scene._windCloakPending = false
+
+        // ==================== 14c. 寒冰风暴技能系统 ====================
+        scene._iceStormCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false }
+        scene._iceStormPending = false
 
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
@@ -2227,10 +2232,189 @@ onMounted(() => {
             }
           }
 
+          // ---------- G 键寒冰风暴蓄力系统 ----------
+          const ICE_STORM_CHARGE_DURATION = ICE_STORM_CONFIG.chargeDuration
+          const ICE_STORM_MP_COST = ICE_STORM_CONFIG.mpCost
+          const nowMs3 = Date.now()
+
+          // check if player has enough MP
+          const hasIceStormMp = scene.playerStats.mp >= ICE_STORM_MP_COST
+
+          // ---- 开始蓄力 ----
+          try {
+            if (scene.keys.G && scene.keys.G.isDown && hasIceStormMp && !scene._iceStormCharging.active && !scene._iceStormPending
+                && !scene._waveCharging.active && !scene._windCloakCharging.active && !scene._chargeAttack.active
+                && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+              scene._iceStormCharging.active = true
+              scene._iceStormCharging.startTime = nowMs3
+              scene._iceStormCharging.charged = false
+            }
+          } catch (e) {}
+
+          // ---- 发射函数 ----
+          const fireIceStorm = () => {
+            if (scene._iceStormPending) return
+            scene._iceStormPending = true
+            // clear UI
+            try {
+              if (scene._iceStormCharging.chargeBarGfx) { scene._iceStormCharging.chargeBarGfx.destroy(); scene._iceStormCharging.chargeBarGfx = null }
+            } catch (e) {}
+            scene._iceStormCharging.active = false
+            scene._iceStormCharging.charged = false
+
+            // ---- ICE STORM VFX ----
+            const ICE_VFX_RADIUS = ICE_STORM_CONFIG.vfxRadius
+            // expanding frost ring
+            const frostRing = scene.add.circle(scene.player.x, scene.player.y, 20, 0x88CCFF, 0).setDepth(200)
+            frostRing.setStrokeStyle(4, 0x88CCFF)
+            scene.tweens.add({
+              targets: frostRing, radius: ICE_VFX_RADIUS, alpha: 0, duration: 600, ease: 'Cubic.easeOut',
+              onUpdate: () => { frostRing.setStrokeStyle(3, 0x88CCFF, frostRing.alpha) },
+              onComplete: () => { try { frostRing.destroy() } catch (e) {} }
+            })
+            // second pulse ring
+            scene.time.delayedCall(150, () => {
+              const frostRing2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xAADDFF, 0).setDepth(200)
+              frostRing2.setStrokeStyle(3, 0xAADDFF)
+              scene.tweens.add({
+                targets: frostRing2, radius: ICE_VFX_RADIUS * 1.1, alpha: 0, duration: 500, ease: 'Cubic.easeOut',
+                onUpdate: () => { frostRing2.setStrokeStyle(2, 0xAADDFF, frostRing2.alpha) },
+                onComplete: () => { try { frostRing2.destroy() } catch (e) {} }
+              })
+            })
+            // ice particles burst
+            for (let i = 0; i < 30; i++) {
+              const ang = Math.random() * Math.PI * 2
+              const dist = ICE_VFX_RADIUS * (0.1 + Math.random() * 0.9)
+              const px = scene.player.x + Math.cos(ang) * dist
+              const py = scene.player.y + Math.sin(ang) * dist
+              const iceSpark = scene.add.circle(px, py, 1 + Math.random() * 3, Math.random() < 0.3 ? 0xFFFFFF : 0x88CCFF).setDepth(201)
+              scene.tweens.add({
+                targets: iceSpark,
+                x: px + Math.cos(ang) * (40 + Math.random() * 60),
+                y: py + Math.sin(ang) * (40 + Math.random() * 60),
+                alpha: 0, scale: 0.2, duration: 250 + Math.random() * 400,
+                ease: 'Cubic.easeOut',
+                onComplete: () => { try { iceSpark.destroy() } catch (e) {} }
+              })
+            }
+            // screen shake + blue flash
+            if (scene.cameras && scene.cameras.main) {
+              scene.cameras.main.shake(250, 0.006)
+            }
+            const frostFlash = scene.add.rectangle(400, 300, 800, 600, 0x88CCFF, 0.15).setDepth(500)
+            scene.tweens.add({
+              targets: frostFlash, alpha: 0, duration: 400,
+              onComplete: () => { try { frostFlash.destroy() } catch (e) {} }
+            })
+            // ground frost effect (temporary blue overlay on floor)
+            const frostOverlay = scene.add.circle(scene.player.x, scene.player.y, ICE_VFX_RADIUS, 0x6688BB, 0.12).setDepth(0)
+            scene.tweens.add({
+              targets: frostOverlay, alpha: 0, duration: 2000, delay: 300,
+              onComplete: () => { try { frostOverlay.destroy() } catch (e) {} }
+            })
+
+            // send API request
+            const monsterPositions = []
+            for (const mon of scene.monstersData) {
+              if (mon && mon.name) {
+                monsterPositions.push({ name: mon.name, x: Math.round(mon.x), y: Math.round(mon.y) })
+              }
+            }
+            ;(async () => {
+              try {
+                const res = await fetch('/api/icestorm', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ monsters: monsterPositions })
+                })
+                const j = await res.json()
+                emit('update', j)
+                if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                  scene.renderRoom(j.data)
+                }
+                if (j && j.message && j.message.includes('游戏结束')) {
+                  scene.showGameOver()
+                }
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+              scene._iceStormPending = false
+            })()
+          }
+
+          // ---- 蓄力 / 松开处理 ----
+          if (scene._iceStormCharging.active) {
+            try {
+              const gDown = scene.keys.G && scene.keys.G.isDown
+              if (!gDown) {
+                // G松开
+                if (scene._iceStormCharging.charged) {
+                  fireIceStorm()
+                } else {
+                  // 未满蓄力松开 → 取消
+                  scene._iceStormCharging.active = false
+                  if (scene._iceStormCharging.chargeBarGfx) {
+                    try { scene._iceStormCharging.chargeBarGfx.destroy() } catch (e) {}
+                    scene._iceStormCharging.chargeBarGfx = null
+                  }
+                }
+              } else if (!scene._iceStormCharging.charged) {
+                // 蓄力中（未满）
+                const elapsed = nowMs3 - scene._iceStormCharging.startTime
+                const progress = Math.min(1, elapsed / ICE_STORM_CHARGE_DURATION)
+
+                if (!scene._iceStormCharging.chargeBarGfx) {
+                  scene._iceStormCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._iceStormCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 54
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(1, 0x4488cc, 0.9)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                const r = Math.floor(60 + progress * 80)
+                const gr = Math.floor(120 + progress * 135)
+                const b = Math.floor(180 + progress * 75)
+                const fillColor = (r << 16) | (gr << 8) | b
+                gfx.fillStyle(fillColor, 0.9)
+                gfx.fillRect(barX, barY, barWidth * progress, barHeight)
+                if (progress >= 1) {
+                  scene._iceStormCharging.charged = true
+                }
+              } else {
+                // 已满蓄力，保持满蓄力条脉冲 + 冰霜范围圈预览
+                if (!scene._iceStormCharging.chargeBarGfx) {
+                  scene._iceStormCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._iceStormCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 54
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(2, 0x66BBFF, 1.0)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                gfx.fillStyle(0x66BBFF, 0.4 + 0.4 * Math.sin(nowMs3 * 0.01))
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+
+                // 冰霜范围预览圈
+                gfx.lineStyle(2, 0x88CCFF, 0.3 + 0.15 * Math.sin(nowMs3 * 0.005))
+                gfx.strokeCircle(scene.player.x, scene.player.y, ICE_STORM_CONFIG.vfxRadius)
+                gfx.fillStyle(0x88CCFF, 0.06 + 0.04 * Math.sin(nowMs3 * 0.005))
+                gfx.fillCircle(scene.player.x, scene.player.y, ICE_STORM_CONFIG.vfxRadius)
+              }
+            } catch (e) {}
+          }
+
           // movement by WASD
           const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
+          const isIceStormCharging = scene._iceStormCharging.active && !scene._iceStormCharging.charged  // 寒冰风暴蓄力中禁止移动
           const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
-          if (!isWaveCharging && !scene._piercing) {
+          if (!isWaveCharging && !isIceStormCharging && !scene._piercing) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2366,7 +2550,7 @@ onMounted(() => {
             } else if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || mon.type === 2) {
               // 在索敌范围内 → 向玩家移动（包括史莱姆在内的所有怪物）
               // Boss（type===2）不受距离限制，全图索敌
-              const speed = mon.speed || 100
+              const speed = mon.effectiveSpeed !== undefined ? mon.effectiveSpeed : (mon.speed || 100)
               const norm = Math.max(1, dist)
               const mvx = (dx / norm) * speed * dt
               const mvy = (dy / norm) * speed * dt

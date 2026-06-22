@@ -53,6 +53,8 @@ public class Monster {
     private int attackRange;
     /** 吸血比例（0.0~1.0），攻击回复 = 造成伤害 × lifeStealRatio */
     private double lifeStealRatio;
+    /** 怪物迟缓状态截止时间戳（毫秒），0=不处于迟缓；迟缓期间移速为0 */
+    private long slowedUntil;
 
     public Monster(String name, String description, int hp, int attack) {
         this(name, description, hp, attack, 0, 0, 100, TYPE_NORMAL);
@@ -78,6 +80,7 @@ public class Monster {
         this.attackCooldown = 0;
         this.attackRange = 0;
         this.lifeStealRatio = 0.0;
+        this.slowedUntil = 0;
     }
 
     // ==================== 普通怪物工厂方法 ====================
@@ -181,11 +184,28 @@ public class Monster {
     public void takeDamage(int dmg) {
         this.hp = Math.max(0, this.hp - dmg);
     }
+/** 恢复生命值 */
+public void heal(int amount) {
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+}
 
-    /** 恢复生命值 */
-    public void heal(int amount) {
-        this.hp = Math.min(this.maxHp, this.hp + amount);
-    }
+/** 怪物是否处于迟缓状态 */
+public boolean isSlowed() {
+    return slowedUntil > 0 && System.currentTimeMillis() < slowedUntil;
+}
+
+/**
+ * 施加迟缓状态：持续指定毫秒数（期间移速减半）。
+ * @param durationMs 持续时间（毫秒）
+ */
+public void applySlow(long durationMs) {
+    this.slowedUntil = System.currentTimeMillis() + durationMs;
+}
+
+/** 获取有效移速：若迟缓则移速减半 */
+public int getEffectiveSpeed() {
+    return isSlowed() ? (int) Math.max(1, Math.round(this.speed * 0.5)) : this.speed;
+}
 
 }
 

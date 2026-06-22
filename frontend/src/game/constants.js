@@ -52,6 +52,16 @@ export const WIND_CLOAK_CONFIG = {
   playerAlpha: 0.4
 }
 
+// ==================== 寒冰风暴配置 ====================
+export const ICE_STORM_CONFIG = {
+  chargeDuration: 1500,
+  mpCost: 25,
+  slowDuration: 10000,
+  hitCount: 3,
+  damageRatio: 1.0,
+  vfxRadius: 400
+}
+
 // ==================== 怪物 AI 配置 ====================
 export const MONSTER_CONFIG = {
   DETECT_RANGE: 350,

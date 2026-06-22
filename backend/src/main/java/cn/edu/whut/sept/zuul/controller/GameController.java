@@ -155,4 +155,18 @@ public class GameController {
     public GameResponse deactivateWindCloak() {
         return gameService.deactivateWindCloak();
     }
+
+    // ======================== 寒冰风暴技能接口 ========================
+
+    /**
+     * 释放寒冰风暴：对整个房间内敌人造成3次100%法伤并施加迟缓
+     * POST /api/icestorm
+     * 请求体：{"monsters": [{"name":"xxx","x":100,"y":200}, ...]}
+     */
+    @PostMapping("/icestorm")
+    public GameResponse castIceStorm(@RequestBody Map<String, Object> request) {
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> monsters = (List<Map<String, Object>>) request.get("monsters");
+        return gameService.castIceStorm(monsters);
+    }
 }

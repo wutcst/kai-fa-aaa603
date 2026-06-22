@@ -14,7 +14,9 @@ public class Magic {
         /** 月光波：消耗20魔力，造成魔攻300%的魔法伤害 */
         MOONLIGHT_WAVE("月光波", 20, 3.0),
         /** 风隐：蓄力1秒后开启，移速+100%、免疫负面状态，每秒消耗2MP */
-        WIND_CLOAK("风隐", 2, 0.0);
+        WIND_CLOAK("风隐", 2, 0.0),
+        /** 寒冰风暴：蓄力1.5秒后释放，消耗25MP，对房间内全体敌人造成3次100%法伤并施加迟缓 */
+        ICE_STORM("寒冰风暴", 25, 1.0);
 
         private final String displayName;
         private final int mpCost;

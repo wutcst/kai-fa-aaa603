@@ -3,187 +3,18 @@
     <!-- Phaser 游戏主容器 -->
     <div ref="gameContainer" style="width:800px;height:600px;background:#000;"></div>
 
-    <!-- 小地图 Canvas（固定在右下角） -->
-    <canvas
-        ref="minimapCanvas"
-        class="minimap"
-        width="160"
-        height="160"
-        style="
-        position: absolute;
-        bottom: 10px;
-        right: 10px;
-        border: 1px solid rgba(255,255,255,0.6);
-        background: rgba(0,0,0,0.55);
-        border-radius: 4px;
-        pointer-events: none;
-        z-index: 10;
-      "
-    ></canvas>
+    <!-- 小地图（独立组件，固定在右下角） -->
+    <MinimapPanel />
 
-    <!-- ==================== 背包 UI 覆盖层 ==================== -->
-    <div v-if="backpackVisible" class="backpack-overlay" @click.self="closeBackpack">
-      <div class="backpack-panel">
-        <!-- 标题栏 -->
-        <div class="backpack-header">
-          <span class="backpack-title">🎒 背包</span>
-          <span class="backpack-close" @click="closeBackpack">✕</span>
-        </div>
+    <!-- ==================== 背包面板（独立组件） ==================== -->
+    <BackpackPanel />
 
-        <div class="backpack-body">
-          <!-- 左侧：5x3 物品格子 -->
-          <div class="backpack-left">
-            <div
-                v-for="i in 15"
-                :key="'slot-' + i"
-                class="backpack-slot"
-                :class="{
-                'has-item': getSlotItem(i - 1),
-                'slot-selected': selectedSlot === (i - 1),
-                'slot-hovered': hoveredSlot === (i - 1)
-              }"
-                @click="selectSlot(i - 1)"
-                @mouseenter="hoveredSlot = (i - 1)"
-                @mouseleave="hoveredSlot = null"
-            >
-              <!-- 物品简略图标 -->
-              <!-- 生命浆果：三个红色重叠圆点 -->
-              <div v-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('生命浆果')" class="slot-icon slot-icon-lifeberry">
-                <span class="berry-dot" style="left:10px;top:14px;"></span>
-                <span class="berry-dot" style="left:20px;top:10px;"></span>
-                <span class="berry-dot" style="left:28px;top:18px;"></span>
-              </div>
-              <!-- 魔力浆果：三个蓝色重叠椭圆 -->
-              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('魔力浆果')" class="slot-icon slot-icon-manaberry">
-                <span class="mana-ellipse" style="left:10px;top:16px;"></span>
-                <span class="mana-ellipse" style="left:18px;top:10px;"></span>
-                <span class="mana-ellipse" style="left:26px;top:18px;"></span>
-              </div>
-              <!-- 铁剑图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('铁剑') || (getSlotItem(i - 1).name.includes('剑') && getSlotItem(i - 1).name.includes('铁')))" class="slot-icon slot-icon-sword">
-                <span class="sword-blade"></span>
-              </div>
-              <!-- 铁盾图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('铁盾') || (getSlotItem(i - 1).name.includes('盾') && getSlotItem(i - 1).name.includes('铁')))" class="slot-icon slot-icon-shield">
-                <span class="shield-body"></span>
-              </div>
-              <!-- 暗影披风图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('暗影披风') || getSlotItem(i - 1).name.includes('披风'))" class="slot-icon slot-icon-cloak">
-                <span class="cloak-body"></span>
-              </div>
-              <!-- 生命戒指图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('生命戒指') || getSlotItem(i - 1).name.includes('戒指'))" class="slot-icon slot-icon-ring">
-                <span class="ring-circle"></span>
-              </div>
-              <!-- 元素项链图标 -->
-              <div v-else-if="getSlotItem(i - 1) && (getSlotItem(i - 1).name.includes('元素项链') || getSlotItem(i - 1).name.includes('项链'))" class="slot-icon slot-icon-necklace">
-                <span class="necklace-chain"></span>
-              </div>
-              <!-- 药水图标 -->
-              <div v-else-if="getSlotItem(i - 1) && getSlotItem(i - 1).name.includes('药水')" class="slot-icon slot-icon-potion">
-                <span class="potion-bottle"></span>
-              </div>
-              <!-- 其他物品：显示名称首字母 -->
-              <div v-else-if="getSlotItem(i - 1)" class="slot-icon">
-                {{ getSlotItem(i - 1).name.charAt(0) }}
-              </div>
-              <!-- 已佩戴标记 -->
-              <span v-if="getSlotItem(i - 1) && getSlotItem(i - 1).equipped" class="slot-equipped-badge">已佩戴</span>
-              <!-- 物品数量角标 -->
-              <span v-if="getSlotItem(i - 1) && !getSlotItem(i - 1).equipped" class="slot-qty">x{{ getSlotItem(i - 1).quantity }}</span>
-            </div>
-          </div>
-
-          <!-- 右侧：物品详情 -->
-          <div class="backpack-right">
-            <!-- 上方大图像框 -->
-            <div class="detail-image-frame">
-              <span v-if="!selectedItem" class="placeholder-text">选择物品查看详情</span>
-              <div v-else class="detail-image-placeholder">
-                {{ selectedItem.name.charAt(0) }}
-              </div>
-            </div>
-
-            <!-- 下方物品信息 -->
-            <div class="detail-info">
-              <template v-if="selectedItem">
-                <!-- 第一行：名称 + 编号 + 数量 -->
-                <div class="detail-row1">
-                  <span class="detail-name" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    {{ selectedItem.name }}
-                  </span>
-                  <span class="detail-id" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    NO.{{ String(selectedItem.itemId).padStart(2, '0') }}
-                  </span>
-                  <span class="detail-qty" :style="{ color: rarityColor(selectedItem.rarity) }">
-                    拥有：{{ selectedItem.quantity }}
-                  </span>
-                </div>
-                <!-- 功能描述 -->
-                <div class="detail-func">
-                  {{ selectedItem.functionDesc }}
-                </div>
-                <!-- 空行间距 -->
-                <div class="detail-spacer"></div>
-                <!-- 背景描述（斜体） -->
-                <div class="detail-lore">
-                  "{{ selectedItem.loreDesc }}"
-                </div>
-              </template>
-              <template v-else>
-                <div class="detail-empty">← 点击左侧物品查看详情</div>
-              </template>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div class="detail-buttons">
-              <!-- 饰品已佩戴 → 显示"卸下"按钮 -->
-              <button
-                  v-if="selectedItem && selectedItem.equipped"
-                  class="btn-unequip"
-                  @click="unequipItem"
-              >卸下</button>
-              <!-- 饰品未佩戴 → 显示"佩戴"按钮 -->
-              <button
-                  v-else-if="selectedItem && isAccessory(selectedItem)"
-                  class="btn-use"
-                  @click="useItem"
-              >佩戴</button>
-              <!-- 普通消耗品 → 显示"使用"按钮 -->
-              <button
-                  v-else
-                  class="btn-use"
-                  :disabled="!selectedItem"
-                  @click="useItem"
-              >使用</button>
-              <button
-                  class="btn-discard"
-                  :disabled="!selectedItem"
-                  @click="discardItem"
-              >丢弃</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ==================== 控制面板覆盖层（ESC 打开/关闭） ==================== -->
-    <div v-if="controlPanelVisible" class="control-overlay" @click.self="closeControlPanel">
-      <div class="control-panel">
-        <button class="control-close-btn" @click="closeControlPanel" title="关闭 (ESC)">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-        <h2 class="control-title">⚙ 游戏控制</h2>
-        <div class="control-body">
-          <button class="control-btn control-btn-restart" @click="handleRestart">🔄 重新开始</button>
-          <button class="control-btn control-btn-save" @click="handleSaveGame">💾 保存游戏</button>
-          <button class="control-btn control-btn-menu" @click="handleBackToMenu">🚪 返回菜单</button>
-        </div>
-      </div>
-    </div>
+    <!-- ==================== 控制面板（独立组件，ESC 打开/关闭） ==================== -->
+    <ControlPanel
+      @restart="emit('resetGame')"
+      @save="emit('showSaveSlots')"
+      @back-to-menu="emit('backToMenu')"
+    />
   </div>
 </template>
 
@@ -194,422 +25,44 @@ import {
   createPlayerContainer,
   getMonsterDrawer,
   getEncounterDrawer,
-  drawShopMerchant,
-  getItemDrawer
+  drawShopMerchant
 } from '../entity/EntityDrawer.js'
+import { createApi } from '../composables/useApi.js'
+import { createKeyboardManager } from '../composables/useKeyboard.js'
+import { useBackpack } from '../composables/useBackpack.js'
+import BackpackPanel from './BackpackPanel.vue'
+import ControlPanel from './ControlPanel.vue'
+import MinimapPanel from './MinimapPanel.vue'
+import { ATTACK_CONFIG, WAVE_CONFIG, WIND_CLOAK_CONFIG, ICE_STORM_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
-const minimapCanvas = ref(null)
 let game = null
 
-// ==================== 背包 UI 响应式状态 ====================
-const backpackVisible = ref(false)
-const selectedSlot = ref(null)      // 选中的格子索引 (0-14)
-const hoveredSlot = ref(null)       // 鼠标悬停的格子索引
-const backpackItems = ref([])       // 背包物品列表 [{itemId, name, rarity, functionDesc, loreDesc, quantity, ...}]
+const backpack = useBackpack()
 
-// ==================== 控制面板 UI 响应式状态 ====================
-const controlPanelVisible = ref(false)
-
-function openControlPanel() {
-  // 暂停 Phaser 场景，防止 ESC 关闭面板时触发其他行为
-  if (game && game.scene && game.scene.scenes) {
-    game.scene.scenes.forEach(s => { if (s.scene.isActive()) s.scene.pause() })
+let api = null
+api = createApi(emit, getScene)
+function getScene() {
+  if (!game || !game.scene || !game.scene.scenes) return null
+  for (const s of game.scene.scenes) {
+    if (s.scene && s.scene.isActive && s.scene.isActive()) return s
   }
-  controlPanelVisible.value = true
+  return null
 }
 
-function closeControlPanel() {
-  controlPanelVisible.value = false
-  // 恢复 Phaser 场景
-  if (game && game.scene && game.scene.scenes) {
-    game.scene.scenes.forEach(s => { if (s.scene.isPaused()) s.scene.resume() })
-  }
-}
+// ==================== 键盘管理器 ====================
+const keyboardManager = createKeyboardManager({
+  isInputFocused: () => {
+    const activeEl = document.activeElement
+    return activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')
+  },
+  toggleBackpack: () => {
+    backpack.toggle()
+  },
+  getBackpackVisible: () => backpack.visible,
+})
 
-function handleRestart() {
-  closeControlPanel()
-  emit('resetGame')
-}
-
-function handleSaveGame() {
-  closeControlPanel()
-  emit('showSaveSlots')
-}
-
-function handleBackToMenu() {
-  closeControlPanel()
-  emit('backToMenu')
-}
-
-// 稀有度对应颜色
-function rarityColor(rarity) {
-  switch (rarity) {
-    case 'legendary': return '#FF6600'
-    case 'epic': return '#CC44FF'
-    case 'rare': return '#4488FF'
-    default: return '#FFD700' // common -> 金色
-  }
-}
-
-// 获取某个格子对应的物品
-function getSlotItem(slotIndex) {
-  return slotIndex < backpackItems.value.length ? backpackItems.value[slotIndex] : null
-}
-
-// 当前选中的物品
-const selectedItem = ref(null)
-
-// 选中格子
-function selectSlot(slotIndex) {
-  const item = getSlotItem(slotIndex)
-  if (item) {
-    selectedSlot.value = slotIndex
-    selectedItem.value = item
-  } else {
-    selectedSlot.value = null
-    selectedItem.value = null
-  }
-}
-
-// 从后端刷新背包数据
-async function refreshBackpack() {
-  try {
-    const res = await fetch('/api/backpack')
-    const j = await res.json()
-    console.log('[Backpack] API full response:', JSON.stringify(j, null, 2))
-    if (j && j.data && j.data.backpack) {
-      backpackItems.value = j.data.backpack
-      console.log('[Backpack] items loaded:', backpackItems.value.length,
-        backpackItems.value.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
-    } else {
-      console.warn('[Backpack] No backpack data in response. data keys:', j.data ? Object.keys(j.data) : 'null')
-    }
-  } catch (e) {
-    console.warn('[Backpack] 无法获取背包数据', e)
-  }
-}
-
-// 判断是否为饰品
-function isAccessory(item) {
-  if (!item || !item.name) return false
-  const name = item.name
-  return name.includes('暗影披风') || name.includes('生命戒指') || name.includes('元素项链')
-}
-
-// 使用物品（饰品则为佩戴）
-async function useItem() {
-  if (!selectedItem.value) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag use ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      // 通知游戏场景更新渲染
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    // 重置选择
-    if (selectedItem.value) {
-      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
-      if (!stillExists) {
-        selectedSlot.value = null
-        selectedItem.value = null
-      } else {
-        const idx = backpackItems.value.indexOf(stillExists)
-        selectedSlot.value = idx
-        selectedItem.value = stillExists
-      }
-    }
-  } catch (e) {
-    console.warn('使用物品失败', e)
-  }
-}
-
-// 卸下饰品
-async function unequipItem() {
-  if (!selectedItem.value) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag unequip ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    if (selectedItem.value) {
-      const stillExists = backpackItems.value.find(it => it.name === selectedItem.value.name)
-      if (stillExists) {
-        const idx = backpackItems.value.indexOf(stillExists)
-        selectedSlot.value = idx
-        selectedItem.value = stillExists
-      }
-    }
-  } catch (e) {
-    console.warn('卸下饰品失败', e)
-  }
-}
-
-// 丢弃物品
-async function discardItem() {
-  if (!selectedItem.value) return
-  if (!confirm('确定要丢弃全部 "' + selectedItem.value.name + '" 吗？')) return
-  try {
-    const res = await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag discard ' + selectedItem.value.name })
-    })
-    const j = await res.json()
-    emit('update', j)
-    if (j && j.data) {
-      if (j.data.backpack) backpackItems.value = j.data.backpack
-      window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
-    }
-    selectedSlot.value = null
-    selectedItem.value = null
-  } catch (e) {
-    console.warn('丢弃物品失败', e)
-  }
-}
-
-// 关闭背包（同时通知 Phaser 恢复游戏）
-function closeBackpack() {
-  backpackVisible.value = false
-  window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: false } }))
-}
-
-// B 键切换背包（全局监听）
-function onKeyDown(e) {
-  if (e.key === 'b' || e.key === 'B') {
-    // 避免在输入框中误触发
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    e.preventDefault()
-    backpackVisible.value = !backpackVisible.value
-    if (backpackVisible.value) {
-      refreshBackpack()
-      selectedSlot.value = null
-      selectedItem.value = null
-    }
-    // 通知 Phaser 场景暂停/恢复
-    window.dispatchEvent(new CustomEvent('backpack:toggle', { detail: { visible: backpackVisible.value } }))
-  }
-  // ESC 键：切换控制面板
-  if (e.key === 'Escape') {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
-    // 如果背包打开，先关闭背包
-    if (backpackVisible.value) {
-      closeBackpack()
-      return
-    }
-    // 切换控制面板
-    e.preventDefault()
-    if (controlPanelVisible.value) {
-      closeControlPanel()
-    } else {
-      openControlPanel()
-    }
-  }
-  // 背包打开时阻止其他按键进入游戏
-  if (backpackVisible.value) {
-    if (['w','W','a','A','s','S','d','D','j','J',' ', 'h','H','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
-      e.stopPropagation()
-      e.stopImmediatePropagation()
-    }
-  }
-}
-
-// ---------- 小地图状态 ----------
-let mapLayout = null          // { rooms, roomMap, coords }
-let currentRoomName = ''      // 当前玩家所在房间名
-// --------------------------------
-
-// ---------- 小地图核心函数 ----------
-
-function buildMapLayout(mapData) {
-  const { rooms, startRoomName } = mapData
-  const roomMap = new Map(rooms.map(r => [r.name, r]))
-  const coords = new Map()   // roomName -> {x, y}
-  const visited = new Set()
-
-  const queue = [startRoomName]
-  coords.set(startRoomName, { x: 0, y: 0 })
-  visited.add(startRoomName)
-
-  const dirVec = {
-    north: { dx: 0, dy: -1 },
-    south: { dx: 0, dy: 1 },
-    west:  { dx: -1, dy: 0 },
-    east:  { dx: 1, dy: 0 }
-  }
-
-  while (queue.length > 0) {
-    const curName = queue.shift()
-    const curRoom = roomMap.get(curName)
-    if (!curRoom) continue
-    const { x, y } = coords.get(curName)
-    const exits = curRoom.exits || {}
-    for (const [dir, neighborName] of Object.entries(exits)) {
-      if (!neighborName || visited.has(neighborName)) continue
-      const vec = dirVec[dir]
-      if (!vec) continue
-      const nx = x + vec.dx
-      const ny = y + vec.dy
-      coords.set(neighborName, { x: nx, y: ny })
-      visited.add(neighborName)
-      queue.push(neighborName)
-    }
-  }
-  return { rooms, roomMap, coords }
-}
-
-function drawMinimap(highlightRoomName) {
-  const canvas = minimapCanvas.value
-  if (!canvas || !mapLayout) return
-
-  const ctx = canvas.getContext('2d')
-  const { rooms, coords } = mapLayout
-  if (coords.size === 0) return
-
-  // 计算边界
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
-  for (const [, pos] of coords) {
-    if (pos.x < minX) minX = pos.x
-    if (pos.x > maxX) maxX = pos.x
-    if (pos.y < minY) minY = pos.y
-    if (pos.y > maxY) maxY = pos.y
-  }
-
-  const margin = 14
-  const availW = canvas.width - margin * 2
-  const availH = canvas.height - margin * 2
-  const rangeX = maxX - minX + 1
-  const rangeY = maxY - minY + 1
-  const cellSize = Math.min(availW / rangeX, availH / rangeY, 36)
-  const rectW = cellSize * 0.75
-  const rectH = cellSize * 0.75
-  const offsetX = margin + (availW - rangeX * cellSize) / 2
-  const offsetY = margin + (availH - rangeY * cellSize) / 2
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-  // 获取房间矩形坐标
-  const getRoomRect = (name) => {
-    const pos = coords.get(name)
-    if (!pos) return null
-    const x = offsetX + (pos.x - minX) * cellSize + (cellSize - rectW) / 2
-    const y = offsetY + (pos.y - minY) * cellSize + (cellSize - rectH) / 2
-    return { x, y, w: rectW, h: rectH }
-  }
-
-  // 1. 绘制连线（去重）
-  const drawnEdges = new Set()
-  for (const room of rooms) {
-    const rectA = getRoomRect(room.name)
-    if (!rectA) continue
-    const exits = room.exits || {}
-    for (const [dir, neighborName] of Object.entries(exits)) {
-      if (!neighborName) continue
-      const edgeId = room.name < neighborName ? `${room.name}->${neighborName}` : `${neighborName}->${room.name}`
-      if (drawnEdges.has(edgeId)) continue
-      drawnEdges.add(edgeId)
-
-      const rectB = getRoomRect(neighborName)
-      if (!rectB) continue
-
-      let x1, y1, x2, y2
-      switch (dir) {
-        case 'north':
-          x1 = rectA.x + rectA.w / 2; y1 = rectA.y
-          x2 = rectB.x + rectB.w / 2; y2 = rectB.y + rectB.h
-          break
-        case 'south':
-          x1 = rectA.x + rectA.w / 2; y1 = rectA.y + rectA.h
-          x2 = rectB.x + rectB.w / 2; y2 = rectB.y
-          break
-        case 'west':
-          x1 = rectA.x; y1 = rectA.y + rectA.h / 2
-          x2 = rectB.x + rectB.w; y2 = rectB.y + rectB.h / 2
-          break
-        case 'east':
-          x1 = rectA.x + rectA.w; y1 = rectA.y + rectA.h / 2
-          x2 = rectB.x; y2 = rectB.y + rectB.h / 2
-          break
-        default: continue
-      }
-      ctx.beginPath()
-      ctx.moveTo(x1, y1)
-      ctx.lineTo(x2, y2)
-      ctx.strokeStyle = 'rgba(200,200,200,0.7)'
-      ctx.lineWidth = 1
-      ctx.stroke()
-    }
-  }
-
-  // 2. 绘制房间矩形（按房间类型不同颜色）
-  const roomTypeColors = {
-    START_HALL:      { fill: 'rgba(255, 215, 0, 0.85)', stroke: '#FFD700' },
-    SHOP:            { fill: 'rgba(0, 191, 255, 0.75)', stroke: '#00BFFF' },
-    ENCOUNTER:       { fill: 'rgba(186, 85, 211, 0.75)', stroke: '#BA55D3' },
-    CAMPFIRE:        { fill: 'rgba(255, 140, 0, 0.75)', stroke: '#FF8C00' },
-    BOSS:            { fill: 'rgba(220, 20, 60, 0.80)', stroke: '#DC143C' },
-    ELITE_MONSTER:   { fill: 'rgba(255, 99, 71, 0.75)', stroke: '#FF6347' },
-    NORMAL_MONSTER:  { fill: 'rgba(100, 149, 237, 0.7)', stroke: 'rgba(255,255,255,0.8)' }
-  }
-  for (const room of rooms) {
-    const rect = getRoomRect(room.name)
-    if (!rect) continue
-    const isCurrent = room.name === highlightRoomName
-    const roomType = room.roomType || 'NORMAL_MONSTER'
-    const typeColor = roomTypeColors[roomType] || roomTypeColors.NORMAL_MONSTER
-    if (isCurrent) {
-      ctx.fillStyle = 'rgba(255, 215, 0, 0.9)'
-      ctx.strokeStyle = '#FFD700'
-      ctx.lineWidth = 2
-    } else {
-      ctx.fillStyle = typeColor.fill
-      ctx.strokeStyle = typeColor.stroke
-      ctx.lineWidth = 1
-    }
-    ctx.fillRect(rect.x, rect.y, rect.w, rect.h)
-    ctx.strokeRect(rect.x, rect.y, rect.w, rect.h)
-    // 房间编号（提取完整数字后缀，支持多位数）
-    ctx.fillStyle = '#fff'
-    const label = (room.name.match(/\d+$/) || [room.name.charAt(room.name.length - 1) || '?'])[0]
-    const fontSize = Math.max(7, rect.w * (label.length > 1 ? 0.28 : 0.4))
-    ctx.font = `${fontSize}px Arial`
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2)
-  }
-}
-
-async function initMinimap() {
-  // 立即清空旧地图布局，防止并发的 drawMinimap 调用使用过期数据绘制
-  mapLayout = null
-  try {
-    const res = await fetch('/api/map')
-    const data = await res.json()
-    console.log('[Minimap] API response rooms:', data.rooms ? data.rooms.map(r => ({ name: r.name, roomType: r.roomType })) : 'none')
-    mapLayout = buildMapLayout(data)
-    drawMinimap(currentRoomName)
-  } catch (e) {
-    console.warn('无法获取地图数据，小地图不可用', e)
-  }
-}
-
-function onMinimapUpdate(e) {
-  drawMinimap(e.detail.roomName)
-}
 
 // ---------- Phaser 游戏场景 ----------
 
@@ -641,6 +94,7 @@ onMounted(() => {
         create: async function () {
           const scene = this
 
+        // ==================== 1. 基础状态初始化 ====================
         // game over state
         scene.gameOver = false
         scene.gameOverOverlay = null
@@ -664,6 +118,7 @@ onMounted(() => {
         scene.bgColor = 0x6bbf3a
         scene.parallax = { farFactor: 0.35, nearFactor: 0.72 }
 
+        // ==================== 2. 随机工具与草地纹理生成 ====================
         // 随机数工具
         const mulberry32 = (a) => {
           return function() {
@@ -734,6 +189,7 @@ onMounted(() => {
           const v0 = createSeamlessGrass('grass_v0', tileSize, 12345, 260)
           const v1 = createSeamlessGrass('grass_v1', tileSize, 54321, 200)
 
+          // ==================== 3. 背景系统 ====================
           // Create background — use Image (单张不重复) for user-provided bg images; fallback to tileSprite for procedural grass
           const availableBgKeys = []
           for (let i = 0; i < 4; i++) { if (scene.textures.exists(`bg${i}`)) availableBgKeys.push(`bg${i}`) }
@@ -758,6 +214,7 @@ onMounted(() => {
           scene.bgFar = bgFar
           scene.bgNear = bgNear
 
+          // ==================== 4. 房间边界框遮罩系统 ====================
           // ---------- 房间边界框遮罩（将背景裁剪到传送门围成的矩形内） ----------
           scene.roomMaskShape = scene.add.graphics()
           scene.roomMaskShape.setPosition(0, 0)
@@ -815,6 +272,8 @@ onMounted(() => {
               try { scene.bgNear.setAlpha(0); scene.bgFar.setAlpha(1.0); scene.bgNear.setScale(1.02) } catch (e) {}
             } catch (e) {}
           }
+
+        // ==================== 5. 玩家属性与状态条UI ====================
         scene._prevPlayerX = 400
         scene._prevPlayerY = 320
 
@@ -848,25 +307,6 @@ onMounted(() => {
         scene.mpText = scene.add.text(barX + barW / 2, mpY + barH / 2, '100/100', {
           font: 'bold 12px Arial', fill: '#ffffff'
         }).setDepth(barDepth + 2).setOrigin(0.5, 0.5)
-
-        // ---------- Buff/Debuff 显示状态初始化 ----------
-        scene._activeEffects = []          // 后端传来的活跃状态列表
-        scene._burnFlameGfx = null         // 火焰 Graphics 对象
-        scene._burnLayersText = null       // 层数文字
-        scene._burnTimerText = null        // 倒计时文字
-        scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
-        scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
-
-        // 中毒状态相关
-        scene._poisonIconGfx = null        // 中毒图标（💀）
-        scene._poisonLayersText = null     // 中毒层数文字
-        scene._poisonTimerText = null      // 中毒倒计时文字
-        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
-        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
-
-        // 流血状态相关
-        scene._bleedIconGfx = null         // 流血图标（🩸）
-        scene._bleedLayersText = null      // 流血层数文字
 
         // ---------- 货币显示（HP/MP 左侧，金黄色） ----------
         scene.moneyIcon = scene.add.text(455, 23, '$', { font: 'bold 18px Arial', fill: '#FFD700' }).setDepth(barDepth)
@@ -921,8 +361,25 @@ onMounted(() => {
           }
         }
 
-        // ---------- 烧伤火焰显示区域（魔力条下方 到 房间方框上缘 之间） ----------
-        // buff 栏区域：mpY + barH + 4 ~ roomTop（由 renderRoom 更新 roomTop）
+        // ==================== 6. Buff/Debuff 状态系统 ====================
+        // ---------- Buff/Debuff 显示状态初始化 ----------
+        scene._activeEffects = []          // 后端传来的活跃状态列表
+        scene._burnFlameGfx = null         // 火焰 Graphics 对象
+        scene._burnLayersText = null       // 层数文字
+        scene._burnTimerText = null        // 倒计时文字
+        scene._burnLastTickMs = 0          // 后端 lastTickTime（毫秒）
+        scene._burnNextTickMs = 0          // 本地计算的剩余毫秒
+
+        // 中毒状态相关
+        scene._poisonIconGfx = null        // 中毒图标（💀）
+        scene._poisonLayersText = null     // 中毒层数文字
+        scene._poisonTimerText = null      // 中毒倒计时文字
+        scene._poisonLastTickMs = 0        // 后端 lastTickTime（毫秒）
+        scene._poisonNextTickMs = 0        // 本地计算的剩余毫秒
+
+        // 流血状态相关
+        scene._bleedIconGfx = null         // 流血图标（🩸）
+        scene._bleedLayersText = null      // 流血层数文字
 
         /**
          * 绘制一朵动态火焰与层数标注。
@@ -965,97 +422,6 @@ onMounted(() => {
             strokeThickness: 2
           }).setDepth(121).setOrigin(0.5, 0)
           scene._burnTimerText = timerText
-        }
-
-        /**
-         * 根据后端 activeEffects 数据更新 buff 显示。
-         * 位置：HP/MP 条下方，房间方框上缘之间的空隙。
-         * @param {Array} activeEffects  后端传来的活跃状态列表
-         */
-        scene.updateBuffDisplay = function (activeEffects) {
-          scene._activeEffects = activeEffects || []
-
-          // 获取房间边界上缘（用于计算 buff 栏下边界）
-          const rb = scene._roomBounds
-          const roomTop = rb ? rb.top : 100   // 默认100（通常约75+）
-
-          // buff 栏位置参数
-          const barDepth = 100
-          const mpY = 39          // MP 条 Y（与 create 中一致）
-          const barH = 18          // MP 条高度
-          const barX = 570
-          const barW = 210
-
-          // buff 栏范围：mpY + barH + 4 到 roomTop - 4
-          const buffTop = mpY + barH - 7      // MP条下缘
-          const buffBottom = roomTop - 4
-          const buffLeft = barX - 105        // HP/MP label 左边缘
-          const buffRight = barX + barW       // HP/MP 条右边缘
-          const buffMidY = (buffTop + buffBottom) / 2
-
-          // ---- 先清理所有旧的状态显示 ----
-          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
-          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
-          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
-          scene._burnNextTickMs = 0
-          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
-          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
-          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
-          scene._poisonNextTickMs = 0
-          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
-          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
-
-          // ---- 收集所有活跃状态，按固定顺序排列 ----
-          // 排序规则：先减益后增益，同类型按名称排序
-          const typeOrder = { 'BURN': 0, 'POISON': 1, 'BLEED': 2 }
-          const orderedEffects = scene._activeEffects
-            .filter(eff => eff && eff.layers > 0)
-            .sort((a, b) => {
-              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
-              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
-              if (orderA !== orderB) return orderA - orderB
-              return (a.name || a.type).localeCompare(b.name || b.type)
-            })
-
-          if (orderedEffects.length === 0) return
-
-          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
-          const cellWidth = 40    // 每个状态格子的宽度
-          const startX = 580      // 第一个格子中心X（固定）
-
-          for (let i = 0; i < orderedEffects.length; i++) {
-            const eff = orderedEffects[i]
-            const cellCX = startX + i * cellWidth
-            const cellCY = buffMidY + 6
-
-            if (eff.type === 'BURN') {
-              const layers = eff.layers || 0
-              const nextTickIn = eff.nextTickIn || 3000
-
-              // 记录用于实时倒计时
-              scene._burnLastTickMs = Date.now()
-              scene._burnNextTickMs = nextTickIn
-
-              const flameSize = Math.min(3, 1 + layers * 0.5)
-              const timerSec = nextTickIn / 1000
-
-              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
-            } else if (eff.type === 'POISON') {
-              const layers = eff.layers || 0
-              const nextTickIn = eff.nextTickIn || 1000
-
-              // 记录用于实时倒计时
-              scene._poisonLastTickMs = Date.now()
-              scene._poisonNextTickMs = nextTickIn
-
-              const timerSec = nextTickIn / 1000
-
-              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
-            } else if (eff.type === 'BLEED') {
-              const layers = eff.layers || 0
-              scene.drawBleedIcon(cellCX, cellCY, layers)
-            }
-          }
         }
 
         /**
@@ -1130,6 +496,158 @@ onMounted(() => {
           scene._bleedLayersText = layersText
         }
 
+        /**
+         * 绘制迟缓状态图标（🐢），不显示层数。
+         */
+        scene.drawSlowIcon = function (cx, cy, timerSec) {
+          if (scene._slowIconGfx) { try { scene._slowIconGfx.destroy() } catch (e) {}; scene._slowIconGfx = null }
+          if (scene._slowTimerText) { try { scene._slowTimerText.destroy() } catch (e) {}; scene._slowTimerText = null }
+
+          const iconText = scene.add.text(cx, cy, '🐢', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._slowIconGfx = iconText
+
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#88CCFF',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._slowTimerText = timerText
+        }
+
+        /**
+         * 绘制束缚状态图标（🕸️），不显示层数。
+         */
+        scene.drawBindIcon = function (cx, cy, timerSec) {
+          if (scene._bindIconGfx) { try { scene._bindIconGfx.destroy() } catch (e) {}; scene._bindIconGfx = null }
+          if (scene._bindTimerText) { try { scene._bindTimerText.destroy() } catch (e) {}; scene._bindTimerText = null }
+
+          const iconText = scene.add.text(cx, cy, '🕸️', {
+            font: '20px Arial',
+          }).setDepth(120).setOrigin(0.5, 0.5)
+          scene._bindIconGfx = iconText
+
+          const timerText = scene.add.text(cx, cy + 16, Math.ceil(timerSec) + 's', {
+            font: '10px Arial',
+            fill: '#CCCCCC',
+            stroke: '#000000',
+            strokeThickness: 2
+          }).setDepth(121).setOrigin(0.5, 0)
+          scene._bindTimerText = timerText
+        }
+
+        /**
+         * 根据后端 activeEffects 数据更新 buff 显示。
+         * 位置：HP/MP 条下方，房间方框上缘之间的空隙。
+         * @param {Array} activeEffects  后端传来的活跃状态列表
+         */
+        scene.updateBuffDisplay = function (activeEffects) {
+          scene._activeEffects = activeEffects || []
+
+          // 获取房间边界上缘（用于计算 buff 栏下边界）
+          const rb = scene._roomBounds
+          const roomTop = rb ? rb.top : 100   // 默认100（通常约75+）
+
+          // buff 栏位置参数
+          const barDepth = 100
+          const mpY = 39          // MP 条 Y（与 create 中一致）
+          const barH = 18          // MP 条高度
+          const barX = 570
+          const barW = 210
+
+          // buff 栏范围：mpY + barH + 4 到 roomTop - 4
+          const buffTop = mpY + barH - 7      // MP条下缘
+          const buffBottom = roomTop - 4
+          const buffLeft = barX - 105        // HP/MP label 左边缘
+          const buffRight = barX + barW       // HP/MP 条右边缘
+          const buffMidY = (buffTop + buffBottom) / 2
+
+          // ---- 先清理所有旧的状态显示 ----
+          if (scene._burnFlameGfx) { try { scene._burnFlameGfx.destroy() } catch (e) {}; scene._burnFlameGfx = null }
+          if (scene._burnLayersText) { try { scene._burnLayersText.destroy() } catch (e) {}; scene._burnLayersText = null }
+          if (scene._burnTimerText) { try { scene._burnTimerText.destroy() } catch (e) {}; scene._burnTimerText = null }
+          scene._burnNextTickMs = 0
+          if (scene._poisonIconGfx) { try { scene._poisonIconGfx.destroy() } catch (e) {}; scene._poisonIconGfx = null }
+          if (scene._poisonLayersText) { try { scene._poisonLayersText.destroy() } catch (e) {}; scene._poisonLayersText = null }
+          if (scene._poisonTimerText) { try { scene._poisonTimerText.destroy() } catch (e) {}; scene._poisonTimerText = null }
+          scene._poisonNextTickMs = 0
+          if (scene._bleedIconGfx) { try { scene._bleedIconGfx.destroy() } catch (e) {}; scene._bleedIconGfx = null }
+          if (scene._bleedLayersText) { try { scene._bleedLayersText.destroy() } catch (e) {}; scene._bleedLayersText = null }
+          if (scene._slowIconGfx) { try { scene._slowIconGfx.destroy() } catch (e) {}; scene._slowIconGfx = null }
+          if (scene._slowTimerText) { try { scene._slowTimerText.destroy() } catch (e) {}; scene._slowTimerText = null }
+          scene._slowNextTickMs = 0
+          if (scene._bindIconGfx) { try { scene._bindIconGfx.destroy() } catch (e) {}; scene._bindIconGfx = null }
+          if (scene._bindTimerText) { try { scene._bindTimerText.destroy() } catch (e) {}; scene._bindTimerText = null }
+          scene._bindNextTickMs = 0
+
+          // ---- 收集所有活跃状态，按固定顺序排列 ----
+          // 排序规则：先减益后增益，同类型按名称排序
+          const typeOrder = { 'BURN': 0, 'POISON': 1, 'BLEED': 2, 'SLOW': 3, 'BIND': 4 }
+          const orderedEffects = scene._activeEffects
+            .filter(eff => eff && eff.layers > 0)
+            .sort((a, b) => {
+              const orderA = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99
+              const orderB = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99
+              if (orderA !== orderB) return orderA - orderB
+              return (a.name || a.type).localeCompare(b.name || b.type)
+            })
+
+          if (orderedEffects.length === 0) return
+
+          // ---- 顺序格子布局：每个状态占用一个格子，从左到右排列 ----
+          const cellWidth = 40    // 每个状态格子的宽度
+          const startX = 580      // 第一个格子中心X（固定）
+
+          for (let i = 0; i < orderedEffects.length; i++) {
+            const eff = orderedEffects[i]
+            const cellCX = startX + i * cellWidth
+            const cellCY = buffMidY + 6
+
+            if (eff.type === 'BURN') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 3000
+
+              // 记录用于实时倒计时
+              scene._burnLastTickMs = Date.now()
+              scene._burnNextTickMs = nextTickIn
+
+              const flameSize = Math.min(3, 1 + layers * 0.5)
+              const timerSec = nextTickIn / 1000
+
+              scene.drawBurnFlame(cellCX, cellCY, flameSize, layers, timerSec)
+            } else if (eff.type === 'POISON') {
+              const layers = eff.layers || 0
+              const nextTickIn = eff.nextTickIn || 1000
+
+              // 记录用于实时倒计时
+              scene._poisonLastTickMs = Date.now()
+              scene._poisonNextTickMs = nextTickIn
+
+              const timerSec = nextTickIn / 1000
+
+              scene.drawPoisonIcon(cellCX, cellCY, layers, timerSec)
+            } else if (eff.type === 'BLEED') {
+              const layers = eff.layers || 0
+              scene.drawBleedIcon(cellCX, cellCY, layers)
+            } else if (eff.type === 'SLOW') {
+              const nextTickIn = eff.nextTickIn || 10000
+              scene._slowLastTickMs = Date.now()
+              scene._slowNextTickMs = nextTickIn
+              const timerSec = nextTickIn / 1000
+              scene.drawSlowIcon(cellCX, cellCY, timerSec)
+            } else if (eff.type === 'BIND') {
+              const nextTickIn = eff.nextTickIn || 3000
+              scene._bindLastTickMs = Date.now()
+              scene._bindNextTickMs = nextTickIn
+              const timerSec = nextTickIn / 1000
+              scene.drawBindIcon(cellCX, cellCY, timerSec)
+            }
+          }
+        }
+
+        // ==================== 7. 标题/描述/玩家/帮助文本 ====================
         scene.titleText = scene.add.text(20, 20, '', { font: '20px Arial', fill: '#ffffff' })
         scene.descText = scene.add.text(20, 50, '', { font: '14px Arial', fill: '#cccccc', wordWrap: { width: 760 } })
 
@@ -1140,29 +658,11 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波 | F 风隐 | G 寒冰风暴', { font: '14px Arial', fill: '#cccccc' })
 
-        scene.sendCommand = async function (cmd, fromDir = null) {
-          scene._lastMoveDir = fromDir
-          try {
-            const res = await fetch('/api/command', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ command: cmd })
-            })
-            const j = await res.json()
-            emit('update', j)
-            // if response contains room data, re-render (跳过商店/祭坛浮层)
-            if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-              scene.renderRoom(j.data)
-            }
-            // check for game over from backend response
-            if (j && j.status === 'error' && j.message && j.message.includes('Game is over')) {
-              scene.showGameOver()
-            }
-          } catch (e) {
-            emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
-          }
+        // ==================== 8. 命令发送与游戏结束 ====================
+        scene.sendCommand = function (cmd, fromDir = null) {
+          return api.sendCommand(cmd, fromDir)
         }
 
         // show game over overlay
@@ -1197,8 +697,8 @@ onMounted(() => {
           scene.gameOverOverlay = overlay
         }
 
+        // ==================== 9. renderRoom 核心函数 ====================
         // render room view given backend room info
-        // renderRoom 核心函数
         scene.renderRoom = function (roomInfo) {
           // 更新 HP/MP 状态条
           const hp = roomInfo.playerHp !== undefined ? roomInfo.playerHp : scene.playerStats.hp
@@ -1208,20 +708,6 @@ onMounted(() => {
           const money = roomInfo.playerMoney !== undefined ? roomInfo.playerMoney : scene.playerStats.money
           try { scene.updatePlayerBars(hp, maxHp, mp, maxMp, money) } catch (e) {}
 
-          // 重置蓄力状态（特效自销毁，不主动清理）
-          scene._chargeAttackPendingSend = false
-          if (scene._chargeAttack) {
-            scene._chargeAttack.active = false
-            scene._chargeAttack.charged = false
-          }
-          if (scene._chargeAttack && scene._chargeAttack.chargeBarGfx) {
-            try { scene._chargeAttack.chargeBarGfx.destroy() } catch (e) {}
-            scene._chargeAttack.chargeBarGfx = null
-          }
-          if (scene._chargeAttack && scene._chargeAttack.circleGfx) {
-            try { scene._chargeAttack.circleGfx.destroy() } catch (e) {}
-            scene._chargeAttack.circleGfx = null
-          }
 
           scene.itemsGroup.clear(true, true)
           scene.itemsData = []
@@ -1372,19 +858,52 @@ onMounted(() => {
           })
 
           const monsters = roomInfo.monsters || []
-          // 火焰史莱姆不自爆，以普通怪物方式死亡
-          const mCenterX = 300
-          const mStartY = 160
-          const mSpacingY = 120
+          const count = monsters.length
+          // 基于怪物名字的确定性 hash（保证同一房间重新渲染时偏移一致）
+          function nameHash(name) {
+            let h = 0
+            for (let i = 0; i < name.length; i++) {
+              h = ((h << 5) - h + name.charCodeAt(i)) | 0
+            }
+            return Math.abs(h)
+          }
+          // 房间可用区域（留出边距，避免怪物紧贴墙壁或与门重叠）
+          const marginX = 100
+          const marginY = 110
+          const availLeft = rectLeft + marginX
+          const availRight = rectLeft + roomW - marginX
+          const availTop = rectTop + marginY
+          const availBottom = rectTop + roomH - marginY
+          const availW = availRight - availLeft
+          const availH = availBottom - availTop
+          // 根据怪物数量动态决定网格列数，使布局充分分散
+          const gridCols = count <= 2 ? 2 : (count <= 3 ? 3 : (count <= 5 ? 3 : 4))
+          const gridRows = Math.ceil(count / gridCols)
+          const cellW = availW / gridCols
+          const cellH = availH / Math.max(gridRows, 1)
+          const jitterRadius = Math.min(cellW, cellH) * 0.3  // 抖动半径不超过格子的30%
+          // 按名字排序保证确定性（同一房间每次渲染位置一致）
+          const sortedMonsters = [...monsters].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
           let mi = 0
-          monsters.forEach(mon => {
-            // restore AI-driven position if available, otherwise use default layout
-            let x = mCenterX
-            let y = mStartY + mi * mSpacingY
+          sortedMonsters.forEach(mon => {
+            // restore AI-driven position if available, otherwise use spread-out grid layout
+            let x, y
             const saved = prevMonsterPositions[mon.name]
             if (saved) {
               x = saved.x
               y = saved.y
+            } else {
+              const col = mi % gridCols
+              const row = Math.floor(mi / gridCols)
+              // 格子中心
+              const cellCX = availLeft + (col + 0.5) * cellW
+              const cellCY = availTop + (row + 0.5) * cellH
+              // 确定性随机偏移（基于名字hash，避免视觉上过于规整）
+              const hash = nameHash(mon.name)
+              const angle = ((hash % 360) / 360) * Math.PI * 2
+              const dist = (hash % 97) / 97 * jitterRadius
+              x = cellCX + Math.cos(angle) * dist
+              y = cellCY + Math.sin(angle) * dist
             }
             // 使用实体绘制替换简单圆形
             const monGfx = scene.add.graphics()
@@ -1426,11 +945,10 @@ onMounted(() => {
               hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
               hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
+              effectiveSpeed: mon.effectiveSpeed !== undefined ? mon.effectiveSpeed : (mon.speed || 100),
               specialType: mon.specialType || null,
-              exploding: false,
-              explodeNotified: false,
-              explodeRange: 0,
-              explodeRemaining: 0
+              attackCooldown: mon.attackCooldown || 0,
+              attackRange: mon.attackRange || 0
             })
             mi++
           })
@@ -1539,19 +1057,25 @@ onMounted(() => {
               const innerCircle = scene.add.circle(ex, ey, eSize / 4, 0x0088aa)
               scene.encounterGroup.add(innerCircle)
             } else if (eventType === 'ELITE_ENEMY') {
-              // 精英敌人：红色感叹号标记（怪物本身已在monsters中渲染）
-              eventSprite = scene.add.star(ex, ey - 30, 5, 8, 16, 0xFF0000).setStrokeStyle(2, 0xffffff)
+              // 精英敌人：怪物本身已在monsters中渲染，不额外绘制标记
+              eventSprite = null
             } else {
               // 通用事件：彩色方块
               eventSprite = scene.add.rectangle(ex, ey, eSize, eSize, eventColor).setStrokeStyle(3, 0xffffff)
             }
-            scene.encounterGroup.add(eventSprite)
 
-            // 事件名称标签
-            const eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
-              font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
-            }).setOrigin(0, 0)
-            scene.encounterGroup.add(eventLabel)
+            if (eventSprite) {
+              scene.encounterGroup.add(eventSprite)
+            }
+
+            // 事件名称标签（精英敌人不额外显示标签，怪物名称已在monsters中展示）
+            let eventLabel = null
+            if (eventType !== 'ELITE_ENEMY') {
+              eventLabel = scene.add.text(ex - 30, ey + eSize / 2 + 8, eventDisplayName, {
+                font: '12px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
+              }).setOrigin(0, 0)
+              scene.encounterGroup.add(eventLabel)
+            }
 
             scene.encounterData = {
               type: eventType,
@@ -1568,18 +1092,18 @@ onMounted(() => {
           // ---------- 掉落物渲染 ----------
           const droppedItems = roomInfo.droppedItems || []
           if (!scene.droppedItemsGroup) scene.droppedItemsGroup = scene.add.group()
-          // 使用房间名+物品名+序号哈希缓存掉落物位置，保证每次渲染位置不变
+          // 使用房间名+物品名哈希缓存掉落物位置，保证每次渲染位置不变
           if (!scene._dropPosCache) scene._dropPosCache = {}
           scene.droppedItemsData = []
-          droppedItems.forEach((drop, dropIdx) => {
-            // 为当前房间的每个掉落物生成固定坐标（含序号，防止同名物品重叠）
-            const cacheKey = (roomInfo.name || '') + '::' + drop.itemName + '::' + dropIdx
+          droppedItems.forEach(drop => {
+            // 为当前房间的每个掉落物生成固定坐标
+            const cacheKey = (roomInfo.name || '') + '::' + drop.itemName
             let dx, dy
             if (scene._dropPosCache[cacheKey]) {
               dx = scene._dropPosCache[cacheKey].x
               dy = scene._dropPosCache[cacheKey].y
             } else {
-              // 基于房间名+物品名+序号生成确定性偏移
+              // 基于房间名+物品名生成确定性偏移
               const hash = (cacheKey.split('').reduce((acc, c) => acc * 31 + c.charCodeAt(0), 0) & 0x7fffffff)
               const offX = ((hash % 61) - 30)
               const offY = (((hash >> 8) % 61) - 30)
@@ -1587,22 +1111,11 @@ onMounted(() => {
               dy = rectCenterY + offY
               scene._dropPosCache[cacheKey] = { x: dx, y: dy }
             }
-            // 使用物品实体绘制替换基础圆形
-            let icon
-            const itemDrawer = getItemDrawer(drop.itemName)
-            if (itemDrawer) {
-              const igfx = scene.add.graphics()
-              igfx.setPosition(dx, dy)
-              itemDrawer(igfx, 1.2)
-              igfx.setDepth(60)
-              icon = igfx
-            } else {
-              // 无对应绘制的物品（如生命浆果/魔力浆果），用原有圆形
-              const isLife = drop.itemName && drop.itemName.includes('生命')
-              const color = isLife ? 0x44cc44 : 0x4488ff
-              icon = scene.add.circle(dx, dy, 12, color).setStrokeStyle(2, 0xffffff)
-              icon.setDepth(60)
-            }
+            // 药水图标：彩色小瓶子形状
+            const isLife = drop.itemName && drop.itemName.includes('生命')
+            const color = isLife ? 0x44cc44 : 0x4488ff
+            const icon = scene.add.circle(dx, dy, 12, color).setStrokeStyle(2, 0xffffff)
+            icon.setDepth(60)
             // 标签
             const label = scene.add.text(dx - 20, dy + 16, drop.itemName, {
               font: '11px Arial', fill: '#ffffff', stroke: '#000000', strokeThickness: 2
@@ -1619,11 +1132,11 @@ onMounted(() => {
 
           // ---------- 小地图更新通知 ----------
           try {
-            currentRoomName = roomInfo.name || ''
-            window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: currentRoomName } }))
+            window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: roomInfo.name || '' } }))
           } catch (e) {}
         }
 
+        // ==================== 10. 祭坛系统 ====================
         // ---------- 祭坛光芒特效和博学选项浮层 ----------
         scene.spawnAltarGlow = function (cx, cy, size, color, duration) {
           const glowGfx = scene.add.graphics()
@@ -1720,6 +1233,7 @@ onMounted(() => {
           scene.wisdomOverlay = overlay
         }
 
+        // ==================== 11. 商店系统 ====================
         // ---------- 商店菜单浮层（购物/售卖选项） ----------
         scene.showShopMenu = function () {
           if (scene.shopMenuOverlay) { try { scene.shopMenuOverlay.destroy() } catch (e) {} }
@@ -1812,18 +1326,8 @@ onMounted(() => {
               continue
             }
 
-            // 使用物品实体绘制替换灰色方框
-            let icon
-            const shopDrawer = getItemDrawer(item.name)
-            if (shopDrawer) {
-              const igfx = scene.add.graphics()
-              igfx.setPosition(cx, cy)
-              shopDrawer(igfx, 1.5)
-              igfx.setDepth(201)
-              icon = igfx
-            } else {
-              icon = scene.add.rectangle(cx, cy, iconSize, iconSize, 0x888888).setStrokeStyle(2, 0xaaaaaa)
-            }
+            // 灰色方框图标
+            const icon = scene.add.rectangle(cx, cy, iconSize, iconSize, 0x888888).setStrokeStyle(2, 0xaaaaaa)
             // 商品名称
             const nameText = scene.add.text(cx, cy + iconSize / 2 + 8, item.name, {
               font: '13px Arial', fill: '#ffffff'
@@ -2029,29 +1533,19 @@ onMounted(() => {
           loadAndShowSellItems()
         }
 
+        // ==================== 12. 键盘控制与攻击配置 ====================
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,F,G,ONE,TWO,THREE,FOUR,FIVE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
-          radius: 120,
-          angleDeg: 135,
-          segments: 96,
-          sweepDuration: 140,
-          ghostFade: 120,
-          finalFade: 60,
-          ghostSpacing: 0.035,
-          mainAlpha: 0.95,
-          ghostAlpha: 0.92,
-          ghostMinFade: 40,
-          pierceDistance: 120,
-          pierceDistanceExpand: 1.15,
-          pierceDuration: 100,
-          pierceFade: 180,
-          pierceWidth: 14
+          ...ATTACK_CONFIG.SWEEP,
+          ...ATTACK_CONFIG.PIERCE
         }
         scene._attackOnCooldown = false  // 攻击冷却：动画期间禁止再次攻击
         scene._piercing = false          // 突刺移动中：禁止WASD移动输入
+
+        // ==================== 13. 攻击特效辅助函数 ====================
         // ---------- 强化攻击特效辅助函数 ----------
         // 弧形刀光（内圈加速消失，增强质感）
         scene.drawArcSlash = (gfx, progress, alpha = 1) => {
@@ -2166,16 +1660,22 @@ onMounted(() => {
             })
           }
         }
+
+        // ==================== 14. 月光波系统 ====================
         scene._ghostCounter = 0
         // 月光波蓄力状态
         scene._waveCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false, directionGfx: null }
         scene._waveProjectiles = []
         scene._wavePendingSend = false  // prevent duplicate sends
 
-        // 蓄力攻击状态（长按J键）
-        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
-        scene._chargeAttackPendingSend = false
-        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
+        // ==================== 14b. 风隐技能系统 ====================
+        scene._windCloakCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false }
+        scene._windCloakActive = false
+        scene._windCloakPending = false
+
+        // ==================== 14c. 寒冰风暴技能系统 ====================
+        scene._iceStormCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false }
+        scene._iceStormPending = false
 
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
@@ -2253,6 +1753,13 @@ onMounted(() => {
           })
         }
 
+        // ==================== 15. 蓄力攻击系统 ====================
+        // 蓄力攻击状态（长按J键）
+        scene._chargeAttack = { active: false, startTime: 0, charged: false, chargeBarGfx: null, circleGfx: null }
+        scene._chargeAttackPendingSend = false
+        scene._jHeldSince = null  // J键按下时刻，用于区分短按（横扫/突刺）和长按（蓄力）
+
+        // ==================== 16. 补充状态初始化 ====================
         scene.lastDoorEntered = null
         scene.doorRects = []
         scene.itemsData = []
@@ -2280,9 +1787,13 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        // 控制面板暂停状态（与背包一致，用标志位而非破坏性 sys.events.pause）
+        scene._controlPanelPaused = false
         scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
+
+        // ==================== 17. 事件监听 ====================
         window.addEventListener('backpack:toggle', function(e) {
           scene._backpackPaused = e.detail.visible
         })
@@ -2294,6 +1805,14 @@ onMounted(() => {
           scene.tweens.killAll()
           // 停止所有时间事件
           scene.time.removeAllEvents()
+        })
+        // 控制面板打开→设置暂停标志位（与背包暂停方式一致）
+        window.addEventListener('game:pause-scene', function() {
+          scene._controlPanelPaused = true
+        })
+        // 控制面板关闭→清除暂停标志位
+        window.addEventListener('game:resume-scene', function() {
+          scene._controlPanelPaused = false
         })
 
         // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条
@@ -2314,12 +1833,13 @@ onMounted(() => {
           // 如果背包未打开且响应包含房间数据，正常渲染房间
           // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
           // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
-          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+          if (!scene._backpackPaused && !scene._controlPanelPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
         window.addEventListener('game:update', window.__zuul_game_update_handler)
 
+        // ==================== 18. update 循环 ====================
         // update 循环
         this.sys.events.on('update', function (time, delta) {
           const dt = delta / 1000
@@ -2328,8 +1848,8 @@ onMounted(() => {
           // block all movement and actions when game is over
           if (scene.gameOver) return
 
-          // block all movement and actions when backpack is open
-          if (scene._backpackPaused) return
+          // block all movement and actions when backpack or control panel is open
+          if (scene._backpackPaused || scene._controlPanelPaused) return
 
           // ---------- 烧伤倒计时实时更新 ----------
           if (scene._burnNextTickMs > 0) {
@@ -2392,9 +1912,8 @@ onMounted(() => {
 
           // ---------- 定期轮询后端驱动爆炸计时与全局状态更新 ----------
           // 每500ms轮询一次GET /api/game，驱动tickExplosions（自爆倒计时）、烧伤结算等
-          // 蓄力攻击期间跳过轮询renderRoom，避免进度条被重置回退
           if (!scene._nextPollTime) scene._nextPollTime = 0
-          if (time > scene._nextPollTime && !scene._backpackPaused && !scene.gameOver && !scene._chargeAttack.active) {
+          if (time > scene._nextPollTime && !scene._backpackPaused && !scene._controlPanelPaused && !scene.gameOver) {
             scene._nextPollTime = time + 500
             ;(async () => {
               try {
@@ -2425,11 +1944,17 @@ onMounted(() => {
                   }
                   // 通知小地图
                   try {
-                    currentRoomName = j.data.name || ''
                     if (j.data.name) {
-                      window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: currentRoomName } }))
+                      window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: j.data.name } }))
                     }
                   } catch (e) {}
+                  // 同步风隐状态
+                  if (j.data.windCloakActive !== undefined && scene._windCloakActive !== j.data.windCloakActive) {
+                    scene._windCloakActive = j.data.windCloakActive
+                  }
+                  if (j.data.windCloakAutoDeactivate) {
+                    scene._windCloakActive = false
+                  }
                 }
               } catch (e) {
                 // 轮询失败静默处理
@@ -2438,8 +1963,8 @@ onMounted(() => {
           }
 
           // ---------- H 键月光波蓄力系统 ----------
-          const CHARGE_DURATION = 2000  // 2 seconds to full charge
-          const WAVE_MP_COST = 30
+          const CHARGE_DURATION = WAVE_CONFIG.chargeDuration  // 1 second to full charge
+          const WAVE_MP_COST = WAVE_CONFIG.mpCost
           const nowMs = Date.now()
 
           // check if player has enough MP
@@ -2580,10 +2105,316 @@ onMounted(() => {
             } catch (e) {}
           }
 
+          // ---------- F 键风隐技能系统 ----------
+          const WIND_CLOAK_CHARGE_DURATION = WIND_CLOAK_CONFIG.chargeDuration
+          const nowMs2 = Date.now()
+
+          // ---- 风隐已激活时，再按F键立即解除 ----
+          if (scene._windCloakActive && scene.keys.F && Phaser.Input.Keyboard.JustDown(scene.keys.F)) {
+            if (!scene._windCloakPending) {
+              scene._windCloakPending = true
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/windcloak/deactivate', { method: 'POST' })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                  scene._windCloakActive = false
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+                scene._windCloakPending = false
+              })()
+            }
+          }
+
+          // ---- 开始蓄力（仅未在风隐形态下） ----
+          if (!scene._windCloakActive) {
+            try {
+              if (scene.keys.F && scene.keys.F.isDown && !scene._windCloakCharging.active && !scene._windCloakPending
+                  && !scene._waveCharging.active && !scene._chargeAttack.active
+                  && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                scene._windCloakCharging.active = true
+                scene._windCloakCharging.startTime = nowMs2
+                scene._windCloakCharging.charged = false
+              }
+            } catch (e) {}
+          }
+
+          // ---- 蓄力/解除处理 ----
+          if (scene._windCloakCharging.active) {
+            try {
+              const fDown = scene.keys.F && scene.keys.F.isDown
+              if (!fDown) {
+                // F松开
+                if (scene._windCloakCharging.charged && !scene._windCloakPending) {
+                  // 满蓄力松开 → 激活风隐
+                  scene._windCloakPending = true
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/windcloak/activate', { method: 'POST' })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
+                      }
+                      scene._windCloakActive = true
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                    scene._windCloakPending = false
+                  })()
+                  // 清理UI
+                  try {
+                    if (scene._windCloakCharging.chargeBarGfx) { scene._windCloakCharging.chargeBarGfx.destroy(); scene._windCloakCharging.chargeBarGfx = null }
+                  } catch (e) {}
+                } else {
+                  // 未满蓄力松开 → 取消
+                  try {
+                    if (scene._windCloakCharging.chargeBarGfx) { scene._windCloakCharging.chargeBarGfx.destroy(); scene._windCloakCharging.chargeBarGfx = null }
+                  } catch (e) {}
+                }
+                scene._windCloakCharging.active = false
+                scene._windCloakCharging.charged = false
+              } else if (!scene._windCloakCharging.charged) {
+                // 蓄力中（未满）
+                const elapsed = nowMs2 - scene._windCloakCharging.startTime
+                const progress = Math.min(1, elapsed / WIND_CLOAK_CHARGE_DURATION)
+
+                if (!scene._windCloakCharging.chargeBarGfx) {
+                  scene._windCloakCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._windCloakCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 42
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(1, 0x8866cc, 0.9)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                const r = Math.floor(100 + progress * 80)
+                const gr = Math.floor(50 + progress * 150)
+                const b = Math.floor(180 + progress * 75)
+                const fillColor = (r << 16) | (gr << 8) | b
+                gfx.fillStyle(fillColor, 0.9)
+                gfx.fillRect(barX, barY, barWidth * progress, barHeight)
+                if (progress >= 1) {
+                  scene._windCloakCharging.charged = true
+                }
+              } else {
+                // 已满蓄力，保持满蓄力条脉冲
+                if (!scene._windCloakCharging.chargeBarGfx) {
+                  scene._windCloakCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._windCloakCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 42
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(2, 0xaa88ff, 1.0)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                gfx.fillStyle(0xaa88ff, 0.4 + 0.4 * Math.sin(nowMs2 * 0.01))
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+              }
+            } catch (e) {}
+          }
+
+          // ---- 风隐形态下玩家半透明效果 ----
+          if (scene.player) {
+            const targetAlpha = scene._windCloakActive ? WIND_CLOAK_CONFIG.playerAlpha : 1
+            if (scene.player.alpha !== targetAlpha) {
+              scene.player.alpha = targetAlpha
+            }
+          }
+
+          // ---------- G 键寒冰风暴蓄力系统 ----------
+          const ICE_STORM_CHARGE_DURATION = ICE_STORM_CONFIG.chargeDuration
+          const ICE_STORM_MP_COST = ICE_STORM_CONFIG.mpCost
+          const nowMs3 = Date.now()
+
+          // check if player has enough MP
+          const hasIceStormMp = scene.playerStats.mp >= ICE_STORM_MP_COST
+
+          // ---- 开始蓄力 ----
+          try {
+            if (scene.keys.G && scene.keys.G.isDown && hasIceStormMp && !scene._iceStormCharging.active && !scene._iceStormPending
+                && !scene._waveCharging.active && !scene._windCloakCharging.active && !scene._chargeAttack.active
+                && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+              scene._iceStormCharging.active = true
+              scene._iceStormCharging.startTime = nowMs3
+              scene._iceStormCharging.charged = false
+            }
+          } catch (e) {}
+
+          // ---- 发射函数 ----
+          const fireIceStorm = () => {
+            if (scene._iceStormPending) return
+            scene._iceStormPending = true
+            // clear UI
+            try {
+              if (scene._iceStormCharging.chargeBarGfx) { scene._iceStormCharging.chargeBarGfx.destroy(); scene._iceStormCharging.chargeBarGfx = null }
+            } catch (e) {}
+            scene._iceStormCharging.active = false
+            scene._iceStormCharging.charged = false
+
+            // ---- ICE STORM VFX ----
+            const ICE_VFX_RADIUS = ICE_STORM_CONFIG.vfxRadius
+            // expanding frost ring
+            const frostRing = scene.add.circle(scene.player.x, scene.player.y, 20, 0x88CCFF, 0).setDepth(200)
+            frostRing.setStrokeStyle(4, 0x88CCFF)
+            scene.tweens.add({
+              targets: frostRing, radius: ICE_VFX_RADIUS, alpha: 0, duration: 600, ease: 'Cubic.easeOut',
+              onUpdate: () => { frostRing.setStrokeStyle(3, 0x88CCFF, frostRing.alpha) },
+              onComplete: () => { try { frostRing.destroy() } catch (e) {} }
+            })
+            // second pulse ring
+            scene.time.delayedCall(150, () => {
+              const frostRing2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xAADDFF, 0).setDepth(200)
+              frostRing2.setStrokeStyle(3, 0xAADDFF)
+              scene.tweens.add({
+                targets: frostRing2, radius: ICE_VFX_RADIUS * 1.1, alpha: 0, duration: 500, ease: 'Cubic.easeOut',
+                onUpdate: () => { frostRing2.setStrokeStyle(2, 0xAADDFF, frostRing2.alpha) },
+                onComplete: () => { try { frostRing2.destroy() } catch (e) {} }
+              })
+            })
+            // ice particles burst
+            for (let i = 0; i < 30; i++) {
+              const ang = Math.random() * Math.PI * 2
+              const dist = ICE_VFX_RADIUS * (0.1 + Math.random() * 0.9)
+              const px = scene.player.x + Math.cos(ang) * dist
+              const py = scene.player.y + Math.sin(ang) * dist
+              const iceSpark = scene.add.circle(px, py, 1 + Math.random() * 3, Math.random() < 0.3 ? 0xFFFFFF : 0x88CCFF).setDepth(201)
+              scene.tweens.add({
+                targets: iceSpark,
+                x: px + Math.cos(ang) * (40 + Math.random() * 60),
+                y: py + Math.sin(ang) * (40 + Math.random() * 60),
+                alpha: 0, scale: 0.2, duration: 250 + Math.random() * 400,
+                ease: 'Cubic.easeOut',
+                onComplete: () => { try { iceSpark.destroy() } catch (e) {} }
+              })
+            }
+            // screen shake + blue flash
+            if (scene.cameras && scene.cameras.main) {
+              scene.cameras.main.shake(250, 0.006)
+            }
+            const frostFlash = scene.add.rectangle(400, 300, 800, 600, 0x88CCFF, 0.15).setDepth(500)
+            scene.tweens.add({
+              targets: frostFlash, alpha: 0, duration: 400,
+              onComplete: () => { try { frostFlash.destroy() } catch (e) {} }
+            })
+            // ground frost effect (temporary blue overlay on floor)
+            const frostOverlay = scene.add.circle(scene.player.x, scene.player.y, ICE_VFX_RADIUS, 0x6688BB, 0.12).setDepth(0)
+            scene.tweens.add({
+              targets: frostOverlay, alpha: 0, duration: 2000, delay: 300,
+              onComplete: () => { try { frostOverlay.destroy() } catch (e) {} }
+            })
+
+            // send API request
+            const monsterPositions = []
+            for (const mon of scene.monstersData) {
+              if (mon && mon.name) {
+                monsterPositions.push({ name: mon.name, x: Math.round(mon.x), y: Math.round(mon.y) })
+              }
+            }
+            ;(async () => {
+              try {
+                const res = await fetch('/api/icestorm', {
+                  method: 'POST', headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ monsters: monsterPositions })
+                })
+                const j = await res.json()
+                emit('update', j)
+                if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                  scene.renderRoom(j.data)
+                }
+                if (j && j.message && j.message.includes('游戏结束')) {
+                  scene.showGameOver()
+                }
+              } catch (e) {
+                emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+              }
+              scene._iceStormPending = false
+            })()
+          }
+
+          // ---- 蓄力 / 松开处理 ----
+          if (scene._iceStormCharging.active) {
+            try {
+              const gDown = scene.keys.G && scene.keys.G.isDown
+              if (!gDown) {
+                // G松开
+                if (scene._iceStormCharging.charged) {
+                  fireIceStorm()
+                } else {
+                  // 未满蓄力松开 → 取消
+                  scene._iceStormCharging.active = false
+                  if (scene._iceStormCharging.chargeBarGfx) {
+                    try { scene._iceStormCharging.chargeBarGfx.destroy() } catch (e) {}
+                    scene._iceStormCharging.chargeBarGfx = null
+                  }
+                }
+              } else if (!scene._iceStormCharging.charged) {
+                // 蓄力中（未满）
+                const elapsed = nowMs3 - scene._iceStormCharging.startTime
+                const progress = Math.min(1, elapsed / ICE_STORM_CHARGE_DURATION)
+
+                if (!scene._iceStormCharging.chargeBarGfx) {
+                  scene._iceStormCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._iceStormCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 54
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(1, 0x4488cc, 0.9)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                const r = Math.floor(60 + progress * 80)
+                const gr = Math.floor(120 + progress * 135)
+                const b = Math.floor(180 + progress * 75)
+                const fillColor = (r << 16) | (gr << 8) | b
+                gfx.fillStyle(fillColor, 0.9)
+                gfx.fillRect(barX, barY, barWidth * progress, barHeight)
+                if (progress >= 1) {
+                  scene._iceStormCharging.charged = true
+                }
+              } else {
+                // 已满蓄力，保持满蓄力条脉冲 + 冰霜范围圈预览
+                if (!scene._iceStormCharging.chargeBarGfx) {
+                  scene._iceStormCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._iceStormCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 54
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(2, 0x66BBFF, 1.0)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                gfx.fillStyle(0x66BBFF, 0.4 + 0.4 * Math.sin(nowMs3 * 0.01))
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+
+                // 冰霜范围预览圈
+                gfx.lineStyle(2, 0x88CCFF, 0.3 + 0.15 * Math.sin(nowMs3 * 0.005))
+                gfx.strokeCircle(scene.player.x, scene.player.y, ICE_STORM_CONFIG.vfxRadius)
+                gfx.fillStyle(0x88CCFF, 0.06 + 0.04 * Math.sin(nowMs3 * 0.005))
+                gfx.fillCircle(scene.player.x, scene.player.y, ICE_STORM_CONFIG.vfxRadius)
+              }
+            } catch (e) {}
+          }
+
           // movement by WASD
           const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
+          const isIceStormCharging = scene._iceStormCharging.active && !scene._iceStormCharging.charged  // 寒冰风暴蓄力中禁止移动
           const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
-          if (!isWaveCharging && !scene._piercing) {
+          if (!isWaveCharging && !isIceStormCharging && !scene._piercing) {
           let vx = 0, vy = 0
           if (scene.keys.W.isDown) vy -= 1
           if (scene.keys.S.isDown) vy += 1
@@ -2601,25 +2432,52 @@ onMounted(() => {
               }
             } catch (e) {}
             if (!isWaveAiming) {
-              let speed = scene.baseMoveSpeed
-              // 蓄力攻击期间移速减半
-              if (scene._chargeAttack.active) speed = speed * 0.5
+              // 束缚状态下禁止移动
+              let hasBind = false
               try {
-                if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
+                const bindEff = (scene._activeEffects || []).find(e => e && e.type === 'BIND' && e.layers > 0)
+                if (bindEff) hasBind = true
               } catch (e) {}
-              scene.player.x += vx * speed * dt
-              scene.player.y += vy * speed * dt
+              if (!hasBind) {
+                let speed = scene.baseMoveSpeed
+                // 蓄力攻击期间移速减半
+                if (scene._chargeAttack.active) speed = speed * 0.5
+                // 迟缓状态下移速减半
+                let hasSlow = false
+                try {
+                  const slowEff = (scene._activeEffects || []).find(e => e && e.type === 'SLOW' && e.layers > 0)
+                  if (slowEff) hasSlow = true
+                } catch (e) {}
+                if (hasSlow) speed = speed * 0.5
+                // 迟缓状态下禁止疾跑（shift）
+                if (!hasSlow) {
+                  try {
+                    if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
+                  } catch (e) {}
+                }
+                // 风隐形态移速翻倍
+                if (scene._windCloakActive) speed = speed * WIND_CLOAK_CONFIG.speedMultiplier
+                scene.player.x += vx * speed * dt
+                scene.player.y += vy * speed * dt
+              }
             }
           }
           }
 
           // ---------- 怪物 AI：索敌 + 追击 + 攻击 ----------
-          const MONSTER_DETECT_RANGE = 280   // 发现玩家的距离
-          const MONSTER_ATTACK_RANGE = 45    // 普通怪物攻击距离
-          const MONSTER_ATTACK_COOLDOWN = 1500 // 普通怪物攻击间隔 (ms)
-          // Boss 特殊参数
-          const BOSS_ATTACK_RANGE = 90       // Boss攻击距离（普通怪物的2倍）
+          const MONSTER_DETECT_RANGE = 350   // 普通怪物发现玩家的距离
+          const ELITE_DETECT_RANGE = 500     // 精英怪物发现玩家的距离
+          const MONSTER_ATTACK_RANGE = 50    // 普通怪物攻击距离
+          const MONSTER_ATTACK_COOLDOWN = 1200 // 普通怪物攻击间隔 (ms)
+          // 精英/Boss 特殊参数
+          const ELITE_ATTACK_RANGE = 60      // 精英怪物攻击距离
+          const ELITE_ATTACK_COOLDOWN = 1000 // 精英怪物攻击间隔 (ms)
+          const BOSS_ATTACK_RANGE = 75       // Boss攻击距离
           const BOSS_ATTACK_COOLDOWN = 750   // Boss攻击间隔（普通怪物的一半）
+          // 特殊普通怪物参数
+          const WEREWOLF_ATTACK_RANGE = 35
+          const WEREWOLF_ATTACK_COOLDOWN = 600
+          const OGRE_ATTACK_COOLDOWN = 2000
           const pr = scene.playerRadius || 10
 
           const now = Date.now()
@@ -2628,15 +2486,46 @@ onMounted(() => {
             if (!mon || !mon.circ) continue
 
             const isBoss = (mon.type === 2)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
-            const attackCooldown = isBoss ? BOSS_ATTACK_COOLDOWN : MONSTER_ATTACK_COOLDOWN
+            const isElite = (mon.type === 1)
+            const isSlime = (mon.specialType === 'SLIME')
+            const isWerewolf = (mon.name && mon.name.includes('狼人'))
+            const isOgre = (mon.name && mon.name.includes('食人魔'))
+
+            // 攻击范围：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let attackRange = MONSTER_ATTACK_RANGE
+            if (mon.attackRange > 0) {
+              attackRange = mon.attackRange
+            } else if (isWerewolf) {
+              attackRange = WEREWOLF_ATTACK_RANGE
+            } else if (isBoss) {
+              attackRange = BOSS_ATTACK_RANGE
+            } else if (isElite) {
+              attackRange = ELITE_ATTACK_RANGE
+            }
+
+            // 攻击冷却：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let attackCooldown = MONSTER_ATTACK_COOLDOWN
+            if (mon.attackCooldown > 0) {
+              attackCooldown = mon.attackCooldown
+            } else if (isWerewolf) {
+              attackCooldown = WEREWOLF_ATTACK_COOLDOWN
+            } else if (isOgre) {
+              attackCooldown = OGRE_ATTACK_COOLDOWN
+            } else if (isBoss) {
+              attackCooldown = BOSS_ATTACK_COOLDOWN
+            } else if (isElite) {
+              attackCooldown = ELITE_ATTACK_COOLDOWN
+            }
 
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
             const dist = Math.sqrt(dx * dx + dy * dy)
 
-            if (dist <= attackRange) {
-              // 在攻击范围内 → 攻击玩家（每个怪物独立冷却，无全局锁）
+            if (dist <= attackRange && !isSlime) {
+              // 在攻击范围内 → 攻击玩家（史莱姆不主动攻击，仅接触触发）
+              // 突刺无敌帧：突刺期间跳过怪物攻击
+              if (scene._piercing) continue
+              // 每个怪物独立冷却，无全局锁
               if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= attackCooldown) {
                 scene.monsterAttackCooldowns[mon.name] = now
                 ;(async () => {
@@ -2658,10 +2547,10 @@ onMounted(() => {
                   }
                 })()
               }
-            } else if (dist <= MONSTER_DETECT_RANGE || mon.type === 2) {
-              // 在索敌范围内 → 向玩家移动
+            } else if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || mon.type === 2) {
+              // 在索敌范围内 → 向玩家移动（包括史莱姆在内的所有怪物）
               // Boss（type===2）不受距离限制，全图索敌
-              const speed = mon.speed || 100
+              const speed = mon.effectiveSpeed !== undefined ? mon.effectiveSpeed : (mon.speed || 100)
               const norm = Math.max(1, dist)
               const mvx = (dx / norm) * speed * dt
               const mvy = (dy / norm) * speed * dt
@@ -2674,6 +2563,34 @@ onMounted(() => {
               try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
               try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
             }
+
+            // 史莱姆/火焰史莱姆接触触发：玩家碰撞到怪物时触发攻击
+            if (isSlime && dist <= (scene.playerRadius || 10) + 20) {
+              // 突刺无敌帧：突刺期间跳过史莱姆接触攻击
+              if (scene._piercing) continue
+              const slimeCooldown = mon.attackCooldown > 0 ? mon.attackCooldown : 1000
+              if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= slimeCooldown) {
+                scene.monsterAttackCooldowns[mon.name] = now
+                ;(async () => {
+                  try {
+                    const res = await fetch('/api/command', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ command: 'monsterattack ' + mon.name })
+                    })
+                    const j = await res.json()
+                    emit('update', j)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
+                    if (j && j.message && j.message.includes('游戏结束')) {
+                      scene.showGameOver()
+                    }
+                  } catch (e) {
+                    emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                  }
+                })()
+              }
+            }
           }
 
           // ---------- 绘制怪物攻击范围圈（半透明圆环） ----------
@@ -2685,21 +2602,31 @@ onMounted(() => {
           rangeGfx.clear()
           for (const mon of scene.monstersData) {
             if (!mon || !mon.circ) continue
-            // 爆炸中的怪物不显示攻击范围
-            if (mon.exploding) continue
             const isBoss = (mon.type === 2)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : MONSTER_ATTACK_RANGE
+            const isElite = (mon.type === 1)
+            const isWerewolf = (mon.name && mon.name.includes('狼人'))
+            // 攻击范围：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let monAttackRange = MONSTER_ATTACK_RANGE
+            if (mon.attackRange > 0) {
+              monAttackRange = mon.attackRange
+            } else if (isWerewolf) {
+              monAttackRange = WEREWOLF_ATTACK_RANGE
+            } else if (isBoss) {
+              monAttackRange = BOSS_ATTACK_RANGE
+            } else if (isElite) {
+              monAttackRange = ELITE_ATTACK_RANGE
+            }
             // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
             const dist = Math.sqrt(dx * dx + dy * dy)
-            if (dist <= MONSTER_DETECT_RANGE || isBoss) {
-              // Boss 全图显示，普通怪物在索敌范围内才显示
+            if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || isBoss) {
+              // Boss/精英全图显示，普通怪物在索敌范围内才显示
               rangeGfx.lineStyle(1, 0xff4444, 0.25)
-              rangeGfx.strokeCircle(mon.x, mon.y, attackRange)
+              rangeGfx.strokeCircle(mon.x, mon.y, monAttackRange)
               // 填充色（极淡）
               rangeGfx.fillStyle(0xff2222, 0.05)
-              rangeGfx.fillCircle(mon.x, mon.y, attackRange)
+              rangeGfx.fillCircle(mon.x, mon.y, monAttackRange)
             }
           }
 
@@ -2721,10 +2648,16 @@ onMounted(() => {
               // 短按（<200ms）→ 触发横扫或突刺
               scene._attackOnCooldown = true
               const cfg = scene.attackConfig || {}
-              const isShiftMove = (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
+              // 束缚状态下禁止突刺
+              let hasBindForPierce = false
+              try {
+                const bindEff = (scene._activeEffects || []).find(e => e && e.type === 'BIND' && e.layers > 0)
+                if (bindEff) hasBindForPierce = true
+              } catch (e) {}
+              const isShiftMove = !hasBindForPierce && (scene.keys.SHIFT && scene.keys.SHIFT.isDown) && (scene.keys.W.isDown || scene.keys.A.isDown || scene.keys.S.isDown || scene.keys.D.isDown)
               const monsterPositions = []
               for (const mon of scene.monstersData) {
-                if (mon && mon.name && !mon.exploding) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
+                if (mon && mon.name) { monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y }) }
               }
 
               // 突刺起点/终点变量（提升到块外，供异步 fetch 回调访问）
@@ -2735,7 +2668,8 @@ onMounted(() => {
                 // 突刺特效
                 const startX = scene.player.x, startY = scene.player.y
                 const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
+                const baseDist = cfg.pierceDistance || 120
+                const dist = scene._windCloakActive ? baseDist * 2 : baseDist
                 const pr_ = scene.playerRadius || 10
 
                 // ---- 路径碰撞检测：收集沿路径的所有障碍物 ----
@@ -2763,7 +2697,7 @@ onMounted(() => {
                 // 检查路径上的怪物：不阻挡，但在突刺结束后推开
                 const pushedMonsters = []
                 for (const mon of scene.monstersData) {
-                  if (!mon || !mon.name || mon.exploding) continue
+                  if (!mon || !mon.name) continue
                   const t = rayCircleHit(startX, startY, startX + dx_ * dist, startY + dy_ * dist,
                     mon.x, mon.y, 20) // 怪物碰撞半径 ≈20
                   if (t !== null) {
@@ -2925,74 +2859,85 @@ onMounted(() => {
                     } catch (e) {}
 
                     const CHARGE_VFX_RADIUS = 150
-                    // 双圈合成到同一个 graphics（两圈用不同颜色/透明度叠加）
                     const vfxGfx = scene.add.graphics().setDepth(15)
-                    // —— 第一圈（金色外圈+橙色填充）——
-                    vfxGfx.lineStyle(4, 0xFFD700, 1)
-                    vfxGfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
-                    const segs = 16
-                    let outer = [], inner = []
-                    for (let s = 0; s <= segs; s++) {
-                      const a = (s / segs) * Math.PI * 2
-                      outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
-                    }
-                    for (let s = segs; s >= 0; s--) {
-                      const a = (s / segs) * Math.PI * 2
-                      inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
-                    }
-                    vfxGfx.fillStyle(0xFF6600, 0.55)
-                    vfxGfx.fillPoints(outer.concat(inner), true)
 
-                    // —— 第二圈（橙色描边+红色填充，叠加在同一 graphics）——
-                    vfxGfx.lineStyle(3, 0xFFAA00, 0.85)
-                    vfxGfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
-                    outer = []; inner = []
-                    for (let s = 0; s <= segs; s++) {
-                      const a = (s / segs) * Math.PI * 2
-                      outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                    const drawChargeCircle = (gfx, alpha) => {
+                      gfx.clear()
+                      gfx.lineStyle(4, 0xFFD700, alpha)
+                      gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                      const segs = 96
+                      const outer = [], inner = []
+                      for (let s = 0; s <= segs; s++) {
+                        const a = (s / segs) * Math.PI * 2
+                        outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                      }
+                      for (let s = segs; s >= 0; s--) {
+                        const a = (s / segs) * Math.PI * 2
+                        inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                      }
+                      gfx.fillStyle(0xFF6600, alpha * 0.55)
+                      gfx.fillPoints(outer.concat(inner), true)
                     }
-                    for (let s = segs; s >= 0; s--) {
-                      const a = (s / segs) * Math.PI * 2
-                      inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
-                    }
-                    vfxGfx.fillStyle(0xFF4400, 0.45 * 0.85)
-                    vfxGfx.fillPoints(outer.concat(inner), true)
 
-                    // 淡出销毁
+                    drawChargeCircle(vfxGfx, 1)
+                    const shockwave1 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                    shockwave1.setStrokeStyle(3, 0xFF8800)
+                    scene.tweens.add({
+                      targets: shockwave1, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                      onUpdate: () => { shockwave1.setStrokeStyle(3, 0xFF8800, shockwave1.alpha) },
+                      onComplete: () => { shockwave1.destroy() }
+                    })
+
+                    // 60ms后第二圈
+                    scene.time.delayedCall(60, () => {
+                      const vfxGfx2 = scene.add.graphics().setDepth(15)
+                      const drawChargeCircle2 = (gfx, alpha) => {
+                        gfx.clear()
+                        gfx.lineStyle(3, 0xFFAA00, alpha)
+                        gfx.strokeCircle(scene.player.x, scene.player.y, CHARGE_VFX_RADIUS)
+                        const segs = 96
+                        const outer = [], inner = []
+                        for (let s = 0; s <= segs; s++) {
+                          const a = (s / segs) * Math.PI * 2
+                          outer.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS })
+                        }
+                        for (let s = segs; s >= 0; s--) {
+                          const a = (s / segs) * Math.PI * 2
+                          inner.push({ x: scene.player.x + Math.cos(a) * CHARGE_VFX_RADIUS * 0.35, y: scene.player.y + Math.sin(a) * CHARGE_VFX_RADIUS * 0.35 })
+                        }
+                        gfx.fillStyle(0xFF4400, alpha * 0.45)
+                        gfx.fillPoints(outer.concat(inner), true)
+                      }
+                      drawChargeCircle2(vfxGfx2, 1)
+                      const shockwave2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
+                      shockwave2.setStrokeStyle(3, 0xFF6600)
+                      scene.tweens.add({
+                        targets: shockwave2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
+                        onUpdate: () => { shockwave2.setStrokeStyle(3, 0xFF6600, shockwave2.alpha) },
+                        onComplete: () => { shockwave2.destroy() }
+                      })
+                      scene.tweens.add({
+                        targets: vfxGfx2, alpha: 0, duration: 350, delay: 100,
+                        onComplete: () => { try { vfxGfx2.destroy() } catch (e) {} }
+                      })
+                    })
+
                     scene.tweens.add({
                       targets: vfxGfx, alpha: 0, duration: 500, delay: 50,
                       onComplete: () => { try { vfxGfx.destroy() } catch (e) {} }
                     })
 
-                    // 冲击波1（金色）
-                    const shockwave = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
-                    shockwave.setStrokeStyle(3, 0xFF8800)
-                    scene.tweens.add({
-                      targets: shockwave, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
-                      onUpdate: () => { shockwave.setStrokeStyle(3, 0xFF8800, shockwave.alpha) },
-                      onComplete: () => { shockwave.destroy() }
-                    })
-                    // 冲击波2（红色）
-                    const sw2 = scene.add.circle(scene.player.x, scene.player.y, 20, 0xffffff, 0).setDepth(16)
-                    sw2.setStrokeStyle(3, 0xFF6600)
-                    scene.tweens.add({
-                      targets: sw2, radius: CHARGE_VFX_RADIUS * 1.15, alpha: 0, duration: 250, ease: 'Cubic.easeOut',
-                      onUpdate: () => { sw2.setStrokeStyle(3, 0xFF6600, sw2.alpha) },
-                      onComplete: () => { sw2.destroy() }
-                    })
-
-                    // 相机震动
                     if (scene.cameras && scene.cameras.main) {
-                      scene.cameras.main.shake(200, 0.006)
+                      scene.cameras.main.shake(200, 0.01)
                     }
 
                     // 火花粒子
-                    for (let i = 0; i < 10; i++) {
+                    for (let i = 0; i < 25; i++) {
                       const ang = Math.random() * Math.PI * 2
                       const dist = CHARGE_VFX_RADIUS * (0.3 + Math.random() * 0.7)
                       const px = scene.player.x + Math.cos(ang) * dist
                       const py = scene.player.y + Math.sin(ang) * dist
-                      const spark = scene.add.circle(px, py, 2 + Math.random() * 2.5, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
+                      const spark = scene.add.circle(px, py, 1.5 + Math.random() * 3, Math.random() < 0.4 ? 0xFFEE88 : 0xFF4400).setDepth(17)
                       scene.tweens.add({
                         targets: spark, x: px + Math.cos(ang) * (60 + Math.random() * 60),
                         y: py + Math.sin(ang) * (60 + Math.random() * 60),
@@ -3005,7 +2950,7 @@ onMounted(() => {
                     // 发送蓄力攻击请求到后端
                     const monsterPositions = []
                     for (const mon of scene.monstersData) {
-                      if (mon && mon.name && !mon.exploding) {
+                      if (mon && mon.name) {
                         monsterPositions.push({ name: mon.name, x: mon.x, y: mon.y })
                       }
                     }
@@ -3019,11 +2964,8 @@ onMounted(() => {
                         })
                         const j = await res.json()
                         emit('update', j)
-                        // 蓄力VFX还在运行（冲击波250ms + 火花500ms），延迟renderRoom避免与tweens同帧抢占
                         if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
-                          scene.time.delayedCall(300, () => {
-                            try { scene.renderRoom(j.data) } catch (e) {}
-                          })
+                          scene.renderRoom(j.data)
                         }
                         if (j && j.message && j.message.includes('游戏结束')) { scene.showGameOver() }
                       } catch (e) {
@@ -3202,8 +3144,6 @@ onMounted(() => {
             if (!proj.hitMonsters) proj.hitMonsters = new Set()
             for (const mon of scene.monstersData) {
               if (!mon || !mon.circ) continue
-              // 爆炸中的怪物不受月光波影响
-              if (mon.exploding) continue
               const mdx = mon.x - proj.x
               const mdy = mon.y - proj.y
               const mdist = Math.sqrt(mdx * mdx + mdy * mdy)
@@ -3215,7 +3155,7 @@ onMounted(() => {
                     try {
                       const res = await fetch('/api/command', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ command: 'wave ' + mon.name })
+                        body: JSON.stringify({ command: 'wave ' + mon.name + ' ' + Math.round(mon.x) + ' ' + Math.round(mon.y) })
                       })
                       const j = await res.json()
                       emit('update', j)
@@ -3394,16 +3334,11 @@ onMounted(() => {
             for (const drop of scene.droppedItemsData) {
               if (drop.icon && drop.icon.scene) {
                 if (drop === scene._closestDropItem) {
+                  drop.icon.setStrokeStyle(3, 0xFFD700) // 金色高亮
                   drop.icon.setScale(1.3)
-                  // 仅圆形支持 setStrokeStyle，Graphics 对象不支持
-                  if (drop.icon.type === 'Arc') {
-                    drop.icon.setStrokeStyle(3, 0xFFD700)
-                  }
                 } else {
+                  drop.icon.setStrokeStyle(2, 0xffffff)
                   drop.icon.setScale(1.0)
-                  if (drop.icon.type === 'Arc') {
-                    drop.icon.setStrokeStyle(2, 0xffffff)
-                  }
                 }
               }
             }
@@ -3537,6 +3472,48 @@ onMounted(() => {
             }
           } catch (e) {}
 
+          // ---- 4 键测试：施加一次迟缓 ----
+          try {
+            if (scene.keys.FOUR && Phaser.Input.Keyboard.JustDown(scene.keys.FOUR) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test slow' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
+          // ---- 5 键测试：施加一次束缚 ----
+          try {
+            if (scene.keys.FIVE && Phaser.Input.Keyboard.JustDown(scene.keys.FIVE) && !scene._waveCharging.active) {
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/command', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ command: 'test bind' })
+                  })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+              })()
+            }
+          } catch (e) {}
+
           // ---- 互动键 (SPACE) ----
           try {
             if (scene.keys.SPACE && Phaser.Input.Keyboard.JustDown(scene.keys.SPACE) && !scene._waveCharging.active) {
@@ -3655,6 +3632,7 @@ onMounted(() => {
 
         })
 
+        // ==================== 19. 初始游戏状态获取 ====================
         // 获取初始游戏状态
         try {
           const res = await fetch('/api/game')
@@ -3675,15 +3653,8 @@ onMounted(() => {
 
   game = new Phaser.Game(config)
 
-  // 初始化小地图并监听更新事件
-  initMinimap()
-  window.addEventListener('minimap:update', onMinimapUpdate)
-
-  // 监听游戏重置事件，重新获取地图数据实现小地图同步更新
-  window.addEventListener('game:reset', initMinimap)
-
-  // 注册 B 键背包全局监听
-  window.addEventListener('keydown', onKeyDown, true)
+  // 注册键盘管理器（B 键背包 / ESC 控制面板）
+  keyboardManager.attach()
 })
 
 onBeforeUnmount(() => {
@@ -3691,9 +3662,7 @@ onBeforeUnmount(() => {
     try { game.destroy(true) } catch (e) {}
     game = null
   }
-  window.removeEventListener('minimap:update', onMinimapUpdate)
-  window.removeEventListener('game:reset', initMinimap)
-  window.removeEventListener('keydown', onKeyDown, true)
+  keyboardManager.detach()
   // 清理其他全局事件
   try {
     if (window.__zuul_key_handler) {
@@ -3709,669 +3678,4 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.minimap {
-  /* 可根据需要微调样式 */
-}
-
-/* ==================== 背包 UI 样式 ==================== */
-.backpack-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 800px;
-  height: 600px;
-  background: rgba(0, 0, 0, 0.75);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.backpack-panel {
-  width: 720px;
-  height: 480px;
-  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
-  border: 2px solid #4a6fa5;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 0 40px rgba(0, 100, 200, 0.3), inset 0 0 20px rgba(0, 100, 200, 0.1);
-}
-
-.backpack-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 20px;
-  border-bottom: 1px solid #4a6fa5;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px 12px 0 0;
-}
-
-.backpack-title {
-  font-size: 22px;
-  font-weight: bold;
-  color: #FFD700;
-  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
-}
-
-.backpack-close {
-  font-size: 22px;
-  color: #ff6666;
-  cursor: pointer;
-  padding: 2px 8px;
-  border-radius: 4px;
-  transition: background 0.2s;
-}
-.backpack-close:hover {
-  background: rgba(255, 100, 100, 0.3);
-}
-
-.backpack-body {
-  display: flex;
-  flex: 1;
-  padding: 16px;
-  gap: 16px;
-  overflow: hidden;
-}
-
-.backpack-left {
-  display: grid;
-  grid-template-columns: repeat(5, 72px);
-  grid-template-rows: repeat(3, 72px);
-  gap: 8px;
-  padding: 4px;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-}
-
-.backpack-slot {
-  width: 72px;
-  height: 72px;
-  background: rgba(30, 40, 60, 0.8);
-  border: 2px solid #3a5a8c;
-  border-radius: 6px;
-  position: relative;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.backpack-slot.has-item {
-  background: rgba(40, 55, 80, 0.9);
-  border-color: #5a7aac;
-}
-
-.backpack-slot.slot-hovered.has-item {
-  transform: scale(1.12);
-  border-color: #88aadd;
-  box-shadow: 0 0 12px rgba(100, 150, 255, 0.4);
-  z-index: 2;
-}
-
-.backpack-slot.slot-selected {
-  border-color: #ffffff;
-  border-width: 3px;
-  box-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
-}
-
-.slot-icon {
-  width: 48px;
-  height: 48px;
-  background: rgba(255, 215, 0, 0.15);
-  border: 1px solid rgba(255, 215, 0, 0.3);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 26px;
-  font-weight: bold;
-  color: #FFD700;
-  position: relative;
-  overflow: visible;
-}
-
-/* 生命浆果图标：三个红色重叠圆点 */
-.slot-icon-lifeberry {
-  background: rgba(68, 204, 68, 0.12);
-  border-color: rgba(68, 204, 68, 0.25);
-}
-
-.berry-dot {
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #ff4444, #cc0000);
-  box-shadow: 0 0 4px rgba(255, 50, 50, 0.6);
-}
-
-/* 魔力浆果图标：三个蓝色重叠椭圆 */
-.slot-icon-manaberry {
-  background: rgba(68, 136, 255, 0.12);
-  border-color: rgba(68, 136, 255, 0.25);
-}
-
-.mana-ellipse {
-  display: block;
-  position: absolute;
-  width: 18px;
-  height: 12px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse at 35% 35%, #66aaff, #2255cc);
-  box-shadow: 0 0 5px rgba(80, 140, 255, 0.6);
-  transform: rotate(-30deg);
-}
-
-/* 药水图标：蓝色玻璃瓶+红色液体 */
-.slot-icon-potion {
-  background: rgba(136, 204, 255, 0.12);
-  border-color: rgba(136, 204, 255, 0.25);
-}
-.potion-bottle {
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 20px;
-  border-radius: 3px;
-  background: linear-gradient(180deg, #88ccff 0%, #88ccff 40%, #ff4444 40%, #ff4444 100%);
-  border: 1px solid #66aadd;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 6px rgba(255, 68, 68, 0.4);
-}
-.potion-bottle::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: #88ccff;
-  border: 1px solid #66aadd;
-  top: -5px;
-  left: 3px;
-  border-radius: 1px;
-}
-
-/* 铁剑图标 */
-.slot-icon-sword {
-  background: rgba(192, 192, 192, 0.12);
-  border-color: rgba(192, 192, 192, 0.25);
-}
-.sword-blade {
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 26px;
-  background: linear-gradient(180deg, #e0e0e0, #888888);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) rotate(-30deg);
-  border-radius: 1px;
-  box-shadow: 0 0 4px rgba(200, 200, 200, 0.3);
-}
-.sword-blade::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 16px;
-  height: 4px;
-  background: #8B7355;
-  top: 6px;
-  left: -6px;
-  border-radius: 1px;
-}
-.sword-blade::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 10px;
-  background: #654321;
-  top: 10px;
-  left: 0;
-  border-radius: 1px;
-}
-
-/* 铁盾图标 */
-.slot-icon-shield {
-  background: rgba(136, 136, 136, 0.12);
-  border-color: rgba(136, 136, 136, 0.25);
-}
-.shield-body {
-  display: block;
-  position: absolute;
-  width: 22px;
-  height: 26px;
-  border-radius: 4px;
-  background: #888888;
-  border: 2px solid #666666;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 4px rgba(136, 136, 136, 0.3);
-}
-.shield-body::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 2px;
-  height: 20px;
-  background: #AAAAAA;
-  top: 3px;
-  left: 8px;
-}
-.shield-body::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 14px;
-  height: 2px;
-  background: #AAAAAA;
-  top: 11px;
-  left: 2px;
-}
-
-/* 暗影披风图标 */
-.slot-icon-cloak {
-  background: rgba(42, 10, 58, 0.2);
-  border-color: rgba(100, 50, 150, 0.3);
-}
-.cloak-body {
-  display: block;
-  position: absolute;
-  width: 24px;
-  height: 22px;
-  background: linear-gradient(180deg, #2A0A3A, #1A0530);
-  clip-path: polygon(0 0, 100% 0, 70% 100%, 30% 100%);
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 8px rgba(102, 51, 170, 0.3), 0 0 16px rgba(102, 51, 170, 0.15);
-}
-.cloak-body::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 4px;
-  height: 4px;
-  background: #888888;
-  border-radius: 50%;
-  top: 0;
-  left: 10px;
-}
-
-/* 生命戒指图标 */
-.slot-icon-ring {
-  background: rgba(68, 204, 68, 0.12);
-  border-color: rgba(68, 204, 68, 0.25);
-}
-.ring-circle {
-  display: block;
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 3px solid #88DD88;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 8px rgba(68, 204, 68, 0.3), inset 0 0 8px rgba(68, 204, 68, 0.1);
-}
-.ring-circle::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  background: #66EE66;
-  border-radius: 50%;
-  top: -4px;
-  left: 5px;
-  box-shadow: 0 0 6px rgba(102, 238, 102, 0.6);
-}
-
-/* 元素项链图标 */
-.slot-icon-necklace {
-  background: rgba(255, 215, 0, 0.08);
-  border-color: rgba(255, 215, 0, 0.2);
-}
-.necklace-chain {
-  display: block;
-  position: absolute;
-  width: 24px;
-  height: 24px;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-.necklace-chain::before {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #FF5555, #CC0000);
-  box-shadow: 0 0 4px rgba(255, 50, 50, 0.4);
-  top: 14px;
-  left: 1px;
-}
-.necklace-chain::after {
-  content: '';
-  display: block;
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 35%, #5555FF, #0000CC);
-  box-shadow: 0 0 4px rgba(50, 50, 255, 0.4);
-  top: 14px;
-  left: 16px;
-}
-
-.slot-qty {
-  position: absolute;
-  bottom: 3px;
-  right: 5px;
-  font-size: 11px;
-  color: #FFD700;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
-  font-weight: bold;
-}
-
-.backpack-right {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.detail-image-frame {
-  height: 180px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.placeholder-text {
-  color: #667799;
-  font-size: 16px;
-  font-style: italic;
-}
-
-.detail-image-placeholder {
-  width: 120px;
-  height: 120px;
-  background: rgba(255, 215, 0, 0.08);
-  border: 2px solid rgba(255, 215, 0, 0.3);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 48px;
-  font-weight: bold;
-  color: #FFD700;
-  text-shadow: 0 0 20px rgba(255, 215, 0, 0.4);
-}
-
-.detail-info {
-  flex: 1;
-  padding: 8px 12px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid #3a5a8c;
-  border-radius: 8px;
-  overflow-y: auto;
-}
-
-.detail-row1 {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
-}
-
-.detail-name {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.detail-id {
-  font-size: 13px;
-}
-
-.detail-qty {
-  font-size: 13px;
-}
-
-.detail-func {
-  font-size: 14px;
-  color: #ccddff;
-  line-height: 1.5;
-  margin-bottom: 4px;
-}
-
-.detail-spacer {
-  height: 16px;
-}
-
-.detail-lore {
-  font-size: 13px;
-  color: #99aacc;
-  font-style: italic;
-  line-height: 1.5;
-}
-
-.detail-empty {
-  color: #667799;
-  font-size: 14px;
-  font-style: italic;
-  text-align: center;
-  padding-top: 20px;
-}
-
-.detail-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: flex-end;
-}
-
-.btn-use {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #33cc44 0%, #228833 100%);
-  color: #ffffff;
-  border: 1px solid #2aa033;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-use:hover:not(:disabled) {
-  background: linear-gradient(180deg, #44dd55 0%, #33aa44 100%);
-  box-shadow: 0 0 12px rgba(50, 200, 60, 0.5);
-}
-.btn-use:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* 已佩戴徽章 */
-.slot-equipped-badge {
-  position: absolute;
-  bottom: 3px;
-  left: 3px;
-  font-size: 9px;
-  color: #00ff88;
-  text-shadow: 0 0 6px rgba(0, 255, 136, 0.6);
-  font-weight: bold;
-  background: rgba(0, 40, 20, 0.7);
-  padding: 1px 4px;
-  border-radius: 3px;
-  border: 1px solid rgba(0, 255, 136, 0.4);
-  z-index: 5;
-}
-
-/* 卸下按钮 */
-.btn-unequip {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #ff8800 0%, #cc6600 100%);
-  color: #ffffff;
-  border: 1px solid #cc7700;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-unequip:hover {
-  background: linear-gradient(180deg, #ffaa33 0%, #dd7700 100%);
-  box-shadow: 0 0 12px rgba(255, 136, 0, 0.5);
-}
-
-.btn-discard {
-  padding: 8px 28px;
-  font-size: 16px;
-  font-weight: bold;
-  background: linear-gradient(180deg, #dd3333 0%, #991111 100%);
-  color: #ffffff;
-  border: 1px solid #bb2222;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-.btn-discard:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ee4444 0%, #aa2222 100%);
-  box-shadow: 0 0 12px rgba(220, 40, 40, 0.5);
-}
-.btn-discard:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-/* ==================== 控制面板样式 ==================== */
-.control-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 2000;
-  background: rgba(0, 0, 0, 0.65);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: auto;
-}
-
-.control-panel {
-  position: relative;
-  width: 300px;
-  background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
-  border: 2px solid rgba(180, 150, 80, 0.5);
-  border-radius: 16px;
-  overflow: hidden;
-  padding: 32px 28px 28px;
-}
-
-/* 右上角关闭按钮 */
-.control-close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
-  background: transparent;
-  border: 1px solid rgba(180, 150, 80, 0.3);
-  color: #998866;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
-  padding: 0;
-  z-index: 2;
-}
-.control-close-btn:hover {
-  background: rgba(200, 60, 60, 0.12);
-  border-color: rgba(200, 60, 60, 0.4);
-  color: #cc6666;
-}
-
-/* 标题 */
-.control-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: #e8d8b0;
-  text-align: center;
-  letter-spacing: 2px;
-  margin: 0 0 20px;
-  padding-top: 8px;
-}
-
-/* 按钮容器 */
-.control-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* 按钮通用 */
-.control-btn {
-  padding: 12px 20px;
-  font-size: 15px;
-  font-weight: bold;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: center;
-  letter-spacing: 1px;
-  border: 1px solid;
-}
-
-/* 重新开始 */
-.control-btn-restart {
-  background: #1e2a38;
-  color: #c8d8e8;
-  border-color: rgba(140, 170, 210, 0.25);
-}
-.control-btn-restart:hover {
-  background: #2a3a4e;
-  border-color: rgba(160, 190, 220, 0.4);
-}
-
-/* 保存游戏 */
-.control-btn-save {
-  background: #1a2418;
-  color: #aaccaa;
-  border-color: rgba(100, 180, 100, 0.35);
-  cursor: pointer;
-}
-.control-btn-save:hover {
-  background: #2a3a28;
-  color: #ccddcc;
-  border-color: rgba(120, 200, 120, 0.5);
-  box-shadow: 0 0 12px rgba(80, 160, 80, 0.3);
-}
-
-/* 返回菜单 */
-.control-btn-menu {
-  background: #2a1a0e;
-  color: #e0c898;
-  border-color: rgba(200, 160, 80, 0.3);
-}
-.control-btn-menu:hover {
-  background: #3a2510;
-  border-color: rgba(220, 180, 100, 0.45);
-}
 </style>

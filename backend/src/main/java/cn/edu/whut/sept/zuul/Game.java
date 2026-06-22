@@ -30,6 +30,7 @@ public class Game {
         gameOver = false;
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.setOnDeath(() -> setGameOver(true));  // 注册死亡信号：HP 归零 → gameOver
         player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
@@ -121,6 +122,7 @@ public class Game {
         this.mapSeed = new Random().nextLong();
         createRooms();
         player = new Player("冒险者", currentRoom);
+        player.setOnDeath(() -> setGameOver(true));  // 注册死亡信号
         player.getBag().setOwner(player);
         // 初始化测试物品：生命浆果 x5 + 魔力浆果 x5
         for (int i = 0; i < 5; i++) {
@@ -133,22 +135,21 @@ public class Game {
     }
 
     /** 普通怪物奖励 */
-    private static final int REWARD_NORMAL = 15;
+    private static final int REWARD_NORMAL = 20;
     /** 精英怪物奖励 */
-    private static final int REWARD_ELITE = 35;
+    private static final int REWARD_ELITE = 45;
     /** Boss 奖励 */
-    private static final int REWARD_BOSS = 100;
+    private static final int REWARD_BOSS = 150;
 
     private static final Random DROP_RND = new Random();
 
     /**
      * 处理怪物死亡后的掉落、货币奖励，以及奇遇精英敌人的负面状态施加。
-     * @param m     被击败的怪物
-     * @param dropX 掉落物 X 坐标
-     * @param dropY 掉落物 Y 坐标
+     * 掉落坐标直接从怪物自身的 x/y 字段读取。
+     * @param m 被击败的怪物
      * @return 描述掉落和奖励的文本
      */
-    public String processMonsterDrop(Monster m, int dropX, int dropY) {
+    public String processMonsterDrop(Monster m) {
         StringBuilder sb = new StringBuilder();
 
         // ---- 奇遇精英敌人：击败后施加减益（在掉落之前处理） ----
@@ -183,9 +184,38 @@ public class Game {
             currentRoom.useRandomEvent();
         }
 
-        // ---- Boss 掉落浆果 ----
-        if (m.getType() == Monster.TYPE_BOSS) {
-            String dropName = DROP_RND.nextBoolean() ? "生命浆果" : "魔力浆果";
+        int dropX = m.getX();
+        int dropY = m.getY();
+
+        // ---- 普通怪物掉落：生命浆果(40%) / 魔力浆果(40%) / 无掉落(20%) ----
+        if (m.getType() == Monster.TYPE_NORMAL) {
+            int roll = DROP_RND.nextInt(100);
+            String dropName = null;
+            if (roll < 40) {
+                dropName = "生命浆果";
+            } else if (roll < 80) {
+                dropName = "魔力浆果";
+            }
+            if (dropName != null) {
+                DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
+                if (currentRoom != null) {
+                    currentRoom.addDroppedItem(drop);
+                }
+                sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
+            }
+        }
+
+        // ---- 精英怪物掉落：铁剑(20%) / 铁盾(20%) / 药水(60%) ----
+        if (m.getType() == Monster.TYPE_ELITE) {
+            int roll = DROP_RND.nextInt(100);
+            String dropName;
+            if (roll < 20) {
+                dropName = "铁剑";
+            } else if (roll < 40) {
+                dropName = "铁盾";
+            } else {
+                dropName = "药水";
+            }
             DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
             if (currentRoom != null) {
                 currentRoom.addDroppedItem(drop);
@@ -193,19 +223,10 @@ public class Game {
             sb.append("\n").append(m.getName()).append("掉落了 ").append(dropName).append("！");
         }
 
-        // ---- 普通怪物 30% 概率掉落药水 ----
-        if (m.getType() == Monster.TYPE_NORMAL && DROP_RND.nextInt(100) < 30) {
-            DroppedItem drop = new DroppedItem("药水", dropX, dropY);
-            if (currentRoom != null) {
-                currentRoom.addDroppedItem(drop);
-            }
-            sb.append("\n").append(m.getName()).append("掉落了药水！");
-        }
-
-        // ---- 精英怪物 50% 概率掉落装备或饰品 ----
-        if (m.getType() == Monster.TYPE_ELITE && DROP_RND.nextInt(100) < 50) {
-            String[] eliteDrops = {"铁剑", "铁盾", "暗影披风", "生命戒指", "元素项链"};
-            String dropName = eliteDrops[DROP_RND.nextInt(eliteDrops.length)];
+        // ---- Boss 掉落：暗影披风/生命戒指/元素项链 各 1/3 概率 ----
+        if (m.getType() == Monster.TYPE_BOSS) {
+            String[] bossDrops = {"暗影披风", "生命戒指", "元素项链"};
+            String dropName = bossDrops[DROP_RND.nextInt(bossDrops.length)];
             DroppedItem drop = new DroppedItem(dropName, dropX, dropY);
             if (currentRoom != null) {
                 currentRoom.addDroppedItem(drop);
@@ -232,14 +253,13 @@ public class Game {
 
     /**
      * 对指定怪物造成一次玩家物理伤害。如果怪物死亡，自动移除并处理掉落。
+     * 掉落坐标从怪物自身的 x/y 字段读取（调用方需提前通过 setX/setY 同步）。
      * 此方法由 AttackCommand（旧版命令行）和 GameService.performAttack（新版 API）共享。
      *
      * @param targetName 怪物名称
-     * @param dropX 掉落物 X 坐标（怪物死亡时使用）
-     * @param dropY 掉落物 Y 坐标（怪物死亡时使用）
      * @return 攻击结果描述文本，若怪物不存在或不可攻击则返回错误信息
      */
-    public String attackMonster(String targetName, int dropX, int dropY) {
+    public String attackMonster(String targetName) {
         Room current = getCurrentRoom();
         Player p = getPlayer();
         if (p == null) return "玩家不存在";
@@ -248,7 +268,6 @@ public class Game {
 
         Monster m = current.getMonster(targetName);
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
-        if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
         StringBuilder sb = new StringBuilder();
 
@@ -259,22 +278,21 @@ public class Game {
         if (!m.isAlive()) {
             current.removeMonster(m);
             sb.append("\n你击败了 ").append(m.getName()).append("！");
-            sb.append(processMonsterDrop(m, dropX, dropY));
+            sb.append(processMonsterDrop(m));
         }
 
         return sb.toString();
     }
 
     /**
-     * 蓄力攻击：对指定怪物造成两次玩家当前物攻150%的物理伤害。
+     * 蓄力攻击：对指定怪物造成两次玩家当前物攻85%的物理伤害。
      * 若怪物在两次伤害之间死亡，第一次击倒即停止并处理掉落。
+     * 掉落坐标从怪物自身的 x/y 字段读取（调用方需提前通过 setX/setY 同步）。
      *
      * @param targetName 怪物名称
-     * @param dropX 掉落物 X 坐标
-     * @param dropY 掉落物 Y 坐标
      * @return 攻击结果描述文本
      */
-    public String chargedAttackMonster(String targetName, int dropX, int dropY) {
+    public String chargedAttackMonster(String targetName) {
         Room current = getCurrentRoom();
         Player p = getPlayer();
         if (p == null) return "玩家不存在";
@@ -283,13 +301,12 @@ public class Game {
 
         Monster m = current.getMonster(targetName);
         if (m == null) return "这里没有叫 '" + targetName + "' 的怪物。";
-        if (m.isExploding()) return m.getName() + " 正在自爆倒计时中，无法被攻击。";
 
         StringBuilder sb = new StringBuilder();
 
-        // 150% 物攻，两次伤害
+        // 85% 物攻，两次伤害
         int baseDmg = Math.max(1, p.getEffectiveAttack());
-        int chargedDmg = Math.max(1, (int) Math.round(baseDmg * 1.5));
+        int chargedDmg = Math.max(1, (int) Math.round(baseDmg * 0.85));
 
         for (int hit = 1; hit <= 2; hit++) {
             m.takeDamage(chargedDmg);
@@ -301,7 +318,7 @@ public class Game {
             if (!m.isAlive()) {
                 current.removeMonster(m);
                 sb.append("\n你击败了 ").append(m.getName()).append("！");
-                sb.append(processMonsterDrop(m, dropX, dropY));
+                sb.append(processMonsterDrop(m));
                 break;
             }
         }

@@ -10,6 +10,7 @@ import cn.edu.whut.sept.zuul.command.*;
 import cn.edu.whut.sept.zuul.model.AttackRequest;
 import cn.edu.whut.sept.zuul.model.GameResponse;
 import cn.edu.whut.sept.zuul.model.GameSaveEntity;
+import cn.edu.whut.sept.zuul.model.Magic;
 import cn.edu.whut.sept.zuul.model.Monster;
 import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
@@ -33,23 +34,18 @@ public class GameService {
 
     /**
      * 将玩家状态注入到响应数据 Map 中。
-     * 同时驱动烧伤结算计时（tickBurn），确保无论前端以多高频率轮询，
-     * 烧伤每3秒都至少被结算一次。
+     * 同时驱动所有负面状态计时（烧伤/中毒），确保无论前端以多高频率轮询，
+     * 各状态都能按固定间隔结算。
      */
     private void injectPlayerStatus(Map<String, Object> data) {
         Player player = game.getPlayer();
         if (player != null) {
-            // ---- 驱动烧伤计时 ----
+            // ---- 驱动烧伤/中毒/流血等状态计时 ----
             if (player.getStatusManager() != null) {
                 int burnDmg = player.getStatusManager().tickBurn();
                 if (burnDmg > 0) {
                     data.put("burnDamage", burnDmg);
                     data.put("burnLayers", player.getStatusManager().getBurnLayers());
-                }
-                // ---- 驱动天使祝福计时 ----
-                boolean angelActive = player.getStatusManager().tickAngelBuff();
-                if (angelActive) {
-                    data.put("angelBuffRemainingMs", player.getStatusManager().getAngelBuffRemainingMs());
                 }
                 // ---- 驱动中毒计时 ----
                 int poisonDmg = player.getStatusManager().tickPoison();
@@ -61,9 +57,33 @@ public class GameService {
                 if (player.getStatusManager().hasBleed()) {
                     data.put("bleedLayers", player.getStatusManager().getBleedLayers());
                 }
+                // ---- 驱动迟缓过期检查 ----
+                player.getStatusManager().tickSlow();
+                // ---- 驱动束缚过期检查 ----
+                player.getStatusManager().tickBind();
+                // ---- 注入迟缓/束缚状态信息 ----
+                if (player.getStatusManager().hasSlow()) {
+                    data.put("hasSlow", true);
+                }
+                if (player.getStatusManager().hasBind()) {
+                    data.put("hasBind", true);
+                }
             }
 
-            // ---- 检查玩家是否因烧伤死亡 ----
+            // ---- 风隐形态：免疫负面状态；若玩家处于风隐且被施加了debuff，立即清除 ----
+            // 风隐形态下，所有负面状态tick仍会运行但层数已被clear，不会造成伤害
+            if (player.isWindCloakActive() && player.getStatusManager() != null) {
+                // 风隐形态下清除所有debuff（持续免疫）
+                player.getStatusManager().clear();
+            }
+
+            // ---- 驱动风隐形态MP消耗 ----
+            int windCloakMp = player.tickWindCloakMp();
+            if (windCloakMp < 0) {
+                data.put("windCloakAutoDeactivate", true);
+            }
+
+            // ---- 通用死亡检查：任一负面状态使 HP 降至 0 即判死 ----
             if (!player.isAlive() && !game.isGameOver()) {
                 game.setGameOver(true);
                 data.put("gameOver", true);
@@ -95,6 +115,8 @@ public class GameService {
             data.put("effectiveMagicResist", player.getEffectiveMagicResist());
             data.put("effectiveSpeed", player.getEffectiveSpeed());
             data.put("effectiveDodge", player.getEffectiveDodge());
+            // 注入风隐形态状态
+            data.put("windCloakActive", player.isWindCloakActive());
         }
     }
 
@@ -127,7 +149,6 @@ public class GameService {
             case "interact" -> new InteractCommand(game);
             case "shop" -> new ShopCommand(game);
             case "wave" -> new WaveCommand(game);
-            case "explode" -> new ExplodeCommand(game);
             case "bag" -> new BagCommand(game);
             default -> null;
         };
@@ -143,13 +164,21 @@ public class GameService {
             return GameResponse.error("Game is over! Please reset the game.");
         }
 
+        // ---- 检查玩家是否因持续伤害（流血/烧伤/中毒）已经死亡 ----
+        // 若 gameOver 尚未被设置（例如攻击响应尚未到达前端，前端就发来了 go 命令），
+        // 此处的存活检查可防止已死亡玩家继续移动或执行其他命令。
+        Player player = game.getPlayer();
+        if (player != null && !player.isAlive()) {
+            game.setGameOver(true);
+            return GameResponse.error("你因持续伤害而死亡，游戏结束。");
+        }
+
         // 解析命令（分割命令词和参数）
         String[] parts = commandStr.trim().split("\\s+");
         String commandWord = parts[0];
 
         // ---- 测试命令：test poison - 施加一层中毒 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "poison".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyPoison(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -161,7 +190,6 @@ public class GameService {
 
         // ---- 测试命令：test burn - 施加一层烧伤 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "burn".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyBurn(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -173,7 +201,6 @@ public class GameService {
 
         // ---- 测试命令：test bleed - 施加一层流血 ----
         if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "bleed".equalsIgnoreCase(parts[1])) {
-            Player player = game.getPlayer();
             if (player != null && player.getStatusManager() != null) {
                 player.getStatusManager().applyBleed(1);
                 Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
@@ -181,6 +208,28 @@ public class GameService {
                 return GameResponse.success("测试：施加 1 层流血", data);
             }
             return GameResponse.error("施加流血失败");
+        }
+
+        // ---- 测试命令：test slow - 施加一次迟缓 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "slow".equalsIgnoreCase(parts[1])) {
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applySlow(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加迟缓", data);
+            }
+            return GameResponse.error("施加迟缓失败");
+        }
+
+        // ---- 测试命令：test bind - 施加一次束缚 ----
+        if ("test".equalsIgnoreCase(commandWord) && parts.length >= 2 && "bind".equalsIgnoreCase(parts[1])) {
+            if (player != null && player.getStatusManager() != null) {
+                player.getStatusManager().applyBind(1);
+                Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+                injectPlayerStatus(data);
+                return GameResponse.success("测试：施加束缚", data);
+            }
+            return GameResponse.error("施加束缚失败");
         }
         String[] params = parts.length > 1 ? Arrays.copyOfRange(parts, 1, parts.length) : new String[0];
 
@@ -249,7 +298,7 @@ public class GameService {
         StringBuilder sb = new StringBuilder();
         int hitCount = 0;
 
-        // ---- 流血：每次主动攻击触发一次（在怪物命中判定之前，支持空挥） ----
+        // ---- 流血：每次主动攻击触发一次 ----
         Player player = game.getPlayer();
         if (player != null && player.getStatusManager() != null) {
             int bleedDmg = player.getStatusManager().tickBleedOnAttack();
@@ -258,14 +307,13 @@ public class GameService {
             }
         }
 
-        // ---- 如果玩家因流血死亡，立即返回死亡结果 ----
-        if (player != null && !player.isAlive()) {
+        // ---- 通用死亡检查（不绑定特定状态） ----
+        if (player != null && player.checkAndMarkDeath(sb)) {
             game.setGameOver(true);
             Map<String, Object> data = new HashMap<>(current.getFullInfo());
             data.put("hitCount", 0);
             data.put("gameOver", true);
             injectPlayerStatus(data);
-            sb.append("你因流血过多而死亡！");
             return GameResponse.success(sb.toString().trim(), data);
         }
 
@@ -280,7 +328,7 @@ public class GameService {
             return GameResponse.error("攻击请求中没有怪物数据");
         }
 
-        // ---- 对于突刺攻击，提取起点/终点用于线段命中判定 ----
+        // ---- 对于突刺攻击，提取起点/终点用于线段命中判定，并授予无敌帧 ----
         double pierceStartX = px;
         double pierceStartY = py;
         double pierceEndX = px;
@@ -296,6 +344,9 @@ public class GameService {
                 pierceEndX = req.getEndX();
                 pierceEndY = req.getEndY();
             }
+            // 突刺无敌帧：基础 180ms，风隐形态下延长至 1.5 倍 = 270ms
+            int invincibilityDuration = player.isWindCloakActive() ? 270 : 180;
+            player.setInvincibleUntil(System.currentTimeMillis() + invincibilityDuration);
         }
 
         for (AttackRequest.MonsterPosition mp : monsters) {
@@ -304,15 +355,17 @@ public class GameService {
 
             // 防御：确认怪物仍存活且可被攻击后再调用攻击方法
             Monster m = current.getMonster(mp.getName());
-            if (m == null || !m.isAlive() || m.isExploding()) continue;
+            if (m == null || !m.isAlive()) continue;
 
-            int dropX = (int) Math.round(mp.getX());
-            int dropY = (int) Math.round(mp.getY());
+            // 同步前端传来的怪物坐标到 Monster 对象，供掉落位置判定使用
+            m.setX((int) Math.round(mp.getX()));
+            m.setY((int) Math.round(mp.getY()));
+
             String result;
             if ("charged".equals(attackType)) {
-                result = game.chargedAttackMonster(mp.getName(), dropX, dropY);
+                result = game.chargedAttackMonster(mp.getName());
             } else {
-                result = game.attackMonster(mp.getName(), dropX, dropY);
+                result = game.attackMonster(mp.getName());
             }
             sb.append(result).append("\n");
             hitCount++;
@@ -392,6 +445,119 @@ public class GameService {
      */
     public Map<String, Object> getFullMap() {
         return game.getFullMap();
+    }
+
+    // ======================== 风隐技能接口 ========================
+
+    /**
+     * 激活风隐形态：清除负面状态，开启移速加成。
+     * @return 含玩家状态的响应
+     */
+    public GameResponse activateWindCloak() {
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+        if (game.isGameOver()) return GameResponse.error("Game is over!");
+        if (player.isWindCloakActive()) {
+            return GameResponse.error("风隐形态已激活");
+        }
+        player.activateWindCloak();
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("风隐形态开启！移速提高100%，免疫负面状态。", data);
+    }
+
+    /**
+     * 解除风隐形态。
+     * @return 含玩家状态的响应
+     */
+    public GameResponse deactivateWindCloak() {
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+        if (!player.isWindCloakActive()) {
+            return GameResponse.error("风隐形态未激活");
+        }
+        player.deactivateWindCloak();
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("风隐形态已解除。", data);
+    }
+
+    // ======================== 寒冰风暴技能接口 ========================
+
+    /** 寒冰风暴迟缓持续时间（毫秒）：10秒 */
+    private static final long ICE_STORM_SLOW_DURATION = 10000L;
+
+    /**
+     * 释放寒冰风暴：消耗25MP，对房间内全体敌人造成3次100%法伤，并施加迟缓。
+     * @param monsterPositions 怪物名称和坐标列表（供掉落坐标同步）
+     * @return 含更新后房间数据、命中怪物数量和伤害信息的响应
+     */
+    public GameResponse castIceStorm(List<Map<String, Object>> monsterPositions) {
+        if (game.isGameOver()) {
+            return GameResponse.error("Game is over! Please reset the game.");
+        }
+
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+
+        Room current = game.getCurrentRoom();
+        if (current == null) return GameResponse.error("当前不在任何房间");
+
+        // 检查并消耗MP
+        if (!Magic.canCast(player, Magic.Skill.ICE_STORM)) {
+            return GameResponse.error("魔力不足" + Magic.Skill.ICE_STORM.getMpCost() + "，无法释放寒冰风暴！");
+        }
+        player.consumeMp(Magic.Skill.ICE_STORM.getMpCost());
+
+        int magicDmg = Magic.calcMagicDamage(player, Magic.Skill.ICE_STORM);
+        StringBuilder sb = new StringBuilder();
+        sb.append("寒冰风暴释放！\n");
+
+        // 同步怪物坐标
+        if (monsterPositions != null) {
+            for (Map<String, Object> mp : monsterPositions) {
+                String name = (String) mp.get("name");
+                if (name == null) continue;
+                Monster m = current.getMonster(name);
+                if (m == null) continue;
+                try { m.setX(((Number) mp.get("x")).intValue()); } catch (Exception e) {}
+                try { m.setY(((Number) mp.get("y")).intValue()); } catch (Exception e) {}
+            }
+        }
+
+        int hitCount = 0;
+        // 对房间内所有存活怪物造成3次法伤（使用快照避免在迭代中修改列表）
+        List<Monster> snapshot = new java.util.ArrayList<>(current.getMonsters());
+        for (Monster m : snapshot) {
+            if (m == null || !m.isAlive()) continue;
+            hitCount++;
+            int totalDmg = 0;
+            for (int hit = 0; hit < 3; hit++) {
+                Magic.dealMagicDamage(m, magicDmg);
+                totalDmg += magicDmg;
+            }
+            // 施加迟缓状态（10秒内移速为0）
+            m.applySlow(ICE_STORM_SLOW_DURATION);
+
+            sb.append(m.getName()).append(" 受到3次冰霜冲击，共 ").append(totalDmg).append(" 点法术伤害，并被迟缓！");
+            if (!m.isAlive()) {
+                current.removeMonster(m);
+                sb.append("\n你击败了 ").append(m.getName()).append("！");
+                sb.append(game.processMonsterDrop(m));
+            }
+            sb.append("\n");
+        }
+
+        if (hitCount == 0) {
+            sb.append("房间内没有怪物。");
+        }
+
+        Map<String, Object> data = new HashMap<>(current.getFullInfo());
+        data.put("hitCount", hitCount);
+        data.put("iceStormDamage", magicDmg);
+        data.put("iceStormTotalHits", hitCount * 3);
+        injectPlayerStatus(data);
+        return GameResponse.success(sb.toString().trim(), data);
     }
 
     // ======================== 存档接口 ========================

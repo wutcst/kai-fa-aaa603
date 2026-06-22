@@ -5,11 +5,15 @@
 
 function isOverlayOpen(scene) {
   if (!scene) return false
-  return !!(scene.shopMenuOverlay || scene.shopBuyOverlay || scene.shopSellOverlay || scene.wisdomOverlay)
+  return !!(
+    scene.shopMenuOverlay ||
+    scene.shopBuyOverlay ||
+    scene.shopSellOverlay ||
+    scene.wisdomOverlay
+  )
 }
 
 export function createApi(emit, getScene) {
-
   async function _fetch(url, options = {}) {
     try {
       const res = await fetch(url, options)
@@ -28,15 +32,19 @@ export function createApi(emit, getScene) {
     const j = await _fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
+      body: JSON.stringify({ command }),
     })
     if (j) {
       const sceneNow = getScene()
       if (j.data && !isOverlayOpen(sceneNow)) {
-        try { sceneNow?.renderRoom(j.data) } catch (e) {}
+        try {
+          sceneNow?.renderRoom(j.data)
+        } catch (e) {}
       }
       if (j.status === 'error' && j.message?.includes('Game is over')) {
-        try { sceneNow?.showGameOver() } catch (e) {}
+        try {
+          sceneNow?.showGameOver()
+        } catch (e) {}
       }
     }
     return j
@@ -46,15 +54,19 @@ export function createApi(emit, getScene) {
     const j = await _fetch('/api/attack', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     })
     if (j) {
       const scene = getScene()
       if (j.data && !isOverlayOpen(scene)) {
-        try { scene?.renderRoom(j.data) } catch (e) {}
+        try {
+          scene?.renderRoom(j.data)
+        } catch (e) {}
       }
       if (j.message?.includes('游戏结束')) {
-        try { scene?.showGameOver() } catch (e) {}
+        try {
+          scene?.showGameOver()
+        } catch (e) {}
       }
     }
     return j
@@ -72,20 +84,34 @@ export function createApi(emit, getScene) {
       const mp = j.data.playerMp ?? scene.playerStats?.mp
       const maxMp = j.data.playerMaxMp ?? scene.playerStats?.maxMp
       const money = j.data.playerMoney ?? scene.playerStats?.money
-      try { scene.updatePlayerBars?.(hp, maxHp, mp, maxMp, money) } catch (e) {}
+      try {
+        scene.updatePlayerBars?.(hp, maxHp, mp, maxMp, money)
+      } catch (e) {}
       if (j.data.activeEffects) {
-        try { scene.updateBuffDisplay?.(j.data.activeEffects) } catch (e) {}
+        try {
+          scene.updateBuffDisplay?.(j.data.activeEffects)
+        } catch (e) {}
       }
       if (j.data.name && !isOverlayOpen(scene)) {
-        try { scene.renderRoom(j.data) } catch (e) {}
+        try {
+          scene.renderRoom(j.data)
+        } catch (e) {}
       }
       if (j.data.gameOver) {
-        try { scene.showGameOver() } catch (e) {}
+        try {
+          scene.showGameOver()
+        } catch (e) {}
       }
       if (j.data.name) {
-        try { window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: j.data.name } })) } catch (e) {}
+        try {
+          window.dispatchEvent(
+            new CustomEvent('minimap:update', { detail: { roomName: j.data.name } }),
+          )
+        } catch (e) {}
       }
-    } catch (e) { /* silent */ }
+    } catch (e) {
+      /* silent */
+    }
   }
 
   async function resetGame() {
@@ -93,12 +119,20 @@ export function createApi(emit, getScene) {
     if (j) {
       const scene = getScene()
       scene.gameOver = false
-      try { scene.gameOverOverlay?.destroy() } catch (e) {}
+      try {
+        scene.gameOverOverlay?.destroy()
+      } catch (e) {}
       scene.gameOverOverlay = null
-      try { window.dispatchEvent(new CustomEvent('game:reset')) } catch (e) {}
-      try { window.dispatchEvent(new CustomEvent('game:update', { detail: j })) } catch (e) {}
+      try {
+        window.dispatchEvent(new CustomEvent('game:reset'))
+      } catch (e) {}
+      try {
+        window.dispatchEvent(new CustomEvent('game:update', { detail: j }))
+      } catch (e) {}
       if (j.data && !isOverlayOpen(scene)) {
-        try { scene.renderRoom(j.data) } catch (e) {}
+        try {
+          scene.renderRoom(j.data)
+        } catch (e) {}
       }
     }
     return j
@@ -109,7 +143,9 @@ export function createApi(emit, getScene) {
     if (j?.data) {
       const scene = getScene()
       if (!isOverlayOpen(scene)) {
-        try { scene?.renderRoom(j.data) } catch (e) {}
+        try {
+          scene?.renderRoom(j.data)
+        } catch (e) {}
       }
     }
     return j
@@ -149,9 +185,16 @@ export function createApi(emit, getScene) {
   }
 
   return {
-    sendCommand, sendAttack, pollGame, resetGame,
-    fetchInitGame, fetchBackpack, fetchMap, fetchRaw,
-    activateWindCloak, deactivateWindCloak,
-    isOverlayOpen: () => isOverlayOpen(getScene())
+    sendCommand,
+    sendAttack,
+    pollGame,
+    resetGame,
+    fetchInitGame,
+    fetchBackpack,
+    fetchMap,
+    fetchRaw,
+    activateWindCloak,
+    deactivateWindCloak,
+    isOverlayOpen: () => isOverlayOpen(getScene()),
   }
 }

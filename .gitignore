@@ -9,6 +9,7 @@ backend/target/
 backend/node_modules/
 # --- 前端相关 ---
 frontend/node_modules/
+frontend/dist/
 # --- IDE/系统文件 ---
 .idea/
 *.iml

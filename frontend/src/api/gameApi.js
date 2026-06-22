@@ -13,22 +13,25 @@ export const api = {
   getSaves: () => request('/saves'),
 
   /** 保存到指定槽位 */
-  save: (saveId) => request('/save', {
-    method: 'POST',
-    body: JSON.stringify({ saveId }),
-  }),
+  save: (saveId) =>
+    request('/save', {
+      method: 'POST',
+      body: JSON.stringify({ saveId }),
+    }),
 
   /** 从指定槽位加载存档 */
-  load: (saveId) => request('/load', {
-    method: 'POST',
-    body: JSON.stringify({ saveId }),
-  }),
+  load: (saveId) =>
+    request('/load', {
+      method: 'POST',
+      body: JSON.stringify({ saveId }),
+    }),
 
   /** 删除指定槽位的存档 */
-  deleteSave: (saveId) => request('/deleteSave', {
-    method: 'POST',
-    body: JSON.stringify({ saveId }),
-  }),
+  deleteSave: (saveId) =>
+    request('/deleteSave', {
+      method: 'POST',
+      body: JSON.stringify({ saveId }),
+    }),
 
   /** 重置游戏（新游戏） */
   reset: () => {

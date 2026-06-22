@@ -175,14 +175,7 @@ public class SaveService {
             bag.addItem(new Item(bi.getItemName()));
         }
 
-        // 5. 从背包移除已装备物品（它们在身上不在背包中）
-        removeFromBag(bag, entity.getEquippedCloak());
-        removeFromBag(bag, entity.getEquippedRing());
-        removeFromBag(bag, entity.getEquippedAmulet());
-        removeFromBag(bag, entity.getEquippedWeapon());
-        removeFromBag(bag, entity.getEquippedArmor());
-
-        // 6. 恢复状态效果
+        // 5. 恢复状态效果
         deserializeStatus(player, entity.getStatusJson());
 
         // 7. 构建房间名→房间映射
@@ -264,14 +257,6 @@ public class SaveService {
     }
 
     // ======================== 辅助方法 ========================
-
-    private void removeFromBag(Bag bag, String itemName) {
-        if (itemName == null || itemName.isEmpty()) return;
-        Item item = bag.getItem(itemName);
-        if (item != null) {
-            bag.removeItem(item);
-        }
-    }
 
     private String serializeStatus(Player player) {
         Status.StatusManager sm = player.getStatusManager();

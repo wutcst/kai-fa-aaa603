@@ -14,9 +14,9 @@ import { ref, computed, reactive } from 'vue'
 
 // ==================== 模块级单例状态 ====================
 const visible = ref(false)
-const items = ref([])           // [{ itemId, name, rarity, functionDesc, loreDesc, quantity, equipped, ... }]
-const selectedSlot = ref(null)  // 选中格子索引 (0-14) 或 null
-const hoveredSlot = ref(null)   // 鼠标悬停格子索引
+const items = ref([]) // [{ itemId, name, rarity, functionDesc, loreDesc, quantity, equipped, ... }]
+const selectedSlot = ref(null) // 选中格子索引 (0-14) 或 null
+const hoveredSlot = ref(null) // 鼠标悬停格子索引
 
 // ==================== 计算属性 ====================
 const selectedItem = computed(() => {
@@ -29,10 +29,14 @@ const selectedItem = computed(() => {
 /** 稀有度 → 颜色 */
 function rarityColor(rarity) {
   switch (rarity) {
-    case 'legendary': return '#FF6600'
-    case 'epic':      return '#CC44FF'
-    case 'rare':      return '#4488FF'
-    default:          return '#FFD700' // common → 金色
+    case 'legendary':
+      return '#FF6600'
+    case 'epic':
+      return '#CC44FF'
+    case 'rare':
+      return '#4488FF'
+    default:
+      return '#FFD700' // common → 金色
   }
 }
 
@@ -68,8 +72,11 @@ async function refresh() {
     const data = j?.data?.backpack || []
     if (data.length > 0) {
       items.value = data
-      console.log('[Backpack] items loaded:', data.length,
-        data.map(it => ({ name: it.name, rarity: it.rarity, qty: it.quantity })))
+      console.log(
+        '[Backpack] items loaded:',
+        data.length,
+        data.map((it) => ({ name: it.name, rarity: it.rarity, qty: it.quantity })),
+      )
     }
   } catch (e) {
     console.warn('[Backpack] 无法获取背包数据', e)
@@ -110,7 +117,7 @@ async function useItem() {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag use ' + item.name })
+      body: JSON.stringify({ command: 'bag use ' + item.name }),
     })
     const j = await res.json()
 
@@ -123,7 +130,7 @@ async function useItem() {
     }
 
     // 保持当前选中（如果物品仍然存在）
-    const stillExists = items.value.find(it => it.name === item.name)
+    const stillExists = items.value.find((it) => it.name === item.name)
     if (!stillExists) {
       selectedSlot.value = null
     } else {
@@ -144,7 +151,7 @@ async function unequipItem() {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag unequip ' + item.name })
+      body: JSON.stringify({ command: 'bag unequip ' + item.name }),
     })
     const j = await res.json()
 
@@ -155,7 +162,7 @@ async function unequipItem() {
     }
 
     // 保持选中
-    const stillExists = items.value.find(it => it.name === item.name)
+    const stillExists = items.value.find((it) => it.name === item.name)
     if (stillExists) {
       const idx = items.value.indexOf(stillExists)
       selectedSlot.value = idx
@@ -175,7 +182,7 @@ async function discardItem() {
     const res = await fetch('/api/command', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: 'bag discard ' + item.name })
+      body: JSON.stringify({ command: 'bag discard ' + item.name }),
     })
     const j = await res.json()
 

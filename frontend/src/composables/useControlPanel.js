@@ -22,7 +22,9 @@ function open() {
   visible.value = true
   try {
     window.dispatchEvent(new CustomEvent('game:pause-scene'))
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 /** 关闭控制面板，同时通知游戏场景恢复 */
@@ -30,7 +32,9 @@ function close() {
   visible.value = false
   try {
     window.dispatchEvent(new CustomEvent('game:resume-scene'))
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
 }
 
 /** 切换控制面板显示/隐藏 */

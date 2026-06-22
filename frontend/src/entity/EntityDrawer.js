@@ -1,11 +1,11 @@
 /**
  * EntityDrawer.js
  * 游戏实体形象绘制模块
- * 
+ *
  * 所有实体使用 Phaser.GameObjects.Graphics 在局部原点 (0,0) 绘制，
  * 绘制后通过 gfx.setPosition(x, y) 放置到场景中。
  * 绘制函数签名：drawXxx(gfx, s)，其中 s 为缩放系数。
- * 
+ *
  * 参考文档：plans/game-entity-designs.md
  */
 
@@ -170,7 +170,8 @@ function drawPlayerBody(gfx, s) {
 
   // ---- 盾牌（左臂） ----
   // 古铜主体：矩形+底部半圆
-  const shieldX = S(-12), shieldY = S(-2)
+  const shieldX = S(-12),
+    shieldY = S(-2)
   fillRect(gfx, shieldX, shieldY, S(6), S(10), 0x884422)
   // 底部半圆
   gfx.fillStyle(0x884422, 1)
@@ -261,8 +262,10 @@ export function drawGoblin(gfx, s) {
   // 布纹线
   gfx.lineStyle(S(0.5), 0x3a4a2a, 0.5)
   gfx.beginPath()
-  gfx.moveTo(S(-3), S(6)); gfx.lineTo(S(3), S(6))
-  gfx.moveTo(S(-2), S(8)); gfx.lineTo(S(2), S(8))
+  gfx.moveTo(S(-3), S(6))
+  gfx.lineTo(S(3), S(6))
+  gfx.moveTo(S(-2), S(8))
+  gfx.lineTo(S(2), S(8))
   gfx.strokePath()
   // 手臂
   fillRect(gfx, S(-6), S(5), S(3), S(5), 0x7a9a4a)
@@ -345,8 +348,10 @@ export function drawSkeleton(gfx, s) {
   // 衣纹线
   gfx.lineStyle(S(0.5), 0x111111, 0.5)
   gfx.beginPath()
-  gfx.moveTo(S(-2), S(3)); gfx.lineTo(S(2), S(3))
-  gfx.moveTo(S(-1), S(6)); gfx.lineTo(S(1), S(6))
+  gfx.moveTo(S(-2), S(3))
+  gfx.lineTo(S(2), S(3))
+  gfx.moveTo(S(-1), S(6))
+  gfx.lineTo(S(1), S(6))
   gfx.strokePath()
   // 手臂骨
   fillRect(gfx, S(-6), S(2), S(3), S(6), 0xc8b898)
@@ -526,7 +531,8 @@ export function drawShadowKnight(gfx, s) {
   // 胸甲中线
   gfx.lineStyle(S(0.5), 0x222233, 0.6)
   gfx.beginPath()
-  gfx.moveTo(0, S(1)); gfx.lineTo(0, S(11))
+  gfx.moveTo(0, S(1))
+  gfx.lineTo(0, S(11))
   gfx.strokePath()
   // 肩甲
   fillRect(gfx, S(-7), S(1), S(4), S(4), 0x445566)
@@ -745,10 +751,14 @@ export function drawDragon(gfx, s) {
   // 翼骨
   gfx.lineStyle(S(1.5), 0x228822, 0.6)
   gfx.beginPath()
-  gfx.moveTo(S(-4), S(2)); gfx.lineTo(S(-15), S(-2))
-  gfx.moveTo(S(-4), S(4)); gfx.lineTo(S(-13), S(6))
-  gfx.moveTo(S(4), S(2)); gfx.lineTo(S(15), S(-2))
-  gfx.moveTo(S(4), S(4)); gfx.lineTo(S(13), S(6))
+  gfx.moveTo(S(-4), S(2))
+  gfx.lineTo(S(-15), S(-2))
+  gfx.moveTo(S(-4), S(4))
+  gfx.lineTo(S(-13), S(6))
+  gfx.moveTo(S(4), S(2))
+  gfx.lineTo(S(15), S(-2))
+  gfx.moveTo(S(4), S(4))
+  gfx.lineTo(S(13), S(6))
   gfx.strokePath()
   // 龙腿
   fillRect(gfx, S(-5), S(17), S(4), S(5), 0x115511)
@@ -872,9 +882,12 @@ export function drawGolem(gfx, s) {
   // 石纹裂隙
   gfx.lineStyle(S(0.5), 0x444444, 0.5)
   gfx.beginPath()
-  gfx.moveTo(S(-3), S(6)); gfx.lineTo(S(2), S(10))
-  gfx.moveTo(S(4), S(7)); gfx.lineTo(S(-1), S(13))
-  gfx.moveTo(S(-5), S(12)); gfx.lineTo(S(0), S(17))
+  gfx.moveTo(S(-3), S(6))
+  gfx.lineTo(S(2), S(10))
+  gfx.moveTo(S(4), S(7))
+  gfx.lineTo(S(-1), S(13))
+  gfx.moveTo(S(-5), S(12))
+  gfx.lineTo(S(0), S(17))
   gfx.strokePath()
   // 核心橙光
   gfx.fillStyle(0xff8844, 0.15)
@@ -940,13 +953,16 @@ export function drawChest(gfx, s) {
   // 中缝线
   gfx.lineStyle(S(0.5), 0x886611, 0.8)
   gfx.beginPath()
-  gfx.moveTo(S(-9), S(3)); gfx.lineTo(S(9), S(3))
+  gfx.moveTo(S(-9), S(3))
+  gfx.lineTo(S(9), S(3))
   gfx.strokePath()
   // 盖雕纹
   gfx.lineStyle(S(0.3), 0xaa8833, 0.5)
   gfx.beginPath()
-  gfx.moveTo(S(-5), S(-3)); gfx.lineTo(S(5), S(-3))
-  gfx.moveTo(S(-4), S(-1)); gfx.lineTo(S(4), S(-1))
+  gfx.moveTo(S(-5), S(-3))
+  gfx.lineTo(S(5), S(-3))
+  gfx.moveTo(S(-4), S(-1))
+  gfx.lineTo(S(4), S(-1))
   gfx.strokePath()
   // 光芒特效（两层三角从顶部发出）
   fillTriangle(gfx, 0, S(-10), S(-3), S(-6), S(3), S(-6), 0xffdd66, 0.3)
@@ -1084,7 +1100,8 @@ export function drawShopMerchant(gfx, s) {
   // 袋绳
   gfx.lineStyle(S(0.8), 0x886644, 1)
   gfx.beginPath()
-  gfx.moveTo(S(6), S(2)); gfx.lineTo(S(5), S(-1))
+  gfx.moveTo(S(6), S(2))
+  gfx.lineTo(S(5), S(-1))
   gfx.strokePath()
   // 手臂
   fillRect(gfx, S(-7), S(0), S(3), S(5), 0x886644)
@@ -1095,7 +1112,9 @@ export function drawShopMerchant(gfx, s) {
   // 金链
   gfx.lineStyle(S(1), 0xffdd00, 0.8)
   gfx.beginPath()
-  gfx.moveTo(S(-2), S(-2)); gfx.lineTo(S(0), S(-1)); gfx.lineTo(S(2), S(-2))
+  gfx.moveTo(S(-2), S(-2))
+  gfx.lineTo(S(0), S(-1))
+  gfx.lineTo(S(2), S(-2))
   gfx.strokePath()
   fillCircle(gfx, 0, S(-1), S(1.5), 0xffdd00)
   // 腿
@@ -1116,7 +1135,7 @@ export function drawPotion(gfx, s) {
   // 瓶颈
   fillRect(gfx, S(-2), S(-5), S(4), S(4), 0x88ccff, 0.9)
   // 瓶塞
-  fillRect(gfx, S(-2.5), S(-6), S(5), S(2), 0x8B4513)
+  fillRect(gfx, S(-2.5), S(-6), S(5), S(2), 0x8b4513)
   // 红色药水液体
   fillRect(gfx, S(-3), S(1), S(6), S(6), 0xff4444, 0.8)
   // 液体高光
@@ -1124,7 +1143,8 @@ export function drawPotion(gfx, s) {
   // 瓶口反光
   gfx.lineStyle(S(1), 0xffffff, 0.3)
   gfx.beginPath()
-  gfx.moveTo(S(-3), S(-4)); gfx.lineTo(S(3), S(-4))
+  gfx.moveTo(S(-3), S(-4))
+  gfx.lineTo(S(3), S(-4))
   gfx.strokePath()
 }
 
@@ -1132,14 +1152,15 @@ export function drawPotion(gfx, s) {
 export function drawIronSword(gfx, s) {
   const S = (v) => v * s
   // 剑刃
-  fillTriangle(gfx, S(0), S(-16), S(-2), S(2), S(2), S(2), 0xC0C0C0)
+  fillTriangle(gfx, S(0), S(-16), S(-2), S(2), S(2), S(2), 0xc0c0c0)
   // 剑刃中线高光
   gfx.lineStyle(S(1), 0xffffff, 0.4)
   gfx.beginPath()
-  gfx.moveTo(S(0), S(-15)); gfx.lineTo(S(0), S(1))
+  gfx.moveTo(S(0), S(-15))
+  gfx.lineTo(S(0), S(1))
   gfx.strokePath()
   // 剑格（护手）
-  fillRect(gfx, S(-5), S(2), S(10), S(2), 0x8B7355)
+  fillRect(gfx, S(-5), S(2), S(10), S(2), 0x8b7355)
   // 剑柄
   fillRect(gfx, S(-1.5), S(4), S(3), S(6), 0x654321)
   // 剑柄缠绕纹
@@ -1147,11 +1168,12 @@ export function drawIronSword(gfx, s) {
   for (let i = 0; i < 3; i++) {
     const y = S(5 + i * 1.5)
     gfx.beginPath()
-    gfx.moveTo(S(-1), y); gfx.lineTo(S(1), y)
+    gfx.moveTo(S(-1), y)
+    gfx.lineTo(S(1), y)
     gfx.strokePath()
   }
   // 剑首（尾端圆球）
-  fillCircle(gfx, 0, S(10), S(2), 0x8B7355)
+  fillCircle(gfx, 0, S(10), S(2), 0x8b7355)
 }
 
 // ---- 24. 铁盾 (Iron Shield) ----
@@ -1163,18 +1185,24 @@ export function drawIronShield(gfx, s) {
   gfx.lineStyle(S(2), 0x666666, 1)
   gfx.strokeEllipse(0, 0, S(16), S(20))
   // 十字金属纹
-  fillRect(gfx, S(-1), S(-9), S(2), S(18), 0xAAAAAA, 0.6)
-  fillRect(gfx, S(-6), S(-1), S(12), S(2), 0xAAAAAA, 0.6)
+  fillRect(gfx, S(-1), S(-9), S(2), S(18), 0xaaaaaa, 0.6)
+  fillRect(gfx, S(-6), S(-1), S(12), S(2), 0xaaaaaa, 0.6)
   // 中心铆钉
-  fillCircle(gfx, 0, 0, S(2.5), 0xBBBBBB)
-  fillCircle(gfx, 0, 0, S(1.5), 0xDDDDDD)
+  fillCircle(gfx, 0, 0, S(2.5), 0xbbbbbb)
+  fillCircle(gfx, 0, 0, S(1.5), 0xdddddd)
   // 边缘铆钉
   const rivets = [
-    [0, -8], [5, -5], [7, 0], [5, 5], [0, 8],
-    [-5, 5], [-7, 0], [-5, -5]
+    [0, -8],
+    [5, -5],
+    [7, 0],
+    [5, 5],
+    [0, 8],
+    [-5, 5],
+    [-7, 0],
+    [-5, -5],
   ]
   rivets.forEach(([rx, ry]) => {
-    fillCircle(gfx, S(rx), S(ry), S(1), 0xAAAAAA)
+    fillCircle(gfx, S(rx), S(ry), S(1), 0xaaaaaa)
   })
 }
 
@@ -1182,87 +1210,100 @@ export function drawIronShield(gfx, s) {
 export function drawShadowCloak(gfx, s) {
   const S = (v) => v * s
   // 披风主体（暗紫色）
-  fillTriangle(gfx, S(-10), S(-8), S(10), S(-8), S(0), S(14), 0x2A0A3A)
+  fillTriangle(gfx, S(-10), S(-8), S(10), S(-8), S(0), S(14), 0x2a0a3a)
   // 内层更深
-  fillTriangle(gfx, S(-7), S(-5), S(7), S(-5), S(0), S(11), 0x1A0530)
+  fillTriangle(gfx, S(-7), S(-5), S(7), S(-5), S(0), S(11), 0x1a0530)
   // 暗影能量纹路
-  gfx.lineStyle(S(1), 0x6633AA, 0.3)
+  gfx.lineStyle(S(1), 0x6633aa, 0.3)
   gfx.beginPath()
-  gfx.moveTo(S(-5), S(-3)); gfx.lineTo(S(-2), S(2)); gfx.lineTo(S(-4), S(7))
+  gfx.moveTo(S(-5), S(-3))
+  gfx.lineTo(S(-2), S(2))
+  gfx.lineTo(S(-4), S(7))
   gfx.strokePath()
   gfx.beginPath()
-  gfx.moveTo(S(5), S(-3)); gfx.lineTo(S(2), S(2)); gfx.lineTo(S(4), S(7))
+  gfx.moveTo(S(5), S(-3))
+  gfx.lineTo(S(2), S(2))
+  gfx.lineTo(S(4), S(7))
   gfx.strokePath()
   // 暗影雾气光晕
-  fillCircle(gfx, S(0), S(2), S(10), 0x6633AA, 0.08)
-  fillCircle(gfx, S(-3), S(0), S(6), 0x8844CC, 0.06)
-  fillCircle(gfx, S(3), S(3), S(7), 0x8844CC, 0.06)
+  fillCircle(gfx, S(0), S(2), S(10), 0x6633aa, 0.08)
+  fillCircle(gfx, S(-3), S(0), S(6), 0x8844cc, 0.06)
+  fillCircle(gfx, S(3), S(3), S(7), 0x8844cc, 0.06)
   // 领扣
   fillCircle(gfx, 0, S(-7), S(2), 0x888888)
-  fillCircle(gfx, 0, S(-7), S(1), 0xAAAAAA)
+  fillCircle(gfx, 0, S(-7), S(1), 0xaaaaaa)
 }
 
 // ---- 26. 生命戒指 (Life Ring) ----
 export function drawLifeRing(gfx, s) {
   const S = (v) => v * s
   // 翠绿色光晕
-  fillCircle(gfx, 0, 0, S(14), 0x44CC44, 0.08)
-  fillCircle(gfx, 0, 0, S(12), 0x44CC44, 0.05)
+  fillCircle(gfx, 0, 0, S(14), 0x44cc44, 0.08)
+  fillCircle(gfx, 0, 0, S(12), 0x44cc44, 0.05)
   // 戒指外圈
-  gfx.lineStyle(S(3), 0x88DD88, 1)
+  gfx.lineStyle(S(3), 0x88dd88, 1)
   gfx.strokeCircle(0, 0, S(8))
   // 戒指内圈
-  gfx.lineStyle(S(1.5), 0xAAEEAA, 0.8)
+  gfx.lineStyle(S(1.5), 0xaaeeaa, 0.8)
   gfx.strokeCircle(0, 0, S(7))
   // 生命之树枝叶纹路
-  gfx.lineStyle(S(1), 0x66BB66, 0.5)
+  gfx.lineStyle(S(1), 0x66bb66, 0.5)
   gfx.beginPath()
-  gfx.moveTo(S(-3), S(-6)); gfx.lineTo(S(-5), S(-3)); gfx.lineTo(S(-6), S(0))
+  gfx.moveTo(S(-3), S(-6))
+  gfx.lineTo(S(-5), S(-3))
+  gfx.lineTo(S(-6), S(0))
   gfx.strokePath()
   gfx.beginPath()
-  gfx.moveTo(S(3), S(-6)); gfx.lineTo(S(5), S(-3)); gfx.lineTo(S(6), S(0))
+  gfx.moveTo(S(3), S(-6))
+  gfx.lineTo(S(5), S(-3))
+  gfx.lineTo(S(6), S(0))
   gfx.strokePath()
   gfx.beginPath()
-  gfx.moveTo(S(-4), S(4)); gfx.lineTo(S(0), S(7)); gfx.lineTo(S(4), S(4))
+  gfx.moveTo(S(-4), S(4))
+  gfx.lineTo(S(0), S(7))
+  gfx.lineTo(S(4), S(4))
   gfx.strokePath()
   // 绿叶点缀
-  fillCircle(gfx, S(-5), S(-3), S(1.5), 0x88FF88, 0.7)
-  fillCircle(gfx, S(5), S(-3), S(1.5), 0x88FF88, 0.7)
-  fillCircle(gfx, S(0), S(7), S(1.5), 0x88FF88, 0.7)
+  fillCircle(gfx, S(-5), S(-3), S(1.5), 0x88ff88, 0.7)
+  fillCircle(gfx, S(5), S(-3), S(1.5), 0x88ff88, 0.7)
+  fillCircle(gfx, S(0), S(7), S(1.5), 0x88ff88, 0.7)
   // 顶部绿色宝石
-  fillCircle(gfx, 0, S(-8), S(2.5), 0x66EE66, 0.9)
-  fillCircle(gfx, 0, S(-8), S(1.5), 0xAAFFAA, 0.7)
+  fillCircle(gfx, 0, S(-8), S(2.5), 0x66ee66, 0.9)
+  fillCircle(gfx, 0, S(-8), S(1.5), 0xaaffaa, 0.7)
 }
 
 // ---- 27. 元素项链 (Element Necklace) ----
 export function drawElementNecklace(gfx, s) {
   const S = (v) => v * s
   // 四色元素光晕
-  fillCircle(gfx, S(-4), S(-2), S(8), 0xFF4444, 0.06)
-  fillCircle(gfx, S(4), S(-2), S(8), 0x4444FF, 0.06)
-  fillCircle(gfx, S(-3), S(5), S(8), 0xFFFF44, 0.06)
-  fillCircle(gfx, S(3), S(5), S(8), 0x44FF44, 0.06)
+  fillCircle(gfx, S(-4), S(-2), S(8), 0xff4444, 0.06)
+  fillCircle(gfx, S(4), S(-2), S(8), 0x4444ff, 0.06)
+  fillCircle(gfx, S(-3), S(5), S(8), 0xffff44, 0.06)
+  fillCircle(gfx, S(3), S(5), S(8), 0x44ff44, 0.06)
   // 金色链子
-  gfx.lineStyle(S(1.5), 0xDDAA44, 0.8)
+  gfx.lineStyle(S(1.5), 0xddaa44, 0.8)
   gfx.beginPath()
-  gfx.moveTo(S(-6), S(-10)); gfx.lineTo(S(-3), S(-8)); gfx.lineTo(S(0), S(-9))
-  gfx.lineTo(S(3), S(-8)); gfx.lineTo(S(6), S(-10))
+  gfx.moveTo(S(-6), S(-10))
+  gfx.lineTo(S(-3), S(-8))
+  gfx.lineTo(S(0), S(-9))
+  gfx.lineTo(S(3), S(-8))
+  gfx.lineTo(S(6), S(-10))
   gfx.strokePath()
   // 吊坠底座
   fillEllipse(gfx, 0, S(2), S(10), S(10), 0x886644)
   // 四元素宝石
-  fillCircle(gfx, S(-3), S(-1), S(3), 0xFF3333, 0.9)
-  fillCircle(gfx, S(3), S(-1), S(3), 0x3333FF, 0.9)
-  fillCircle(gfx, S(-2), S(5), S(3), 0xFFFF33, 0.9)
-  fillCircle(gfx, S(2), S(5), S(3), 0x33FF33, 0.9)
+  fillCircle(gfx, S(-3), S(-1), S(3), 0xff3333, 0.9)
+  fillCircle(gfx, S(3), S(-1), S(3), 0x3333ff, 0.9)
+  fillCircle(gfx, S(-2), S(5), S(3), 0xffff33, 0.9)
+  fillCircle(gfx, S(2), S(5), S(3), 0x33ff33, 0.9)
   // 中心主石（白色）
-  fillCircle(gfx, 0, S(2), S(2.5), 0xFFFFFF, 0.9)
-  fillCircle(gfx, 0, S(2), S(1.5), 0xFFEE88, 0.8)
+  fillCircle(gfx, 0, S(2), S(2.5), 0xffffff, 0.9)
+  fillCircle(gfx, 0, S(2), S(1.5), 0xffee88, 0.8)
   // 宝石高光
-  fillCircle(gfx, S(-3.5), S(-2), S(1), 0xFFFFFF, 0.3)
-  fillCircle(gfx, S(2.5), S(-2), S(1), 0xFFFFFF, 0.3)
-  fillCircle(gfx, S(-2.5), S(4), S(1), 0xFFFFFF, 0.3)
-  fillCircle(gfx, S(1.5), S(4), S(1), 0xFFFFFF, 0.3)
+  fillCircle(gfx, S(-3.5), S(-2), S(1), 0xffffff, 0.3)
+  fillCircle(gfx, S(2.5), S(-2), S(1), 0xffffff, 0.3)
+  fillCircle(gfx, S(-2.5), S(4), S(1), 0xffffff, 0.3)
+  fillCircle(gfx, S(1.5), S(4), S(1), 0xffffff, 0.3)
 }
 
 // ==================== 七点五、星云传送门绘制 ====================
@@ -1277,27 +1318,27 @@ export function drawElementNecklace(gfx, s) {
 export function drawNebulaPortal(gfx, w, h) {
   // 从外到内的多层星云椭圆
   const layers = [
-    { color: 0x6633cc, alpha: 0.20, sw: 1.00, sh: 1.00 },
+    { color: 0x6633cc, alpha: 0.2, sw: 1.0, sh: 1.0 },
     { color: 0xcc44aa, alpha: 0.18, sw: 0.88, sh: 0.88 },
     { color: 0x4488ff, alpha: 0.22, sw: 0.76, sh: 0.76 },
     { color: 0xaa66ff, alpha: 0.25, sw: 0.62, sh: 0.62 },
-    { color: 0xff88cc, alpha: 0.20, sw: 0.48, sh: 0.48 },
-    { color: 0xddbbff, alpha: 0.30, sw: 0.32, sh: 0.32 },
+    { color: 0xff88cc, alpha: 0.2, sw: 0.48, sh: 0.48 },
+    { color: 0xddbbff, alpha: 0.3, sw: 0.32, sh: 0.32 },
     { color: 0xffffff, alpha: 0.15, sw: 0.18, sh: 0.18 },
   ]
 
-  layers.forEach(l => {
+  layers.forEach((l) => {
     fillEllipse(gfx, 0, 0, w * l.sw, h * l.sh, l.color, l.alpha)
   })
 
   // 散落星点
   const starColors = [0xffffff, 0xaaccff, 0xffddaa, 0xffaaff]
-  const starSeeds = [0.123, 0.456, 0.789, 0.234, 0.567, 0.890, 0.345, 0.678]
+  const starSeeds = [0.123, 0.456, 0.789, 0.234, 0.567, 0.89, 0.345, 0.678]
   const hw = w / 2
   const hh = h / 2
   starSeeds.forEach((seed, i) => {
-    const x = ((seed * 2.17) % 1 * 2 - 1) * hw * 0.7
-    const y = ((seed * 3.71) % 1 * 2 - 1) * hh * 0.7
+    const x = (((seed * 2.17) % 1) * 2 - 1) * hw * 0.7
+    const y = (((seed * 3.71) % 1) * 2 - 1) * hh * 0.7
     const radius = 0.8 + ((seed * 5.33) % 3)
     const color = starColors[i % starColors.length]
     const alpha = 0.4 + ((seed * 7.19) % 1) * 0.5
@@ -1309,7 +1350,7 @@ export function drawNebulaPortal(gfx, w, h) {
   const arcAlpha = 0.25
   gfx.lineStyle(1.5, arcColor, arcAlpha)
   for (let a = 0; a < 3; a++) {
-    const angleOffset = a * Math.PI * 2 / 3
+    const angleOffset = (a * Math.PI * 2) / 3
     gfx.beginPath()
     for (let t = 0; t <= 20; t++) {
       const p = t / 20
@@ -1350,18 +1391,28 @@ export function getMonsterDrawer(monName, specialType) {
   if (nm.includes('食人魔') || nm.includes('ogre')) return drawOgre
 
   // 精英怪物
-  if (nm.includes('暗影骑士') || (nm.includes('shadow') && !nm.includes('king'))) return drawShadowKnight
+  if (nm.includes('暗影骑士') || (nm.includes('shadow') && !nm.includes('king')))
+    return drawShadowKnight
   if (nm.includes('地狱犬') || nm.includes('hell') || nm.includes('hound')) return drawHellHound
   if (nm.includes('石像鬼') || nm.includes('gargoyle')) return drawGargoyle
-  if (nm.includes('暗黑法师') || nm.includes('dark mage') || nm.includes('dark') || nm.includes('mage')) return drawDarkMage
-  if (nm.includes('巨型蜘蛛') || nm.includes('giant spider') || nm.includes('spider')) return drawGiantSpider
+  if (
+    nm.includes('暗黑法师') ||
+    nm.includes('dark mage') ||
+    nm.includes('dark') ||
+    nm.includes('mage')
+  )
+    return drawDarkMage
+  if (nm.includes('巨型蜘蛛') || nm.includes('giant spider') || nm.includes('spider'))
+    return drawGiantSpider
 
   // Boss
   if (nm.includes('巨龙') || nm.includes('dragon')) return drawDragon
-  if (nm.includes('恶魔领主') || nm.includes('demon lord') || nm.includes('demon')) return drawDemonLord
+  if (nm.includes('恶魔领主') || nm.includes('demon lord') || nm.includes('demon'))
+    return drawDemonLord
   if (nm.includes('巫妖王') || nm.includes('lich')) return drawLichKing
   if (nm.includes('石魔像') || nm.includes('golem')) return drawGolem
-  if (nm.includes('暗影之王') || (nm.includes('shadow') && nm.includes('king'))) return drawShadowKing
+  if (nm.includes('暗影之王') || (nm.includes('shadow') && nm.includes('king')))
+    return drawShadowKing
 
   // 默认哥布林
   return drawGoblin
@@ -1377,7 +1428,7 @@ export function getEncounterDrawer(eventType) {
     CHEST: drawChest,
     MAIDEN: drawMaiden,
     ANGEL: drawAngel,
-    BLACKSMITH: drawBlacksmith
+    BLACKSMITH: drawBlacksmith,
   }
   return map[eventType] || null
 }
@@ -1390,8 +1441,10 @@ export function getEncounterDrawer(eventType) {
 export function getItemDrawer(itemName) {
   if (!itemName) return null
   if (itemName.includes('药水')) return drawPotion
-  if (itemName.includes('铁剑') || (itemName.includes('剑') && itemName.includes('铁'))) return drawIronSword
-  if (itemName.includes('铁盾') || (itemName.includes('盾') && itemName.includes('铁'))) return drawIronShield
+  if (itemName.includes('铁剑') || (itemName.includes('剑') && itemName.includes('铁')))
+    return drawIronSword
+  if (itemName.includes('铁盾') || (itemName.includes('盾') && itemName.includes('铁')))
+    return drawIronShield
   if (itemName.includes('暗影披风') || itemName.includes('披风')) return drawShadowCloak
   if (itemName.includes('生命戒指') || itemName.includes('戒指')) return drawLifeRing
   if (itemName.includes('元素项链') || itemName.includes('项链')) return drawElementNecklace

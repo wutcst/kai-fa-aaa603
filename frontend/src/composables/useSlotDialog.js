@@ -5,7 +5,7 @@ export function useSlotDialog() {
   const slotDialog = reactive({
     visible: false,
     title: '',
-    saves: {},      // { 1: {...}, 2: {...}, 3: {...} }
+    saves: {}, // { 1: {...}, 2: {...}, 3: {...} }
     callback: null, // (slotNumber) => {}
   })
 

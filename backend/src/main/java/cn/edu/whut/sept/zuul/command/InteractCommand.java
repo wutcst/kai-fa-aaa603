@@ -349,7 +349,8 @@ public class InteractCommand implements Command {
         for (String line : angelDialog) {
             sb.append(line).append("\n");
         }
-        player.getStatusManager().applyAngelBuff();
+        // 天使祝福已移除
+        sb.append("天使祝福系统已关闭。\n");
     }
 
     /**

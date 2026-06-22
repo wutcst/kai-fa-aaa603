@@ -175,14 +175,7 @@ public class SaveService {
             bag.addItem(new Item(bi.getItemName()));
         }
 
-        // 5. 从背包移除已装备物品（它们在身上不在背包中）
-        removeFromBag(bag, entity.getEquippedCloak());
-        removeFromBag(bag, entity.getEquippedRing());
-        removeFromBag(bag, entity.getEquippedAmulet());
-        removeFromBag(bag, entity.getEquippedWeapon());
-        removeFromBag(bag, entity.getEquippedArmor());
-
-        // 6. 恢复状态效果
+        // 5. 恢复状态效果
         deserializeStatus(player, entity.getStatusJson());
 
         // 7. 构建房间名→房间映射
@@ -265,14 +258,6 @@ public class SaveService {
 
     // ======================== 辅助方法 ========================
 
-    private void removeFromBag(Bag bag, String itemName) {
-        if (itemName == null || itemName.isEmpty()) return;
-        Item item = bag.getItem(itemName);
-        if (item != null) {
-            bag.removeItem(item);
-        }
-    }
-
     private String serializeStatus(Player player) {
         Status.StatusManager sm = player.getStatusManager();
         if (sm == null) return null;
@@ -300,10 +285,18 @@ public class SaveService {
             statusMap.put("bleed", bleed);
         }
 
-        if (sm.getAngelBuffEffect() != null && !sm.getAngelBuffEffect().isExpired()) {
-            Map<String, Object> angel = new HashMap<>();
-            angel.put("lastTickTime", sm.getAngelBuffEffect().getLastTickTime());
-            statusMap.put("angelBuff", angel);
+        if (sm.getSlowEffect() != null && !sm.getSlowEffect().isExpired()) {
+            Map<String, Object> slow = new HashMap<>();
+            slow.put("layers", 1);
+            slow.put("lastTickTime", sm.getSlowEffect().getLastTickTime());
+            statusMap.put("slow", slow);
+        }
+
+        if (sm.getBindEffect() != null && !sm.getBindEffect().isExpired()) {
+            Map<String, Object> bind = new HashMap<>();
+            bind.put("layers", 1);
+            bind.put("lastTickTime", sm.getBindEffect().getLastTickTime());
+            statusMap.put("bind", bind);
         }
 
         if (statusMap.isEmpty()) return null;
@@ -352,13 +345,22 @@ public class SaveService {
                 sm.setBleedEffect(effect);
             }
 
-            if (statusMap.containsKey("angelBuff")) {
-                Map<String, Object> angel = (Map<String, Object>) statusMap.get("angelBuff");
-                long lastTickTime = ((Number) angel.get("lastTickTime")).longValue();
-                Status.StatusEffect effect = new Status.StatusEffect(Status.StatusType.ANGEL_BUFF, 1);
+            if (statusMap.containsKey("slow")) {
+                Map<String, Object> slow = (Map<String, Object>) statusMap.get("slow");
+                long lastTickTime = ((Number) slow.get("lastTickTime")).longValue();
+                Status.StatusEffect effect = new Status.StatusEffect(Status.StatusType.SLOW, 1);
                 effect.setLastTickTime(lastTickTime);
-                sm.setAngelBuffEffect(effect);
+                sm.setSlowEffect(effect);
             }
+
+            if (statusMap.containsKey("bind")) {
+                Map<String, Object> bind = (Map<String, Object>) statusMap.get("bind");
+                long lastTickTime = ((Number) bind.get("lastTickTime")).longValue();
+                Status.StatusEffect effect = new Status.StatusEffect(Status.StatusType.BIND, 1);
+                effect.setLastTickTime(lastTickTime);
+                sm.setBindEffect(effect);
+            }
+
         } catch (Exception e) {
             System.err.println("[SaveService] 状态效果恢复失败: " + e.getMessage());
         }

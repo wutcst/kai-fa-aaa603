@@ -11,41 +11,68 @@ import java.util.List;
  * 增益/减益状态委托给 {@link Status.StatusManager} 处理。
  */
 @Getter
-@Setter
 public class Player {
-    private String name;
-    private Room currentRoom;
-    private Bag bag;
-    private Money money;
-    private Status.StatusManager statusManager;
+    @Setter private String name;
+    @Setter private Room currentRoom;
+    @Setter private Bag bag;
+    @Setter private Money money;
+    @Setter private Status.StatusManager statusManager;
+
+    /** HP 归零时触发的死亡信号回调。由 Game 在构造时注入。 */
+    private Runnable onDeath;
 
     // -- 基础战斗属性 --
-    private int hp;
-    private int mp;
-    private int maxHp;
-    private int maxMp;
-    private int attack;
-    private int magicAttack;
-    private int defense;
-    private int magicResist;   // 0-100，超出按100计
-    private int speed;
-    private int dodge;         // 0-100
+    private int hp;  // setter 由下方手动提供（含死亡信号发射）
+
+    /** 注册死亡回调。Game 构造时调用 {@code player.setOnDeath(() -> game.setGameOver(true))} */
+    public void setOnDeath(Runnable callback) { this.onDeath = callback; }
+
+    /**
+     * 手动 setHp：HP 归零时向外发射死亡信号。
+     * 不使用 Lombok @Setter，确保信号逻辑不被字节码冲突覆盖。
+     */
+    public void setHp(int hp) {
+        this.hp = Math.max(0, hp);
+        if (this.hp <= 0 && onDeath != null) {
+            onDeath.run();
+        }
+    }
+    @Setter private int mp;
+    @Setter private int maxHp;
+    @Setter private int maxMp;
+    @Setter private int attack;
+    @Setter private int magicAttack;
+    @Setter private int defense;
+    @Setter private int magicResist;   // 0-100，超出按100计
+    @Setter private int speed;
+    @Setter private int dodge;         // 0-100
 
     // -- 装备/饰品槽位（已装备的物品名称，null表示空） --
-    /** 披风槽位 */
-    private String equippedCloak;
-    /** 戒指槽位 */
-    private String equippedRing;
-    /** 项链槽位 */
-    private String equippedAmulet;
-    /** 武器槽位（铁剑等） */
-    private String equippedWeapon;
-    /** 护甲槽位（铁盾等） */
-    private String equippedArmor;
+    @Setter private String equippedCloak;
+    @Setter private String equippedRing;
+    @Setter private String equippedAmulet;
+    @Setter private String equippedWeapon;
+    @Setter private String equippedArmor;
 
     // -- 伤害计数器 --
-    /** 伤害记录列表，每条记录包含时间戳和最终受到的伤害量 */
-    private List<DamageRecord> damageRecords;
+    @Setter private List<DamageRecord> damageRecords;
+
+    // -- 风隐形态 --
+    /** 风隐形态是否激活 */
+    @Setter @Getter private boolean windCloakActive = false;
+    /** 风隐形态上次MP扣除时间戳（毫秒） */
+    @Setter @Getter private long windCloakLastMpTick = 0;
+    /** 风隐形态每秒MP消耗 */
+    public static final int WIND_CLOAK_MP_PER_SEC = 2;
+    /** 风隐形态MP扣除间隔（毫秒） */
+    public static final long WIND_CLOAK_MP_INTERVAL = 1000L;
+    /** 风隐形态移速倍率 */
+    public static final double WIND_CLOAK_SPEED_RATIO = 2.0;
+
+    // -- 无敌帧 --
+    /** 无敌状态截止时间戳（毫秒），0 表示不处于无敌状态。由 GameService 在 pierce 攻击后设置。 */
+    @Setter
+    private long invincibleUntil = 0;
 
     /**
      * 伤害记录：记录单次受击的时间戳与经过防御/魔抗结算后的最终伤害量。
@@ -87,6 +114,9 @@ public class Player {
         equippedAmulet = null;
         equippedWeapon = null;
         equippedArmor = null;
+
+        windCloakActive = false;
+        windCloakLastMpTick = 0;
     }
 
     // -- 饰品系统 --
@@ -293,27 +323,43 @@ public class Player {
 
     // -- 受击 --
 
-    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定 */
+    /**
+     * 当前是否处于无敌状态（突刺期间）。
+     * @return true 表示当前不可被伤害
+     */
+    public boolean isInvincible() {
+        return invincibleUntil > 0 && System.currentTimeMillis() < invincibleUntil;
+    }
+
+    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定，其次无敌判定 */
     public void takeDamage(int dmg) {
+        // 无敌帧：突刺期间免疫所有伤害
+        if (isInvincible()) {
+            return;
+        }
         int effDodge = statusManager.getModifiedDodge();
         if (effDodge > 0 && Math.random() * 100 < effDodge) {
             return; // 闪避成功，不计入伤害计数器
         }
         int effDef = statusManager.getModifiedDefense();
         int actual = Math.max(0, dmg - effDef);
-        hp = Math.max(0, hp - actual);
+        setHp(hp - actual); // 通过 setHp 自动触发死亡检测
         recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
-    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定 */
+    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定，其次无敌判定 */
     public void takeMagicDamage(int dmg) {
+        // 无敌帧：突刺期间免疫所有伤害
+        if (isInvincible()) {
+            return;
+        }
         int effDodge = statusManager.getModifiedDodge();
         if (effDodge > 0 && Math.random() * 100 < effDodge) {
             return; // 闪避成功，不计入伤害计数器
         }
         int resist = Math.min(100, statusManager.getModifiedMagicResist());
         int actual = (int) Math.floor(dmg * (1.0 - resist / 100.0));
-        hp = Math.max(0, hp - actual);
+        setHp(hp - actual); // 通过 setHp 自动触发死亡检测
         recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
@@ -371,6 +417,51 @@ public class Player {
         hp = Math.min(hp + amount, maxHp);
     }
 
+    // -- 风隐形态 --
+
+    /**
+     * 开启风隐形态：清除所有负面状态，标记激活。
+     * @return true表示成功开启，false表示已在风隐形态中
+     */
+    public boolean activateWindCloak() {
+        if (windCloakActive) return false;
+        windCloakActive = true;
+        windCloakLastMpTick = System.currentTimeMillis();
+        // 清除所有负面状态
+        if (statusManager != null) {
+            statusManager.clear();
+        }
+        return true;
+    }
+
+    /**
+     * 解除风隐形态。
+     */
+    public void deactivateWindCloak() {
+        windCloakActive = false;
+        windCloakLastMpTick = 0;
+    }
+
+    /**
+     * 风隐形态MP消耗tick：每秒消耗2MP，魔力不足时自动解除。
+     * 由 GameService.injectPlayerStatus() 在每次轮询时驱动。
+     *
+     * @return 本次消耗的MP量；0表示未到扣除时机；-1表示因MP不足自动解除
+     */
+    public int tickWindCloakMp() {
+        if (!windCloakActive) return 0;
+        long now = System.currentTimeMillis();
+        if (now - windCloakLastMpTick < WIND_CLOAK_MP_INTERVAL) return 0;
+        windCloakLastMpTick = now;
+        if (mp < WIND_CLOAK_MP_PER_SEC) {
+            // MP不足，自动解除
+            deactivateWindCloak();
+            return -1;
+        }
+        mp -= WIND_CLOAK_MP_PER_SEC;
+        return WIND_CLOAK_MP_PER_SEC;
+    }
+
     /**
      * 应用博学祭坛增益效果。
      * @param boon 增益类型
@@ -384,5 +475,21 @@ public class Player {
 
     public boolean isAlive() {
         return hp > 0;
+    }
+
+    /**
+     * 通用死亡检查：不绑定任何具体负面状态。
+     * 当任意负面状态（流血/烧伤/中毒等）使玩家血量降至 0 时，此方法返回 true。
+     * 调用方负责先执行各状态 tick，再调用此方法判定死亡。
+     *
+     * @param sb 消息构建器，死亡文本追加到此
+     * @return true 表示玩家已死亡，false 表示存活
+     */
+    public boolean checkAndMarkDeath(StringBuilder sb) {
+        if (!isAlive()) {
+            sb.append("你因持续伤害而死亡！");
+            return true;
+        }
+        return false;
     }
 }

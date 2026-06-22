@@ -140,9 +140,18 @@ export function createApi(emit, getScene) {
     return _fetch(url, options)
   }
 
+  async function activateWindCloak() {
+    return _fetch('/api/windcloak/activate', { method: 'POST' })
+  }
+
+  async function deactivateWindCloak() {
+    return _fetch('/api/windcloak/deactivate', { method: 'POST' })
+  }
+
   return {
     sendCommand, sendAttack, pollGame, resetGame,
     fetchInitGame, fetchBackpack, fetchMap, fetchRaw,
+    activateWindCloak, deactivateWindCloak,
     isOverlayOpen: () => isOverlayOpen(getScene())
   }
 }

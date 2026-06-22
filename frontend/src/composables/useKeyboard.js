@@ -34,10 +34,11 @@ export function createKeyboardManager(options) {
       }
     }
 
-    if (getBackpackVisible()) {
+    // 背包或控制面板打开时屏蔽游戏按键
+    if (getBackpackVisible() || cp.visible) {
       const gameKeys = [
         'w', 'W', 'a', 'A', 's', 'S', 'd', 'D',
-        'j', 'J', ' ', 'h', 'H',
+        'j', 'J', ' ', 'h', 'H', 'f', 'F', 'g', 'G',
         'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'
       ]
       if (gameKeys.includes(key)) {

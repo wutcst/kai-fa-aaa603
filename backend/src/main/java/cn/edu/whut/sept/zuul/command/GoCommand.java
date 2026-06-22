@@ -2,6 +2,7 @@ package cn.edu.whut.sept.zuul.command;
 
 import cn.edu.whut.sept.zuul.Game;
 import cn.edu.whut.sept.zuul.model.GameResponse;
+import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
 
 /**
@@ -19,6 +20,13 @@ public class GoCommand implements Command {
     public GameResponse execute() {
         if (direction == null) {
             return GameResponse.error("要去哪儿？请指定方向（east, south, west, north）");
+        }
+
+        // ---- 检查玩家是否存活（兜底防御，主入口 executeCommand 已做相同检查） ----
+        Player player = game.getPlayer();
+        if (player != null && !player.isAlive()) {
+            game.setGameOver(true);
+            return GameResponse.error("你因持续伤害而死亡，游戏结束。");
         }
 
         Room currentRoom = game.getCurrentRoom();

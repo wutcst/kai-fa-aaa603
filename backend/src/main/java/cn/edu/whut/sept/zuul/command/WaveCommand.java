@@ -8,7 +8,7 @@ import cn.edu.whut.sept.zuul.model.Player;
 import cn.edu.whut.sept.zuul.model.Room;
 
 /**
- * 月光波命令：长按 H 蓄力2秒后释放，消耗30魔力
+ * 月光波命令：长按 H 蓄力1秒后释放，消耗20魔力
  * 向玩家朝向方向发射金色月光波，仅对光波触碰到的敌人造成魔攻300%的魔法伤害
  * 命令格式: wave <monsterName>
  * 前端在光波运动过程中逐帧检测碰撞，对每个触碰到的怪物各发送一次此命令
@@ -18,6 +18,8 @@ import cn.edu.whut.sept.zuul.model.Room;
 public class WaveCommand implements Command {
     private Game game;
     private String targetName;
+    private int targetX;
+    private int targetY;
 
     // 共享时间戳：同一波光波中多次调用只扣一次 MP
     private static long lastWaveCastTime = 0;
@@ -25,6 +27,8 @@ public class WaveCommand implements Command {
 
     public WaveCommand(Game game) {
         this.game = game;
+        this.targetX = 0;
+        this.targetY = 0;
     }
 
     @Override
@@ -63,11 +67,14 @@ public class WaveCommand implements Command {
         sb.append("月光波命中了 ").append(m.getName()).append("，造成 ").append(magicDmg).append(" 点法术伤害。");
 
         if (!m.isAlive()) {
+            // 同步怪物坐标后再处理掉落
+            m.setX(targetX);
+            m.setY(targetY);
             current.removeMonster(m);
             sb.append("\n你击败了 ").append(m.getName()).append("！");
 
-            // 统一处理掉落与货币奖励
-            sb.append(game.processMonsterDrop(m, 0, 0));
+            // 统一处理掉落与货币奖励（从怪物自身坐标读取掉落位置）
+            sb.append(game.processMonsterDrop(m));
         }
 
         return GameResponse.success(sb.toString(), current.getFullInfo());
@@ -77,6 +84,13 @@ public class WaveCommand implements Command {
     public void setParams(String... params) {
         if (params != null && params.length > 0) {
             this.targetName = params[0];
+            // 解析可选坐标参数：wave <monsterName> <x> <y>
+            if (params.length >= 2) {
+                try { this.targetX = Integer.parseInt(params[1]); } catch (NumberFormatException e) { /* ignore */ }
+            }
+            if (params.length >= 3) {
+                try { this.targetY = Integer.parseInt(params[2]); } catch (NumberFormatException e) { /* ignore */ }
+            }
         }
     }
 }

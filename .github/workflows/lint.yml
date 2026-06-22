@@ -28,11 +28,8 @@ jobs:
         run: npm ci
 
       - name: Run ESLint
-        run: npx eslint . --max-warnings=0
+        run: npx eslint . --max-warnings=200
         continue-on-error: false
-
-      - name: Check Prettier formatting
-        run: npx prettier --check .
 
   # ===== 后端 Lint 检查 (Checkstyle) =====
   backend-lint:

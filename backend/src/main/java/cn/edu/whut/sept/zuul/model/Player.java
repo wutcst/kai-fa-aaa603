@@ -57,6 +57,23 @@ public class Player {
     // -- 伤害计数器 --
     @Setter private List<DamageRecord> damageRecords;
 
+    // -- 风隐形态 --
+    /** 风隐形态是否激活 */
+    @Setter @Getter private boolean windCloakActive = false;
+    /** 风隐形态上次MP扣除时间戳（毫秒） */
+    @Setter @Getter private long windCloakLastMpTick = 0;
+    /** 风隐形态每秒MP消耗 */
+    public static final int WIND_CLOAK_MP_PER_SEC = 2;
+    /** 风隐形态MP扣除间隔（毫秒） */
+    public static final long WIND_CLOAK_MP_INTERVAL = 1000L;
+    /** 风隐形态移速倍率 */
+    public static final double WIND_CLOAK_SPEED_RATIO = 2.0;
+
+    // -- 无敌帧 --
+    /** 无敌状态截止时间戳（毫秒），0 表示不处于无敌状态。由 GameService 在 pierce 攻击后设置。 */
+    @Setter
+    private long invincibleUntil = 0;
+
     /**
      * 伤害记录：记录单次受击的时间戳与经过防御/魔抗结算后的最终伤害量。
      */
@@ -97,6 +114,9 @@ public class Player {
         equippedAmulet = null;
         equippedWeapon = null;
         equippedArmor = null;
+
+        windCloakActive = false;
+        windCloakLastMpTick = 0;
     }
 
     // -- 饰品系统 --
@@ -303,8 +323,20 @@ public class Player {
 
     // -- 受击 --
 
-    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定 */
+    /**
+     * 当前是否处于无敌状态（突刺期间）。
+     * @return true 表示当前不可被伤害
+     */
+    public boolean isInvincible() {
+        return invincibleUntil > 0 && System.currentTimeMillis() < invincibleUntil;
+    }
+
+    /** 物理伤害 = max(0, 原始伤害 - 有效防御)，优先闪避判定，其次无敌判定 */
     public void takeDamage(int dmg) {
+        // 无敌帧：突刺期间免疫所有伤害
+        if (isInvincible()) {
+            return;
+        }
         int effDodge = statusManager.getModifiedDodge();
         if (effDodge > 0 && Math.random() * 100 < effDodge) {
             return; // 闪避成功，不计入伤害计数器
@@ -315,8 +347,12 @@ public class Player {
         recordDamage(actual); // 记录最终伤害（含为0的情况）
     }
 
-    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定 */
+    /** 魔法伤害 = 原始伤害 × (1 - 有效魔抗/100)，向下取整，优先闪避判定，其次无敌判定 */
     public void takeMagicDamage(int dmg) {
+        // 无敌帧：突刺期间免疫所有伤害
+        if (isInvincible()) {
+            return;
+        }
         int effDodge = statusManager.getModifiedDodge();
         if (effDodge > 0 && Math.random() * 100 < effDodge) {
             return; // 闪避成功，不计入伤害计数器
@@ -379,6 +415,51 @@ public class Player {
 
     public void restoreHp(int amount) {
         hp = Math.min(hp + amount, maxHp);
+    }
+
+    // -- 风隐形态 --
+
+    /**
+     * 开启风隐形态：清除所有负面状态，标记激活。
+     * @return true表示成功开启，false表示已在风隐形态中
+     */
+    public boolean activateWindCloak() {
+        if (windCloakActive) return false;
+        windCloakActive = true;
+        windCloakLastMpTick = System.currentTimeMillis();
+        // 清除所有负面状态
+        if (statusManager != null) {
+            statusManager.clear();
+        }
+        return true;
+    }
+
+    /**
+     * 解除风隐形态。
+     */
+    public void deactivateWindCloak() {
+        windCloakActive = false;
+        windCloakLastMpTick = 0;
+    }
+
+    /**
+     * 风隐形态MP消耗tick：每秒消耗2MP，魔力不足时自动解除。
+     * 由 GameService.injectPlayerStatus() 在每次轮询时驱动。
+     *
+     * @return 本次消耗的MP量；0表示未到扣除时机；-1表示因MP不足自动解除
+     */
+    public int tickWindCloakMp() {
+        if (!windCloakActive) return 0;
+        long now = System.currentTimeMillis();
+        if (now - windCloakLastMpTick < WIND_CLOAK_MP_INTERVAL) return 0;
+        windCloakLastMpTick = now;
+        if (mp < WIND_CLOAK_MP_PER_SEC) {
+            // MP不足，自动解除
+            deactivateWindCloak();
+            return -1;
+        }
+        mp -= WIND_CLOAK_MP_PER_SEC;
+        return WIND_CLOAK_MP_PER_SEC;
     }
 
     /**

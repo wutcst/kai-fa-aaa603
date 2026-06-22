@@ -289,8 +289,7 @@ public class Room {
 
     private void spawnEliteMonsters(Random rnd) {
         String[] eliteNames = new String[]{"暗影骑士", "地狱犬", "石像鬼", "暗黑法师", "巨型蜘蛛"};
-        String[] normalNames = new String[]{"哥布林", "史莱姆", "骷髅", "狼人", "食人魔"};
-        // 固定生成 2 个精英怪物
+        // 固定生成 2 个精英怪物（不再附带普通随从）
         for (int i = 0; i < 2; i++) {
             String base = eliteNames[rnd.nextInt(eliteNames.length)];
             String mname = base + "#" + (rnd.nextInt(9000) + 1000);
@@ -299,19 +298,9 @@ public class Room {
             int attack = 20 + rnd.nextInt(6);   // 20-25
             addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_ELITE));
         }
-        // 额外生成 2 个普通怪物作为随从
-        for (int i = 0; i < 2; i++) {
-            String base = normalNames[rnd.nextInt(normalNames.length)];
-            String mname = base + "#" + (rnd.nextInt(9000) + 1000);
-            String desc = "精英身边的" + base;
-            int hp = 80 + rnd.nextInt(21);   // 80-100
-            int attack = 15 + rnd.nextInt(4); // 15-18
-            addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
-        }
     }
 
     private void spawnNormalMonsters(Random rnd) {
-        String[] monsterNames = new String[]{"哥布林", "史莱姆", "骷髅", "狼人", "食人魔"};
         int count = 3 + rnd.nextInt(2); // 3-4 个怪物
         // 约 25% 概率将其中一个普通怪物替换为火焰史莱姆
         boolean flameSlimeSpawned = false;
@@ -322,12 +311,16 @@ public class Room {
                 addMonster(Monster.createFlameSlime(suffix));
                 flameSlimeSpawned = true;
             } else {
-                String base = monsterNames[rnd.nextInt(monsterNames.length)];
-                String mname = base + "#" + (rnd.nextInt(9000) + 1000);
-                String desc = "一个可怕的" + base;
-                int hp = 80 + rnd.nextInt(21);   // 80-100
-                int attack = 15 + rnd.nextInt(4); // 15-18
-                addMonster(new Monster(mname, desc, hp, attack, Monster.TYPE_NORMAL));
+                // 五种普通怪物按权重随机选择，每种使用独立的属性范围和特殊机制
+                String suffix = String.valueOf(rnd.nextInt(9000) + 1000);
+                int roll = rnd.nextInt(5);
+                switch (roll) {
+                    case 0 -> addMonster(Monster.createGoblin(suffix));
+                    case 1 -> addMonster(Monster.createSlime(suffix));
+                    case 2 -> addMonster(Monster.createSkeleton(suffix));
+                    case 3 -> addMonster(Monster.createWerewolf(suffix));
+                    case 4 -> addMonster(Monster.createOgre(suffix));
+                }
             }
         }
     }

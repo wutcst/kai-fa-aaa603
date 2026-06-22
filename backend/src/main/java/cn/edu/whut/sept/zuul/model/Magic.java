@@ -11,8 +11,10 @@ public class Magic {
      * 技能枚举：定义所有玩家可用的技能及其属性
      */
     public enum Skill {
-        /** 月光波：消耗30魔力，造成魔攻300%的魔法伤害 */
-        MOONLIGHT_WAVE("月光波", 30, 3.0);
+        /** 月光波：消耗20魔力，造成魔攻300%的魔法伤害 */
+        MOONLIGHT_WAVE("月光波", 20, 3.0),
+        /** 风隐：蓄力1秒后开启，移速+100%、免疫负面状态，每秒消耗2MP */
+        WIND_CLOAK("风隐", 2, 0.0);
 
         private final String displayName;
         private final int mpCost;

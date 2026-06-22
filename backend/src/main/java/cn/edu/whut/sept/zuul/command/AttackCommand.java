@@ -7,7 +7,7 @@ import cn.edu.whut.sept.zuul.model.Room;
 
 /**
  * 攻击命令（旧版命令行兼容）：attack <monsterName>
- * 委托给 {@link Game#attackMonster(String, int, int)} 完成伤害结算与掉落。
+ * 委托给 {@link Game#attackMonster(String)} 完成伤害结算与掉落。
  * 前端新版攻击通过 POST /api/attack 走 GameService.performAttack()，
  * 但 AttackCommand 保留用于命令行调试和向后兼容。
  *
@@ -50,8 +50,8 @@ public class AttackCommand implements Command {
             return GameResponse.success(sb.toString().trim(), current.getFullInfo());
         }
 
-        // ---- 执行攻击 ----
-        String result = game.attackMonster(targetName, 300, 160);
+        // ---- 执行攻击（掉落坐标从怪物自身 x/y 读取） ----
+        String result = game.attackMonster(targetName);
 
         // 先校验目标有效性（避免错误消息中混入流血文本）
         if (result.startsWith("要攻击谁") || result.startsWith("这里没有") || result.contains("无法被攻击")) {

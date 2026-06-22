@@ -322,11 +322,18 @@ public class Status {
             return Math.min(MAX_PERCENT, player.getMagicResist());
         }
 
-        /** 获取修正后的速度（迟缓状态下减半） */
+        /** 获取修正后的速度（迟缓状态下减半，风隐形态下翻倍） */
         public int getModifiedSpeed() {
             int baseSpeed = player.getSpeed();
             if (hasSlow()) {
+                // 迟缓与风隐共存时，先减半再翻倍 = 恢复原速
+                if (player.isWindCloakActive()) {
+                    return (int) Math.max(1, Math.round(baseSpeed * SLOW_SPEED_RATIO * Player.WIND_CLOAK_SPEED_RATIO));
+                }
                 return (int) Math.max(1, Math.round(baseSpeed * SLOW_SPEED_RATIO));
+            }
+            if (player.isWindCloakActive()) {
+                return (int) Math.max(1, Math.round(baseSpeed * Player.WIND_CLOAK_SPEED_RATIO));
             }
             return baseSpeed;
         }

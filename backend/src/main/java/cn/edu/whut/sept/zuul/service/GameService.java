@@ -69,6 +69,19 @@ public class GameService {
                 }
             }
 
+            // ---- 风隐形态：免疫负面状态；若玩家处于风隐且被施加了debuff，立即清除 ----
+            // 风隐形态下，所有负面状态tick仍会运行但层数已被clear，不会造成伤害
+            if (player.isWindCloakActive() && player.getStatusManager() != null) {
+                // 风隐形态下清除所有debuff（持续免疫）
+                player.getStatusManager().clear();
+            }
+
+            // ---- 驱动风隐形态MP消耗 ----
+            int windCloakMp = player.tickWindCloakMp();
+            if (windCloakMp < 0) {
+                data.put("windCloakAutoDeactivate", true);
+            }
+
             // ---- 通用死亡检查：任一负面状态使 HP 降至 0 即判死 ----
             if (!player.isAlive() && !game.isGameOver()) {
                 game.setGameOver(true);
@@ -101,6 +114,8 @@ public class GameService {
             data.put("effectiveMagicResist", player.getEffectiveMagicResist());
             data.put("effectiveSpeed", player.getEffectiveSpeed());
             data.put("effectiveDodge", player.getEffectiveDodge());
+            // 注入风隐形态状态
+            data.put("windCloakActive", player.isWindCloakActive());
         }
     }
 
@@ -312,7 +327,7 @@ public class GameService {
             return GameResponse.error("攻击请求中没有怪物数据");
         }
 
-        // ---- 对于突刺攻击，提取起点/终点用于线段命中判定 ----
+        // ---- 对于突刺攻击，提取起点/终点用于线段命中判定，并授予无敌帧 ----
         double pierceStartX = px;
         double pierceStartY = py;
         double pierceEndX = px;
@@ -328,6 +343,9 @@ public class GameService {
                 pierceEndX = req.getEndX();
                 pierceEndY = req.getEndY();
             }
+            // 突刺无敌帧：基础 180ms，风隐形态下延长至 1.5 倍 = 270ms
+            int invincibilityDuration = player.isWindCloakActive() ? 270 : 180;
+            player.setInvincibleUntil(System.currentTimeMillis() + invincibilityDuration);
         }
 
         for (AttackRequest.MonsterPosition mp : monsters) {
@@ -338,13 +356,15 @@ public class GameService {
             Monster m = current.getMonster(mp.getName());
             if (m == null || !m.isAlive()) continue;
 
-            int dropX = (int) Math.round(mp.getX());
-            int dropY = (int) Math.round(mp.getY());
+            // 同步前端传来的怪物坐标到 Monster 对象，供掉落位置判定使用
+            m.setX((int) Math.round(mp.getX()));
+            m.setY((int) Math.round(mp.getY()));
+
             String result;
             if ("charged".equals(attackType)) {
-                result = game.chargedAttackMonster(mp.getName(), dropX, dropY);
+                result = game.chargedAttackMonster(mp.getName());
             } else {
-                result = game.attackMonster(mp.getName(), dropX, dropY);
+                result = game.attackMonster(mp.getName());
             }
             sb.append(result).append("\n");
             hitCount++;
@@ -424,6 +444,41 @@ public class GameService {
      */
     public Map<String, Object> getFullMap() {
         return game.getFullMap();
+    }
+
+    // ======================== 风隐技能接口 ========================
+
+    /**
+     * 激活风隐形态：清除负面状态，开启移速加成。
+     * @return 含玩家状态的响应
+     */
+    public GameResponse activateWindCloak() {
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+        if (game.isGameOver()) return GameResponse.error("Game is over!");
+        if (player.isWindCloakActive()) {
+            return GameResponse.error("风隐形态已激活");
+        }
+        player.activateWindCloak();
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("风隐形态开启！移速提高100%，免疫负面状态。", data);
+    }
+
+    /**
+     * 解除风隐形态。
+     * @return 含玩家状态的响应
+     */
+    public GameResponse deactivateWindCloak() {
+        Player player = game.getPlayer();
+        if (player == null) return GameResponse.error("玩家不存在");
+        if (!player.isWindCloakActive()) {
+            return GameResponse.error("风隐形态未激活");
+        }
+        player.deactivateWindCloak();
+        Map<String, Object> data = new HashMap<>(game.getCurrentRoom().getFullInfo());
+        injectPlayerStatus(data);
+        return GameResponse.success("风隐形态已解除。", data);
     }
 
     // ======================== 存档接口 ========================

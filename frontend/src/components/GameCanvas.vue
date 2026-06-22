@@ -33,7 +33,7 @@ import { useBackpack } from '../composables/useBackpack.js'
 import BackpackPanel from './BackpackPanel.vue'
 import ControlPanel from './ControlPanel.vue'
 import MinimapPanel from './MinimapPanel.vue'
-import { ATTACK_CONFIG } from '../game/constants.js'
+import { ATTACK_CONFIG, WAVE_CONFIG, WIND_CLOAK_CONFIG } from '../game/constants.js'
 
 const emit = defineEmits(['update', 'resetGame', 'backToMenu', 'showSaveSlots'])
 const gameContainer = ref(null)
@@ -658,7 +658,7 @@ onMounted(() => {
         scene.playerLabel = scene.add.text(400 - 20, 320 + 18, 'You', { font: '12px Arial', fill: '#fff' })
         scene._roomBounds = { left: 16, top: 16, right: 800 - 16, bottom: 600 - 16 }
 
-        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波', { font: '14px Arial', fill: '#cccccc' })
+        scene.add.text(20, 560, 'WASD 移动 | J 攻击/长按蓄力 | Shift+方向+J 突刺 | 空格 互动 | H 月光波 | F 风隐', { font: '14px Arial', fill: '#cccccc' })
 
         // ==================== 8. 命令发送与游戏结束 ====================
         scene.sendCommand = function (cmd, fromDir = null) {
@@ -858,19 +858,52 @@ onMounted(() => {
           })
 
           const monsters = roomInfo.monsters || []
-          // 火焰史莱姆不自爆，以普通怪物方式死亡
-          const mCenterX = 300
-          const mStartY = 160
-          const mSpacingY = 120
+          const count = monsters.length
+          // 基于怪物名字的确定性 hash（保证同一房间重新渲染时偏移一致）
+          function nameHash(name) {
+            let h = 0
+            for (let i = 0; i < name.length; i++) {
+              h = ((h << 5) - h + name.charCodeAt(i)) | 0
+            }
+            return Math.abs(h)
+          }
+          // 房间可用区域（留出边距，避免怪物紧贴墙壁或与门重叠）
+          const marginX = 100
+          const marginY = 110
+          const availLeft = rectLeft + marginX
+          const availRight = rectLeft + roomW - marginX
+          const availTop = rectTop + marginY
+          const availBottom = rectTop + roomH - marginY
+          const availW = availRight - availLeft
+          const availH = availBottom - availTop
+          // 根据怪物数量动态决定网格列数，使布局充分分散
+          const gridCols = count <= 2 ? 2 : (count <= 3 ? 3 : (count <= 5 ? 3 : 4))
+          const gridRows = Math.ceil(count / gridCols)
+          const cellW = availW / gridCols
+          const cellH = availH / Math.max(gridRows, 1)
+          const jitterRadius = Math.min(cellW, cellH) * 0.3  // 抖动半径不超过格子的30%
+          // 按名字排序保证确定性（同一房间每次渲染位置一致）
+          const sortedMonsters = [...monsters].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
           let mi = 0
-          monsters.forEach(mon => {
-            // restore AI-driven position if available, otherwise use default layout
-            let x = mCenterX
-            let y = mStartY + mi * mSpacingY
+          sortedMonsters.forEach(mon => {
+            // restore AI-driven position if available, otherwise use spread-out grid layout
+            let x, y
             const saved = prevMonsterPositions[mon.name]
             if (saved) {
               x = saved.x
               y = saved.y
+            } else {
+              const col = mi % gridCols
+              const row = Math.floor(mi / gridCols)
+              // 格子中心
+              const cellCX = availLeft + (col + 0.5) * cellW
+              const cellCY = availTop + (row + 0.5) * cellH
+              // 确定性随机偏移（基于名字hash，避免视觉上过于规整）
+              const hash = nameHash(mon.name)
+              const angle = ((hash % 360) / 360) * Math.PI * 2
+              const dist = (hash % 97) / 97 * jitterRadius
+              x = cellCX + Math.cos(angle) * dist
+              y = cellCY + Math.sin(angle) * dist
             }
             // 使用实体绘制替换简单圆形
             const monGfx = scene.add.graphics()
@@ -912,7 +945,9 @@ onMounted(() => {
               hpBarBg: hpBg, hpBarFill: hpFill, hpNumText: hpNumText,
               hpBarW: hpBarW, hpBarH: hpBarH,
               defense: mon.defense || 0, magicResist: mon.magicResist || 0, speed: mon.speed || 100,
-              specialType: mon.specialType || null
+              specialType: mon.specialType || null,
+              attackCooldown: mon.attackCooldown || 0,
+              attackRange: mon.attackRange || 0
             })
             mi++
           })
@@ -1499,7 +1534,7 @@ onMounted(() => {
 
         // ==================== 12. 键盘控制与攻击配置 ====================
         // 键盘控制
-        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,ONE,TWO,THREE,FOUR,FIVE')
+        scene.keys = scene.input.keyboard.addKeys('W,A,S,D,SHIFT,J,SPACE,H,F,ONE,TWO,THREE,FOUR,FIVE')
         scene.baseMoveSpeed = 160
         scene.facingAngle = 0
         scene.attackConfig = {
@@ -1632,6 +1667,11 @@ onMounted(() => {
         scene._waveProjectiles = []
         scene._wavePendingSend = false  // prevent duplicate sends
 
+        // ==================== 14b. 风隐技能系统 ====================
+        scene._windCloakCharging = { active: false, startTime: 0, chargeBarGfx: null, charged: false }
+        scene._windCloakActive = false
+        scene._windCloakPending = false
+
         // ---------- 月光波发射与特效 ----------
         scene.spawnWaveProjectile = function (startX, startY, angle, rb) {
           const speed = 420  // pixels per second
@@ -1742,6 +1782,8 @@ onMounted(() => {
 
         // 背包暂停状态
         scene._backpackPaused = false
+        // 控制面板暂停状态（与背包一致，用标志位而非破坏性 sys.events.pause）
+        scene._controlPanelPaused = false
         scene._pendingKnockbacks = null  // 攻击击退待处理队列
         // 返回菜单暂停状态（防止销毁时视觉扭曲）
         scene._menuPaused = false
@@ -1759,15 +1801,13 @@ onMounted(() => {
           // 停止所有时间事件
           scene.time.removeAllEvents()
         })
-        // 控制面板打开→暂停 Phaser 场景
+        // 控制面板打开→设置暂停标志位（与背包暂停方式一致）
         window.addEventListener('game:pause-scene', function() {
-          scene.sys.events.pause()
-          scene.tweens.killAll()
-          scene.time.removeAllEvents()
+          scene._controlPanelPaused = true
         })
-        // 控制面板关闭→恢复 Phaser 场景
+        // 控制面板关闭→清除暂停标志位
         window.addEventListener('game:resume-scene', function() {
-          scene.sys.events.resume()
+          scene._controlPanelPaused = false
         })
 
         // 监听 game:update 事件，背包打开时也能即时更新 HP/MP 条
@@ -1788,7 +1828,7 @@ onMounted(() => {
           // 如果背包未打开且响应包含房间数据，正常渲染房间
           // 注意：如果有商店菜单、购物界面或博学祭坛浮层打开，不调用 renderRoom()
           // 因为 renderRoom() 会销毁这些覆盖层，导致菜单闪退
-          if (!scene._backpackPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+          if (!scene._backpackPaused && !scene._controlPanelPaused && j && j.data && j.data.name && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
             try { scene.renderRoom(j.data) } catch (e) {}
           }
         }
@@ -1803,8 +1843,8 @@ onMounted(() => {
           // block all movement and actions when game is over
           if (scene.gameOver) return
 
-          // block all movement and actions when backpack is open
-          if (scene._backpackPaused) return
+          // block all movement and actions when backpack or control panel is open
+          if (scene._backpackPaused || scene._controlPanelPaused) return
 
           // ---------- 烧伤倒计时实时更新 ----------
           if (scene._burnNextTickMs > 0) {
@@ -1868,7 +1908,7 @@ onMounted(() => {
           // ---------- 定期轮询后端驱动爆炸计时与全局状态更新 ----------
           // 每500ms轮询一次GET /api/game，驱动tickExplosions（自爆倒计时）、烧伤结算等
           if (!scene._nextPollTime) scene._nextPollTime = 0
-          if (time > scene._nextPollTime && !scene._backpackPaused && !scene.gameOver) {
+          if (time > scene._nextPollTime && !scene._backpackPaused && !scene._controlPanelPaused && !scene.gameOver) {
             scene._nextPollTime = time + 500
             ;(async () => {
               try {
@@ -1903,6 +1943,13 @@ onMounted(() => {
                       window.dispatchEvent(new CustomEvent('minimap:update', { detail: { roomName: j.data.name } }))
                     }
                   } catch (e) {}
+                  // 同步风隐状态
+                  if (j.data.windCloakActive !== undefined && scene._windCloakActive !== j.data.windCloakActive) {
+                    scene._windCloakActive = j.data.windCloakActive
+                  }
+                  if (j.data.windCloakAutoDeactivate) {
+                    scene._windCloakActive = false
+                  }
                 }
               } catch (e) {
                 // 轮询失败静默处理
@@ -1911,8 +1958,8 @@ onMounted(() => {
           }
 
           // ---------- H 键月光波蓄力系统 ----------
-          const CHARGE_DURATION = 2000  // 2 seconds to full charge
-          const WAVE_MP_COST = 30
+          const CHARGE_DURATION = WAVE_CONFIG.chargeDuration  // 1 second to full charge
+          const WAVE_MP_COST = WAVE_CONFIG.mpCost
           const nowMs = Date.now()
 
           // check if player has enough MP
@@ -2053,6 +2100,133 @@ onMounted(() => {
             } catch (e) {}
           }
 
+          // ---------- F 键风隐技能系统 ----------
+          const WIND_CLOAK_CHARGE_DURATION = WIND_CLOAK_CONFIG.chargeDuration
+          const nowMs2 = Date.now()
+
+          // ---- 风隐已激活时，再按F键立即解除 ----
+          if (scene._windCloakActive && scene.keys.F && Phaser.Input.Keyboard.JustDown(scene.keys.F)) {
+            if (!scene._windCloakPending) {
+              scene._windCloakPending = true
+              ;(async () => {
+                try {
+                  const res = await fetch('/api/windcloak/deactivate', { method: 'POST' })
+                  const j = await res.json()
+                  emit('update', j)
+                  if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                    scene.renderRoom(j.data)
+                  }
+                  scene._windCloakActive = false
+                } catch (e) {
+                  emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                }
+                scene._windCloakPending = false
+              })()
+            }
+          }
+
+          // ---- 开始蓄力（仅未在风隐形态下） ----
+          if (!scene._windCloakActive) {
+            try {
+              if (scene.keys.F && scene.keys.F.isDown && !scene._windCloakCharging.active && !scene._windCloakPending
+                  && !scene._waveCharging.active && !scene._chargeAttack.active
+                  && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                scene._windCloakCharging.active = true
+                scene._windCloakCharging.startTime = nowMs2
+                scene._windCloakCharging.charged = false
+              }
+            } catch (e) {}
+          }
+
+          // ---- 蓄力/解除处理 ----
+          if (scene._windCloakCharging.active) {
+            try {
+              const fDown = scene.keys.F && scene.keys.F.isDown
+              if (!fDown) {
+                // F松开
+                if (scene._windCloakCharging.charged && !scene._windCloakPending) {
+                  // 满蓄力松开 → 激活风隐
+                  scene._windCloakPending = true
+                  ;(async () => {
+                    try {
+                      const res = await fetch('/api/windcloak/activate', { method: 'POST' })
+                      const j = await res.json()
+                      emit('update', j)
+                      if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                        scene.renderRoom(j.data)
+                      }
+                      scene._windCloakActive = true
+                    } catch (e) {
+                      emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                    }
+                    scene._windCloakPending = false
+                  })()
+                  // 清理UI
+                  try {
+                    if (scene._windCloakCharging.chargeBarGfx) { scene._windCloakCharging.chargeBarGfx.destroy(); scene._windCloakCharging.chargeBarGfx = null }
+                  } catch (e) {}
+                } else {
+                  // 未满蓄力松开 → 取消
+                  try {
+                    if (scene._windCloakCharging.chargeBarGfx) { scene._windCloakCharging.chargeBarGfx.destroy(); scene._windCloakCharging.chargeBarGfx = null }
+                  } catch (e) {}
+                }
+                scene._windCloakCharging.active = false
+                scene._windCloakCharging.charged = false
+              } else if (!scene._windCloakCharging.charged) {
+                // 蓄力中（未满）
+                const elapsed = nowMs2 - scene._windCloakCharging.startTime
+                const progress = Math.min(1, elapsed / WIND_CLOAK_CHARGE_DURATION)
+
+                if (!scene._windCloakCharging.chargeBarGfx) {
+                  scene._windCloakCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._windCloakCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 42
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(1, 0x8866cc, 0.9)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                const r = Math.floor(100 + progress * 80)
+                const gr = Math.floor(50 + progress * 150)
+                const b = Math.floor(180 + progress * 75)
+                const fillColor = (r << 16) | (gr << 8) | b
+                gfx.fillStyle(fillColor, 0.9)
+                gfx.fillRect(barX, barY, barWidth * progress, barHeight)
+                if (progress >= 1) {
+                  scene._windCloakCharging.charged = true
+                }
+              } else {
+                // 已满蓄力，保持满蓄力条脉冲
+                if (!scene._windCloakCharging.chargeBarGfx) {
+                  scene._windCloakCharging.chargeBarGfx = scene.add.graphics().setDepth(150)
+                }
+                const gfx = scene._windCloakCharging.chargeBarGfx
+                gfx.clear()
+                const barWidth = 50, barHeight = 8
+                const barX = scene.player.x - barWidth / 2
+                const barY = scene.player.y + 42
+                gfx.fillStyle(0x222222, 0.8)
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+                gfx.lineStyle(2, 0xaa88ff, 1.0)
+                gfx.strokeRect(barX, barY, barWidth, barHeight)
+                gfx.fillStyle(0xaa88ff, 0.4 + 0.4 * Math.sin(nowMs2 * 0.01))
+                gfx.fillRect(barX, barY, barWidth, barHeight)
+              }
+            } catch (e) {}
+          }
+
+          // ---- 风隐形态下玩家半透明效果 ----
+          if (scene.player) {
+            const targetAlpha = scene._windCloakActive ? WIND_CLOAK_CONFIG.playerAlpha : 1
+            if (scene.player.alpha !== targetAlpha) {
+              scene.player.alpha = targetAlpha
+            }
+          }
+
           // movement by WASD
           const isWaveCharging = scene._waveCharging.active && !scene._waveCharging.charged  // 月光波蓄力中（未满）禁止移动
           const isWaveAiming = scene._waveCharging.active && scene._waveCharging.charged      // 月光波满蓄力瞄准中：允许转向
@@ -2097,6 +2271,8 @@ onMounted(() => {
                     if (scene.keys.SHIFT && scene.keys.SHIFT.isDown) speed = speed * 2
                   } catch (e) {}
                 }
+                // 风隐形态移速翻倍
+                if (scene._windCloakActive) speed = speed * WIND_CLOAK_CONFIG.speedMultiplier
                 scene.player.x += vx * speed * dt
                 scene.player.y += vy * speed * dt
               }
@@ -2114,6 +2290,10 @@ onMounted(() => {
           const ELITE_ATTACK_COOLDOWN = 1000 // 精英怪物攻击间隔 (ms)
           const BOSS_ATTACK_RANGE = 75       // Boss攻击距离
           const BOSS_ATTACK_COOLDOWN = 750   // Boss攻击间隔（普通怪物的一半）
+          // 特殊普通怪物参数
+          const WEREWOLF_ATTACK_RANGE = 35
+          const WEREWOLF_ATTACK_COOLDOWN = 600
+          const OGRE_ATTACK_COOLDOWN = 2000
           const pr = scene.playerRadius || 10
 
           const now = Date.now()
@@ -2123,15 +2303,45 @@ onMounted(() => {
 
             const isBoss = (mon.type === 2)
             const isElite = (mon.type === 1)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : (isElite ? ELITE_ATTACK_RANGE : MONSTER_ATTACK_RANGE)
-            const attackCooldown = isBoss ? BOSS_ATTACK_COOLDOWN : (isElite ? ELITE_ATTACK_COOLDOWN : MONSTER_ATTACK_COOLDOWN)
+            const isSlime = (mon.specialType === 'SLIME')
+            const isWerewolf = (mon.name && mon.name.includes('狼人'))
+            const isOgre = (mon.name && mon.name.includes('食人魔'))
+
+            // 攻击范围：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let attackRange = MONSTER_ATTACK_RANGE
+            if (mon.attackRange > 0) {
+              attackRange = mon.attackRange
+            } else if (isWerewolf) {
+              attackRange = WEREWOLF_ATTACK_RANGE
+            } else if (isBoss) {
+              attackRange = BOSS_ATTACK_RANGE
+            } else if (isElite) {
+              attackRange = ELITE_ATTACK_RANGE
+            }
+
+            // 攻击冷却：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let attackCooldown = MONSTER_ATTACK_COOLDOWN
+            if (mon.attackCooldown > 0) {
+              attackCooldown = mon.attackCooldown
+            } else if (isWerewolf) {
+              attackCooldown = WEREWOLF_ATTACK_COOLDOWN
+            } else if (isOgre) {
+              attackCooldown = OGRE_ATTACK_COOLDOWN
+            } else if (isBoss) {
+              attackCooldown = BOSS_ATTACK_COOLDOWN
+            } else if (isElite) {
+              attackCooldown = ELITE_ATTACK_COOLDOWN
+            }
 
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
             const dist = Math.sqrt(dx * dx + dy * dy)
 
-            if (dist <= attackRange) {
-              // 在攻击范围内 → 攻击玩家（每个怪物独立冷却，无全局锁）
+            if (dist <= attackRange && !isSlime) {
+              // 在攻击范围内 → 攻击玩家（史莱姆不主动攻击，仅接触触发）
+              // 突刺无敌帧：突刺期间跳过怪物攻击
+              if (scene._piercing) continue
+              // 每个怪物独立冷却，无全局锁
               if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= attackCooldown) {
                 scene.monsterAttackCooldowns[mon.name] = now
                 ;(async () => {
@@ -2154,7 +2364,7 @@ onMounted(() => {
                 })()
               }
             } else if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || mon.type === 2) {
-              // 在索敌范围内 → 向玩家移动
+              // 在索敌范围内 → 向玩家移动（包括史莱姆在内的所有怪物）
               // Boss（type===2）不受距离限制，全图索敌
               const speed = mon.speed || 100
               const norm = Math.max(1, dist)
@@ -2169,6 +2379,34 @@ onMounted(() => {
               try { mon.circ.setPosition(mon.x, mon.y) } catch (e) {}
               try { mon.label.setPosition(mon.x - 32, mon.y + 24) } catch (e) {}
             }
+
+            // 史莱姆/火焰史莱姆接触触发：玩家碰撞到怪物时触发攻击
+            if (isSlime && dist <= (scene.playerRadius || 10) + 20) {
+              // 突刺无敌帧：突刺期间跳过史莱姆接触攻击
+              if (scene._piercing) continue
+              const slimeCooldown = mon.attackCooldown > 0 ? mon.attackCooldown : 1000
+              if (!scene.monsterAttackCooldowns[mon.name] || now - scene.monsterAttackCooldowns[mon.name] >= slimeCooldown) {
+                scene.monsterAttackCooldowns[mon.name] = now
+                ;(async () => {
+                  try {
+                    const res = await fetch('/api/command', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ command: 'monsterattack ' + mon.name })
+                    })
+                    const j = await res.json()
+                    emit('update', j)
+                    if (j && j.data && !scene.shopMenuOverlay && !scene.shopBuyOverlay && !scene.shopSellOverlay && !scene.wisdomOverlay) {
+                      scene.renderRoom(j.data)
+                    }
+                    if (j && j.message && j.message.includes('游戏结束')) {
+                      scene.showGameOver()
+                    }
+                  } catch (e) {
+                    emit('update', { status: 'error', message: '无法连接后端: ' + e.message, data: null })
+                  }
+                })()
+              }
+            }
           }
 
           // ---------- 绘制怪物攻击范围圈（半透明圆环） ----------
@@ -2182,7 +2420,18 @@ onMounted(() => {
             if (!mon || !mon.circ) continue
             const isBoss = (mon.type === 2)
             const isElite = (mon.type === 1)
-            const attackRange = isBoss ? BOSS_ATTACK_RANGE : (isElite ? ELITE_ATTACK_RANGE : MONSTER_ATTACK_RANGE)
+            const isWerewolf = (mon.name && mon.name.includes('狼人'))
+            // 攻击范围：后端个体值 > 前端硬编码特殊值 > 按类型默认值
+            let monAttackRange = MONSTER_ATTACK_RANGE
+            if (mon.attackRange > 0) {
+              monAttackRange = mon.attackRange
+            } else if (isWerewolf) {
+              monAttackRange = WEREWOLF_ATTACK_RANGE
+            } else if (isBoss) {
+              monAttackRange = BOSS_ATTACK_RANGE
+            } else if (isElite) {
+              monAttackRange = ELITE_ATTACK_RANGE
+            }
             // 只有当玩家在索敌范围内才显示攻击范围圈（减少视觉杂乱）
             const dx = scene.player.x - mon.x
             const dy = scene.player.y - mon.y
@@ -2190,10 +2439,10 @@ onMounted(() => {
             if (dist <= (isElite ? ELITE_DETECT_RANGE : MONSTER_DETECT_RANGE) || isBoss) {
               // Boss/精英全图显示，普通怪物在索敌范围内才显示
               rangeGfx.lineStyle(1, 0xff4444, 0.25)
-              rangeGfx.strokeCircle(mon.x, mon.y, attackRange)
+              rangeGfx.strokeCircle(mon.x, mon.y, monAttackRange)
               // 填充色（极淡）
               rangeGfx.fillStyle(0xff2222, 0.05)
-              rangeGfx.fillCircle(mon.x, mon.y, attackRange)
+              rangeGfx.fillCircle(mon.x, mon.y, monAttackRange)
             }
           }
 
@@ -2235,7 +2484,8 @@ onMounted(() => {
                 // 突刺特效
                 const startX = scene.player.x, startY = scene.player.y
                 const dx_ = Math.cos(scene.facingAngle), dy_ = Math.sin(scene.facingAngle)
-                const dist = cfg.pierceDistance || 120
+                const baseDist = cfg.pierceDistance || 120
+                const dist = scene._windCloakActive ? baseDist * 2 : baseDist
                 const pr_ = scene.playerRadius || 10
 
                 // ---- 路径碰撞检测：收集沿路径的所有障碍物 ----
@@ -2721,7 +2971,7 @@ onMounted(() => {
                     try {
                       const res = await fetch('/api/command', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ command: 'wave ' + mon.name })
+                        body: JSON.stringify({ command: 'wave ' + mon.name + ' ' + Math.round(mon.x) + ' ' + Math.round(mon.y) })
                       })
                       const j = await res.json()
                       emit('update', j)

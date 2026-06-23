@@ -131,6 +131,51 @@ run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
 doc.add_page_break()
 
 # ============================================================
+#                   0. 视频演示
+# ============================================================
+add_heading('0. 视频演示', level=1)
+
+add_para(
+    '项目运行效果演示视频已发布在 Bilibili 平台，可通过以下链接观看：',
+    indent=True
+)
+
+# 链接
+p = doc.add_paragraph()
+p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+run = p.add_run('🔗 B站视频：武理2026软工实践——Zuul：失落的古迹')
+run.font.size = Pt(12)
+run.font.color.rgb = RGBColor(0x00, 0x66, 0xCC)
+from docx.oxml import OxmlElement
+# 添加超链接
+hyperlink = OxmlElement('w:hyperlink')
+r = OxmlElement('w:r')
+rPr = OxmlElement('w:rPr')
+c = OxmlElement('w:color')
+c.set(qn('w:val'), '0066CC')
+rPr.append(c)
+u = OxmlElement('w:u')
+u.set(qn('w:val'), 'single')
+rPr.append(u)
+r.append(rPr)
+t = OxmlElement('w:t')
+t.text = 'https://www.bilibili.com/video/BV1YN7g6hEg5'
+r.append(t)
+hyperlink.append(r)
+p._p.append(hyperlink)
+
+doc.add_paragraph()
+
+# 插入首页截图
+add_para('游戏首页截图：', bold=True)
+doc.add_picture('plans/img.png', width=Inches(5.5))
+# 居中
+last_paragraph = doc.paragraphs[-1]
+last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+doc.add_page_break()
+
+# ============================================================
 #                   1. 任务概述
 # ============================================================
 add_heading('1. 任务概述', level=1)

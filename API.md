@@ -1,8 +1,8 @@
 # ZUUL 游戏 API 文档
 
 > **项目**: ZUUL — 失落的古迹  
-> **版本**: v1.1.0
-> **更新日期**: 2026-06-22
+> **版本**: v1.2.0
+> **更新日期**: 2026-06-23
 
 ---
 
@@ -888,6 +888,37 @@ curl -X POST http://localhost:8080/api/deleteSave -H "Content-Type: application/
 
 # 退出游戏
 curl -X POST http://localhost:8080/api/command -H "Content-Type: application/json" -d "{\"command\":\"quit\"}"
+```
+
+> 完整的 CI/CD 流水线与部署说明请参见 [README.md](README.md#-cicd-流水线)。
+
+---
+
+## CI/CD 与部署
+
+### GitHub Actions 工作流
+
+| 工作流 | 触发条件 | 作用 |
+|--------|----------|------|
+| **Lint** (lint.yml) | push / PR → main | 代码规范检查（ESLint + Checkstyle + Commitlint） |
+| **Build** (build.yml) | push / PR → main | 编译构建 + 测试 + 上传构建产物 |
+| **Security** (security.yml) | push / PR → main | CodeQL 安全扫描 |
+| **Release** (release.yml) | git tag v* → main | 自动构建打包 → 发布到 GitHub Releases |
+
+### 部署方法
+
+```bash
+# 1. 构建后端 JAR
+cd backend && mvn clean package -DskipTests
+java -jar target/zuul-0.0.1-SNAPSHOT.jar
+
+# 2. 构建前端静态资源
+cd frontend && npm run build
+# dist/ 目录可直接部署到任意 Web 服务器（Nginx / Apache 等）
+
+# 3. 或使用 GitHub Release 自动发布
+git tag v1.0.0 && git push origin --tags
+# Release 工作流自动构建、打包、上传到 GitHub Releases
 ```
 
 ---

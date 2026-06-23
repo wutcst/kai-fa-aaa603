@@ -5,6 +5,9 @@
   <img src="https://img.shields.io/badge/Phaser-3.60.0-9B59B6" alt="Phaser 3">
   <img src="https://img.shields.io/badge/Java-17-orange" alt="Java 17">
   <img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License">
+  <img src="https://img.shields.io/github/actions/workflow/status/WHUT-ZUUL/kai-fa-aaa603/lint.yml?label=Lint" alt="Lint">
+  <img src="https://img.shields.io/github/actions/workflow/status/WHUT-ZUUL/kai-fa-aaa603/build.yml?label=Build" alt="Build">
+  <img src="https://img.shields.io/github/actions/workflow/status/WHUT-ZUUL/kai-fa-aaa603/release.yml?label=Release" alt="Release">
 </p>
 
 <h1 align="center">⚔ ZUUL — 失落的古迹 ⚔</h1>
@@ -19,6 +22,8 @@
   <a href="#-核心功能">核心功能</a> •
   <a href="#-技术栈">技术栈</a> •
   <a href="#-系统架构">系统架构</a> •
+  <a href="#-代码规范">代码规范</a> •
+  <a href="#-cicd-流水线">CI/CD 流水线</a> •
   <a href="#-快速开始">快速开始</a> •
   <a href="#-项目结构">项目结构</a> •
   <a href="#-开发团队">开发团队</a>
@@ -125,7 +130,10 @@
 | **VS Code** | 前端开发 IDE |
 | **GitHub** | 代码仓库与协同开发 |
 | **GitHub Issues** | 任务管理与分配 |
-| **GitHub Actions** | CI/CD 自动化流水线 |
+| **GitHub Actions** | CI/CD 自动化流水线（Lint / Build / Security / Release） |
+| **ESLint + Prettier** | 前端代码规范检查（Vue/JS） |
+| **Checkstyle** | 后端 Java 代码规范检查 |
+| **Commitlint** | 提交信息规范检查（Conventional Commits） |
 | **Postman** | API 测试 |
 
 ---
@@ -201,6 +209,99 @@
 | `GET` | `/api/backpack` | 获取背包物品列表 |
 
 > 完整的 API 文档请参见 [`API.md`](API.md)。
+
+---
+
+## 📐 代码规范
+
+项目引入了多层次的代码规范检查体系，所有代码在合并到 master 前必须通过规范检查。
+
+### 前端规范（ESLint + Prettier）
+
+| 配置 | 文件 | 说明 |
+|------|------|------|
+| **ESLint** | [`frontend/.eslintrc.cjs`](frontend/.eslintrc.cjs) | Vue 3 + JavaScript 代码规范规则 |
+| **Prettier** | [`frontend/.prettierrc`](frontend/.prettierrc) | 代码格式化规则（singleQuote、无分号、printWidth 100） |
+| **ESLint Ignore** | [`frontend/.eslintignore`](frontend/.eslintignore) | ESLint 忽略配置 |
+| **Prettier Ignore** | [`frontend/.prettierignore`](frontend/.prettierignore) | Prettier 忽略配置 |
+
+执行检查：
+
+```bash
+cd frontend && npx eslint src/ --max-warnings=200
+```
+
+### 后端规范（Checkstyle）
+
+| 配置 | 文件 | 说明 |
+|------|------|------|
+| **Checkstyle** | [`backend/checkstyle.xml`](backend/checkstyle.xml) | Java 代码规范（基于 Google Style 简化版） |
+| **Maven 集成** | [`backend/pom.xml`](backend/pom.xml) | 通过 `maven-checkstyle-plugin` 在 verify 阶段执行 |
+
+执行检查：
+
+```bash
+cd backend && mvn validate
+```
+
+### 提交信息规范（Commitlint）
+
+| 配置 | 文件 | 说明 |
+|------|------|------|
+| **Commitlint** | [`commitlint.config.cjs`](commitlint.config.cjs) | Conventional Commits 规范 |
+
+**支持的类型**: `feat`（新功能） / `fix`（修复） / `docs`（文档） / `style`（样式） / `refactor`（重构） / `test`（测试） / `chore`（杂项） / `ci`（CI配置） / `perf`（性能优化）
+
+**提交格式**: `<type>: <description>`，如 `feat: add attack system`、`ci: add lint workflow`
+
+---
+
+## 🔄 CI/CD 流水线
+
+项目通过 GitHub Actions 实现了完整的持续集成与部署流水线，所有配置文件位于 [`.github/workflows/`](.github/workflows/)。
+
+### 流水线概览
+
+```mermaid
+graph LR
+    A[Push / PR] --> B[Lint: 代码规范检查]
+    A --> C[Build: 编译构建]
+    A --> D[Security: 安全扫描]
+    B --> E{Git Tag v*?}
+    C --> E
+    D --> E
+    E -->|yes| F[Release: 自动发布]
+    E -->|no| G[完成]
+```
+
+### 工作流说明
+
+| 工作流 | 文件 | 触发条件 | 检查内容 |
+|--------|------|----------|----------|
+| **🔍 Lint** | [`lint.yml`](.github/workflows/lint.yml) | push / pull_request (main) | ESLint + Prettier + Checkstyle + Commitlint |
+| **🏗️ Build** | [`build.yml`](.github/workflows/build.yml) | push / pull_request (main) | 前端 `npm run build` + 后端 `mvn verify` + 上传构建产物 |
+| **🛡️ Security** | [`security.yml`](.github/workflows/security.yml) | push / pull_request (main) | CodeQL 安全扫描（JavaScript + Java） |
+| **📦 Release** | [`release.yml`](.github/workflows/release.yml) | git tag v* (main) | 自动构建全项目 → 打包 ZIP → 发布到 GitHub Releases |
+
+### 发布流程
+
+1. 在 master 分支上打版本标签并推送：
+   ```bash
+   git checkout master
+   git tag v1.0.0
+   git push origin --tags
+   ```
+2. Release 工作流自动触发，完成构建与打包。
+3. 发布包（ZIP）上传到 GitHub Releases 页面，包含：
+   - `backend/target/*.jar` — 后端可执行 JAR
+   - `frontend/dist/` — 前端静态资源
+
+### 代码审查流程
+
+- **PR 模板**: [`PULL_REQUEST_TEMPLATE.md`](.github/PULL_REQUEST_TEMPLATE.md) — 所有 PR 需填写类型、检查清单
+- **CODEOWNERS**: [`.github/CODEOWNERS`](.github/CODEOWNERS) — 自动指派 @xjs69 为审核人
+- **分支保护**: master 分支启用保护规则，要求 PR 审查、状态检查通过
+- **变更日志**: [`CHANGELOG.md`](CHANGELOG.md) — 记录每个版本的更新内容
 
 ---
 
@@ -329,7 +430,21 @@ kai-fa-aaa603/
 │       │   └── EntityDrawer.js  # 游戏实体绘制器（人物/怪物/掉落物/祭坛/商人）
 │       └── game/
 │           └── constants.js     # 游戏全局常量（攻击/技能/怪物/渲染配置）
+├── .github/                  # GitHub 配置（CI/CD + 模板）
+│   ├── workflows/
+│   │   ├── lint.yml          # 代码规范检查（ESLint + Checkstyle + Commitlint）
+│   │   ├── build.yml         # 编译构建与产物上传
+│   │   ├── security.yml      # CodeQL 安全扫描
+│   │   └── release.yml       # GitHub Release 自动发布
+│   ├── PULL_REQUEST_TEMPLATE.md  # PR 模板
+│   └── CODEOWNERS            # 代码审核人自动指派
+├── .editorconfig             # 编辑器统一配置（UTF-8 / LF / 缩进规则）
+├── commitlint.config.cjs     # 提交信息规范（Conventional Commits）
+├── CHANGELOG.md              # 版本变更日志
 ├── plans/                    # 开发计划与设计文档
+│   ├── code-standards-summary.md    # 代码规范完整总结
+│   ├── deployment-summary.md        # 系统集成与部署方案
+│   ├── ppt-deployment-slides.md     # 部署 PPT 幻灯片
 │   ├── database-full-implementation.md
 │   ├── equipment-system.md
 │   ├── encounter-event-system.md
@@ -344,11 +459,11 @@ kai-fa-aaa603/
 
 ## 👥 开发团队
 
-| 角色 | 姓名 | GitHub | 主要职责                                                                                                                                                                                              |
-|------|------|--------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 👑 **组长 / 核心后端** | 李冬晨 | [@Sader-Lee](https://github.com/Sader-Lee) | 项目架构设计、前后端分离、怪物系统（生成/攻击/掉落）、商店系统（购买/出售）、背包系统、房间战斗封锁、数据库持久化（H2+JPA）、前后端联调                                                                                                                          |
+| 角色 | 姓名 | GitHub | 主要职责                                                                                                           |
+|------|------|--------|----------------------------------------------------------------------------------------------------------------|
+| 👑 **组长 / 核心后端** | 李冬晨 | [@Sader-Lee](https://github.com/Sader-Lee) | 项目架构设计、前后端分离、怪物系统（生成/攻击/掉落）、商店系统（购买/出售）、背包系统、房间战斗封锁、数据库持久化（H2+JPA）、前后端联调                                       |
 | 🎨 **前端 / 战斗系统** | 蒋志成 | [@BytesJiang](https://github.com/BytesJiang) | 玩家属性系统设计与开发、小地图模块开发、UI/UX 优化与视觉提升、玩家攻击系统设计与实现、玩家技能系统设计与实现、状态效果系统设计与实现、随机地图生成系统开发、多类型房间功能开发、前端架构重构与优化、缺陷修复与性能调优 |
-| 🛠 **特殊系统 / 实体** | 熊俊森 | [@XJS-123](https://github.com/XJS-123) | 主菜单页面搭建设计、饰品系统完整实现、人物模型绘制、游戏实体构造（掉落物实体、EntityDrawer）、地图背景添加、项目文档生成（API.md/README.md/REPORT.docx）                                                                                                  |
+| 🛠 **特殊系统 / 实体** | 熊俊森 | [@XJS-123](https://github.com/XJS-123) | 主菜单页面搭建设计、饰品系统完整实现、人物模型绘制、游戏实体构造（掉落物实体、EntityDrawer）、地图背景添加、项目文档生成、代码规范、系统集成                                   |
 
 > 本项目为 **武汉理工大学 2026 软件工程实训** 小组作业，遵循 MIT 开源协议。
 

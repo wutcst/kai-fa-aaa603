@@ -277,7 +277,7 @@ member_data = [
     ('熊俊森',
      '@XJS-123',
      'xjs',
-     '特殊系统开发：主菜单页面搭建设计、饰品系统完整实现、人物模型绘制、游戏实体构造（掉落物实体、EntityDrawer）、地图背景添加、项目文档生成（API.md/README.md/REPORT.docx）'),
+     '特殊系统开发与CI/CD：主菜单页面搭建设计、饰品系统完整实现、人物模型绘制、游戏实体构造（掉落物实体、EntityDrawer）、地图背景添加、项目文档生成、代码规范体系搭建（ESLint/Prettier/Checkstyle/Commitlint）、GitHub Actions CI/CD流水线（Lint/Build/Security/Release）、PR模板与审查流程'),
 ]
 for idx, (name, github, branch, duty) in enumerate(member_data):
     add_data_row(member_table, idx + 1, [name, github, branch, duty])
@@ -305,8 +305,11 @@ add_para('项目管理策略与强制约束：', bold=True)
 constraints = [
     '版本控制：必须使用 Git 进行版本管理，所有代码提交需有清晰的信息描述',
     '分支策略：采用 master/ldc/jzc/xjs 多分支开发，通过 Pull Request 合并代码',
-    '代码审查：每个 PR 需至少一名其他成员审查通过后才能合并',
-    '代码风格：后端遵循 Java 标准命名规范，前端遵循 ESLint 规则',
+    '代码审查：每个 PR 需至少一名其他成员审查通过后才能合并，PR 需填写模板 checklist',
+    '代码风格：后端遵循 Checkstyle 规范（基于 Google Style 简化版），前端遵循 ESLint + Prettier 规范',
+    '提交信息：必须遵循 Conventional Commits 规范（feat/fix/docs/style/refactor/test/chore/ci/perf）',
+    'CI 流水线：每次推送自动触发 Lint → Build → Security 三道检查，全部通过方可合并',
+    '发布管理：版本发布通过 git tag 触发 GitHub Release 自动打包',
     'API 设计：所有接口遵循统一响应格式 {status, message, data}',
     '前后端通信：所有游戏状态由后端维护，前端只做呈现与用户输入捕获',
     '文档同步：代码更新后需同步更新 API.md 和 README.md',
@@ -344,6 +347,7 @@ version_plan = [
     ('v0.5 — 状态效果', '实现烧伤/中毒/流血/天使祝福四种状态效果系统，支持层数叠加'),
     ('v0.6 — 存档与 UI', '实现基于 H2 数据库的完整存档系统、控制面板(ESC)、小地图组件、UI/UX 优化'),
     ('v1.0 — 集成与交付', '前后端集成测试、Bug 修复、代码优化与冗余清理、项目文档生成'),
+    ('v1.1 — 代码规范与 CI/CD', '搭建 GitHub Actions 流水线（Lint/Build/Security/Release）、引入 ESLint/Prettier/Checkstyle/Commitlint 代码规范体系、PR 模板与 CODEOWNERS 审查流程、EditorConfig 编辑器统一配置'),
 ]
 for ver, desc in version_plan:
     p = doc.add_paragraph(style='List Bullet')
@@ -374,8 +378,66 @@ for bf in branch_flow:
 # 3.4 代码规范与检查流程
 add_heading('3.4 代码规范与检查流程', level=2)
 add_para(
-    '后端 Java 代码遵循阿里巴巴 Java 开发手册规范，前端代码遵循 Vue 3 Composition API 风格指南。'
-    '代码审查重点检查以下方面：',
+    '项目引入了多层次的代码规范检查体系，所有代码在合并到 master 前必须通过规范检查。'
+    '涵盖前端 ESLint + Prettier、后端 Checkstyle、提交信息 Commitlint 三个维度。',
+    indent=True
+)
+
+add_para('（1）前端代码规范（ESLint + Prettier）', bold=True)
+add_para(
+    '前端使用 ESLint 进行代码质量检查，Prettier 进行代码格式化统一。ESLint 配置位于 frontend/.eslintrc.cjs，'
+    '基于 eslint:recommended + eslint-plugin-vue 扩展。主要规则：',
+    indent=True
+)
+fe_lint = [
+    'for-direction / getter-return / no-compare-neg-zero：禁止明显的逻辑错误',
+    'no-empty / no-unused-vars：禁止空代码块（warn 级别）, 禁止未使用变量',
+    'vue/component-name-in-template-casing：组件命名风格（kebab-case）',
+    'vue/multi-word-component-names：组件名多单词',
+    'prettier/prettier：Prettier 格式一致性（warn 级别，printWidth=100, singleQuote, noSemi, trailingComma=all）',
+]
+for f in fe_lint:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(f)
+    run.font.size = Pt(11)
+
+add_para('（2）后端代码规范（Checkstyle）', bold=True)
+add_para(
+    '后端使用 Checkstyle 进行 Java 代码规范检查，配置位于 backend/checkstyle.xml，基于 Google Style 简化。'
+    '通过 Maven 插件（maven-checkstyle-plugin）集成到构建流程中：',
+    indent=True
+)
+be_lint = [
+    'Javadoc 规范：类、方法、变量的 Javadoc 注释（type/method/variable 三级检查）',
+    '命名规范：类名 ^[A-Z][a-zA-Z0-9]*$，方法名 ^[a-z][a-zA-Z0-9]*$，常量 ^[A-Z][A-Z0-9]*$',
+    '文件规范：文件长度不超过 2000 行，每行不超过 150 字符',
+    '方法规范：方法长度不超过 200 行，参数不超过 12 个',
+    '导入规范：禁止未使用的导入，禁止冗余 import',
+    '代码结构：禁止文件末尾缺少空行、禁止重复的 public 修饰符',
+]
+for b in be_lint:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(b)
+    run.font.size = Pt(11)
+
+add_para('（3）提交信息规范（Commitlint）', bold=True)
+add_para(
+    '项目使用 Commitlint 强制执行 Conventional Commits 规范，配置位于 commitlint.config.cjs。'
+    '提交信息格式要求：<type>: <description>（不得超过 72 字符）。支持的类型包括：',
+    indent=True
+)
+commit_types = [
+    'feat（新功能）、fix（修复）、docs（文档）、style（样式）',
+    'refactor（重构）、test（测试）、chore（杂项）、ci（CI配置）、perf（性能优化）',
+]
+for ct in commit_types:
+    p = doc.add_paragraph(style='List Bullet')
+    run = p.add_run(ct)
+    run.font.size = Pt(11)
+
+add_para('（4）代码审查流程', bold=True)
+add_para(
+    '代码审查通过 Pull Request 机制执行，审查重点包括：',
     indent=True
 )
 code_review = [
@@ -384,6 +446,8 @@ code_review = [
     '异常处理：所有可能的空指针需做 null 检查，错误信息有意义',
     'API 一致性：响应格式必须遵循统一的 {status, message, data} 结构',
     '安全性：存档操作需校验 saveId 合法性',
+    'PR 模板：所有 PR 必须填写 PULL_REQUEST_TEMPLATE.md 中的检查清单（问题类型/改动说明/测试验证等）',
+    'Code Owners：自动指派 @xjs69 进行代码审查',
 ]
 for cr in code_review:
     p = doc.add_paragraph(style='List Bullet')
@@ -412,17 +476,51 @@ for t in test_items:
 # 3.6 项目集成与发布规范
 add_heading('3.6 项目集成与发布规范', level=2)
 add_para(
-    '项目通过 GitHub 进行持续集成与发布管理。各成员在个人分支完成开发和自测后，通过 Pull Request '
-    '将代码合并到 master 主分支。每次合并前需确保代码可编译、可运行，且不破坏现有功能。',
+    '项目通过 GitHub Actions 实现了完整的持续集成（CI）与持续部署（CD）流水线，'
+    '所有配置文件位于 .github/workflows/ 目录。集成了代码规范检查、编译构建、安全扫描和自动发布四个阶段。',
     indent=True
 )
-release_items = [
-    '集成触发：每次 Pull Request 合并到 master 后触发集成验证',
-    '构建验证：后端使用 Maven 编译验证（mvn compile），前端使用 Vite 构建验证（npm run build）',
-    '发布流程：代码在 master 分支上经过验证后，打上版本标签进行发布',
-    '文档同步：版本发布时同步更新 README.md 和 API.md 中的版本号与更新日期',
+
+add_para('（1）Lint — 代码规范检查（lint.yml）', bold=True)
+add_para(
+    '在 push 和 pull_request 到 main 分支时自动触发。依次执行：前端 ESLint 检查（--max-warnings=200）、'
+    'Prettier 格式检查、后端 Checkstyle 检查（mvn validate）、Commitlint 提交信息检查。'
+    '任何阶段的失败都会导致工作流整体失败，阻止 PR 合并。',
+    indent=True
+)
+
+add_para('（2）Build — 编译构建（build.yml）', bold=True)
+add_para(
+    '在 push 和 pull_request 到 main 分支时自动触发。执行前端 Vite 构建（npm run build）和后端 Maven 构建（mvn verify）。'
+    '构建成功后上传前后端构建产物为 GitHub Artifacts，供后续 Release 使用。'
+    '验证了代码的可编译性和构建完整性。',
+    indent=True
+)
+
+add_para('（3）Security — 安全扫描（security.yml）', bold=True)
+add_para(
+    '在 push 和 pull_request 到 main 分支时自动触发。使用 GitHub 官方 CodeQL 引擎对 JavaScript 和 Java 代码进行安全扫描，'
+    '检测潜在的漏洞和安全风险（如 SQL 注入、XSS、命令注入等）。扫描结果在 GitHub Security 标签页展示。',
+    indent=True
+)
+
+add_para('（4）Release — 自动发布（release.yml）', bold=True)
+add_para(
+    '在 main 分支上检测到符合 v* 模式的 git tag 时自动触发。流程包括：检出代码、安装 JDK 17 和 Node.js 18、'
+    '构建后端（mvn package -DskipTests）、构建前端（npm run build）、将后端 JAR 和前端 dist/ 打包为 ZIP 文件、'
+    '上传 ZIP 到 GitHub Releases 页面。实现了"打 tag 即发布"的自动化部署流程。',
+    indent=True
+)
+
+add_para('（5）其他配套配置', bold=True)
+release_extra = [
+    'EditorConfig（.editorconfig）：统一编辑器配置（UTF-8 编码、LF 换行、JS/TS/Vue 2空格缩进、Java/XML 4空格缩进）',
+    'PR 模板（PULL_REQUEST_TEMPLATE.md）：规范 PR 提交内容，包含问题类型、改动说明、测试清单',
+    'Code Owners（CODEOWNERS）：自动指派 @xjs69 为所有文件的代码审查人',
+    '分支保护：master 分支需 PR 审查通过且所有 CI 状态检查通过方可合并',
+    '变更日志（CHANGELOG.md）：按版本记录每次发布的更新内容',
 ]
-for r in release_items:
+for r in release_extra:
     p = doc.add_paragraph(style='List Bullet')
     run = p.add_run(r)
     run.font.size = Pt(11)
@@ -506,6 +604,13 @@ xjs_tasks = [
     '游戏实体构造：EntityDrawer.js 实现掉落物可视化、DroppedItem 坐标管理、祭坛/商人绘制',
     '地图背景添加：4种背景图（bg0-bg3）对应不同房间类型',
     '项目文档生成：API.md、README.md、REPORT.docx 的编写与更新',
+    '代码规范体系搭建：配置前端 ESLint + Prettier（.eslintrc.cjs、.prettierrc）、后端 Checkstyle（checkstyle.xml）、'
+    '提交信息规范（commitlint.config.cjs）、编辑器统一配置（.editorconfig）',
+    'GitHub Actions CI/CD 流水线：配置 Lint 工作流（ESLint/Checkstyle/Commitlint 自动检查）、Build 工作流（前后端编译构建+产物上传）、'
+    'Security 工作流（CodeQL 安全扫描）、Release 工作流（git tag 自动打包发布到 GitHub Releases）',
+    'PR 审查流程：设计 PULL_REQUEST_TEMPLATE.md（PR 模板清单）、配置 CODEOWNERS（自动指派审查人）',
+    '变更管理：编写 CHANGELOG.md 版本变更日志',
+    '项目部署文档：撰写 plans/deployment-summary.md（系统集成与部署方案）和 plans/ppt-deployment-slides.md（部署PPT幻灯片）',
 ]
 for t in xjs_tasks:
     p = doc.add_paragraph(style='List Bullet')
@@ -513,7 +618,8 @@ for t in xjs_tasks:
     run.font.size = Pt(11)
 
 add_para('实施成果：完成了主菜单页面、饰品系统、人物模型绘制、地图背景添加等前端模块，'
-         '生成了完整的项目文档。', indent=True)
+         '生成了完整的项目文档。搭建了完整的代码规范体系（ESLint/Prettier/Checkstyle/Commitlint）和 '
+         'GitHub Actions CI/CD 流水线（Lint/Build/Security/Release），实现了从代码提交到自动发布的完整 DevOps 流程。', indent=True)
 
 # 4.4 成员四
 add_heading('4.4 成员四任务分工及实施过程描述', level=2)
@@ -586,7 +692,10 @@ add_para(
     '状态效果系统（四种效果）、背包与五槽位装备系统、商店交易系统、篝火祭坛系统（三种祭坛+八种恩赐）、'
     '奇遇事件系统（八种事件）、铁匠强化系统、月光波技能、完整存档系统（H2数据库持久化）。'
     '前端完成了 Vue 3 组件化架构（6个组件/5个composables）、Phaser 3 游戏引擎集成、'
-    '小地图导航、控制面板、攻击粒子特效、屏幕振动等 UI/UX 功能。',
+    '小地图导航、控制面板、攻击粒子特效、屏幕振动等 UI/UX 功能。'
+    '在工程规范方面，搭建了完整的代码规范体系（ESLint + Prettier + Checkstyle + Commitlint），'
+    '实现了 GitHub Actions 持续集成流水线（Lint → Build → Security → Release），'
+    '并通过分支保护、PR 模板、Code Owners 审查等机制保障了代码质量。',
     indent=True
 )
 
@@ -613,6 +722,9 @@ highlights = [
     '多维度的内容生成：随机地图 + 随机商店 + 随机祭坛恩赐 + 随机奇遇事件，保证每次游戏的全新体验',
     '完整的存档系统：基于 H2 数据库实现全量游戏状态持久化，支持多槽位存档管理',
     '前端组件化重构：将背包面板、控制面板、小地图拆分为独立 Vue 组件，通过 CustomEvent 通信',
+    '多层次代码规范体系：ESLint + Prettier 前端规范 + Checkstyle 后端规范 + Commitlint 提交规范 + EditorConfig 统一编辑器配置',
+    '自动化 CI/CD 流水线：Lint 检查 → Build 构建 → Security 安全扫描 → Release 自动发布，四阶段全自动化',
+    'Conventional Commits 规范：统一提交信息格式，支持自动生成变更日志',
 ]
 for h in highlights:
     p = doc.add_paragraph(style='List Bullet')
